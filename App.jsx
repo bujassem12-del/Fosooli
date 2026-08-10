@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -237,14 +237,15 @@ function wrapCanvasText(ctx, text, maxWidth) {
 // Builds a flat table onto an offscreen canvas (title + header row + data
 // rows), wrapping long cell text onto multiple lines instead of letting it
 // overflow, and rendering at high resolution for crisp PNG/PDF output.
-function buildTableCanvas({ title, subtitle, headers, rows }) {
+function buildTableCanvas({ title, subtitle, headers, rows, blankTemplate = false }) {
   const cellW = 150, lineH = 18, cellPadV = 12, headerH = 42, pad = 24, titleH = 70;
   const cols = headers.length;
   const width = pad * 2 + cols * cellW;
   const scale = 3;
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = "13px Tahoma, Arial";
-  const rowLines = rows.map((r) => r.map((val) => wrapCanvasText(measure, val ? String(val) : "—", cellW - 16)));
+  const emptyPlaceholder = blankTemplate ? "" : "—";
+  const rowLines = rows.map((r) => r.map((val) => wrapCanvasText(measure, val ? String(val) : emptyPlaceholder, cellW - 16)));
   const rowHeights = rowLines.map((cellsLines) => Math.max(...cellsLines.map((lines) => lines.length)) * lineH + cellPadV);
   const height = titleH + headerH + rowHeights.reduce((a, b) => a + b, 0) + pad;
   const canvas = document.createElement("canvas");
@@ -265,15 +266,19 @@ function buildTableCanvas({ title, subtitle, headers, rows }) {
     ctx.fillStyle = MUTED;
     ctx.fillText(subtitle, width / 2, pad + 36);
   }
+  // canvas coordinates are always left-to-right regardless of ctx.direction
+  // (that only affects text shaping) — so for RTL tables we must explicitly
+  // position column 0 at the RIGHT edge and lay subsequent columns leftward.
+  const colX = (i) => pad + (cols - 1 - i) * cellW;
   let y = titleH;
   ctx.fillStyle = "#F3F1E9";
   ctx.fillRect(pad, y, cols * cellW, headerH);
   headers.forEach((h, i) => {
     ctx.strokeStyle = LINE;
-    ctx.strokeRect(pad + i * cellW, y, cellW, headerH);
+    ctx.strokeRect(colX(i), y, cellW, headerH);
     ctx.fillStyle = INK;
     ctx.font = "bold 14px Tahoma, Arial";
-    ctx.fillText(String(h), pad + i * cellW + cellW / 2, y + headerH / 2);
+    ctx.fillText(String(h), colX(i) + cellW / 2, y + headerH / 2);
   });
   y += headerH;
   rows.forEach((r, ri) => {
@@ -282,12 +287,12 @@ function buildTableCanvas({ title, subtitle, headers, rows }) {
     ctx.fillRect(pad, y, cols * cellW, rh);
     r.forEach((val, ci) => {
       ctx.strokeStyle = LINE;
-      ctx.strokeRect(pad + ci * cellW, y, cellW, rh);
+      ctx.strokeRect(colX(ci), y, cellW, rh);
       ctx.fillStyle = INK;
       ctx.font = "13px Tahoma, Arial";
       const lines = rowLines[ri][ci];
       let ly = y + rh / 2 - (lines.length * lineH) / 2 + lineH / 2;
-      lines.forEach((ln) => { ctx.fillText(ln, pad + ci * cellW + cellW / 2, ly); ly += lineH; });
+      lines.forEach((ln) => { ctx.fillText(ln, colX(ci) + cellW / 2, ly); ly += lineH; });
     });
     y += rh;
   });
@@ -831,7 +836,7 @@ function jobToTable(job) {
     const cls = job.cls;
     const headers = ["الاسم", ...cls.columns.map((c) => c.name)];
     const rows = cls.rows.map((row) => [row.name, ...cls.columns.map(() => "")]);
-    return { title: cls.subject, subtitle: `${cls.grade} • ${cls.teacher} — نسخة فارغة`, headers, rows, filename: `${cls.subject || "الفصل"}-فارغ` };
+    return { title: cls.subject, subtitle: `${cls.grade} • ${cls.teacher} — نسخة فارغة`, headers, rows, filename: `${cls.subject || "الفصل"}-فارغ`, blankTemplate: true };
   }
   if (job.type === "attendance") {
     const { cls, dateKey } = job;
@@ -852,7 +857,8 @@ function jobToCanvas(job) {
     const groups = groupEntries(entries);
     return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups });
   }
-  return buildTableCanvas(jobToTable(job));
+  const table = jobToTable(job);
+  return buildTableCanvas(table);
 }
 
 function exportPng(job) {
@@ -1065,10 +1071,10 @@ function IconBtn({ icon: Icon, label, onClick, tone = "default" }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80 active:scale-95 whitespace-nowrap"
+      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80 active:scale-95 whitespace-nowrap"
       style={{ background: t.bg, color: t.fg, border: `1px solid ${t.border}` }}
     >
-      <Icon size={16} strokeWidth={2} />
+      <Icon size={14} strokeWidth={2} />
       <span>{label}</span>
     </button>
   );
@@ -1223,6 +1229,32 @@ function PrintFormatModal({ onClose, onChoose }) {
 
 function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50 }) {
   const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md";
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, startPos: { x: 0, y: 0 } });
+
+  const dragStart = (clientX, clientY) => {
+    dragRef.current = { dragging: true, startX: clientX, startY: clientY, startPos: pos };
+  };
+  useEffect(() => {
+    const move = (clientX, clientY) => {
+      if (!dragRef.current.dragging) return;
+      setPos({ x: dragRef.current.startPos.x + (clientX - dragRef.current.startX), y: dragRef.current.startPos.y + (clientY - dragRef.current.startY) });
+    };
+    const onMouseMove = (e) => move(e.clientX, e.clientY);
+    const onTouchMove = (e) => { if (e.touches[0]) move(e.touches[0].clientX, e.touches[0].clientY); };
+    const onEnd = () => { dragRef.current.dragging = false; };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onEnd);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onEnd);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, []);
+
   return (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 modal-backdrop-in"
@@ -1231,10 +1263,18 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
     >
       <div
         className={`rounded-2xl shadow-2xl w-full ${widthClass} max-h-[90vh] overflow-y-auto modal-panel-in`}
-        style={{ background: PAPER, border: `1px solid ${LINE}` }}
+        style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)` }}
       >
-        <div className="flex items-center justify-between px-5 py-4 sticky top-0" style={{ background: PAPER, borderBottom: `1px solid ${LINE}` }}>
-          <h3 className="font-bold text-lg" style={{ color: INK }}>{title}</h3>
+        <div
+          className="flex items-center justify-between px-5 py-4 sticky top-0"
+          style={{ background: PAPER, borderBottom: `1px solid ${LINE}`, cursor: "grab", touchAction: "none", userSelect: "none" }}
+          onMouseDown={(e) => { dragStart(e.clientX, e.clientY); }}
+          onTouchStart={(e) => { if (e.touches[0]) dragStart(e.touches[0].clientX, e.touches[0].clientY); }}
+        >
+          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: INK }}>
+            <Move size={14} color={MUTED} />
+            {title}
+          </h3>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
             <X size={18} color={MUTED} />
           </button>
@@ -3496,7 +3536,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
         {[
           { id: "general", label: "عام" },
           { id: "school", label: "بيانات المدرسة" },
-          { id: "footer", label: "تذييل الصفحة" },
+          ...(isOwner ? [{ id: "footer", label: "تذييل الصفحة" }] : []),
         ].map((t) => (
           <button
             key={t.id}
@@ -3724,16 +3764,26 @@ function RandomPickerModal({ rows, onClose }) {
         >
           {rows.map((row, i) => {
             const midAngle = i * segmentAngle + segmentAngle / 2;
-            const flip = midAngle > 90 && midAngle < 270;
-            const labelFontSize = rows.length > 16 ? 11 : rows.length > 10 ? 13 : rows.length > 6 ? 15 : 17;
+            const rad = ((midAngle - 90) * Math.PI) / 180;
+            const labelRadius = 340 / 2 * 0.66;
+            const x = 170 + labelRadius * Math.cos(rad);
+            const y = 170 + labelRadius * Math.sin(rad);
+            const labelFontSize = rows.length > 20 ? 10 : rows.length > 14 ? 11 : rows.length > 8 ? 13 : 15;
+            const chipMaxWidth = rows.length > 14 ? 56 : rows.length > 8 ? 70 : 90;
             return (
-              <div key={row.id} style={{ position: "absolute", top: "50%", left: "50%", width: "50%", height: 0, transform: `rotate(${midAngle}deg)`, transformOrigin: "0 0" }}>
+              <div
+                key={row.id}
+                style={{
+                  position: "absolute", left: x, top: y,
+                  transform: `translate(-50%, -50%) rotate(${-rotation}deg)`,
+                  transition: spinning ? "transform 3.5s cubic-bezier(0.17, 0.67, 0.12, 0.99)" : "none",
+                }}
+              >
                 <span style={{
-                  position: "absolute", left: 26, top: -10,
+                  display: "block", maxWidth: chipMaxWidth,
                   fontSize: labelFontSize, fontWeight: 800, color: "#fff",
-                  whiteSpace: "nowrap", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis",
-                  textShadow: "0 1px 2px rgba(0,0,0,0.35)",
-                  transform: flip ? "rotate(180deg)" : "none", transformOrigin: "left center",
+                  textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.45), 0 0 4px rgba(0,0,0,0.25)",
                 }}>{row.name}</span>
               </div>
             );
@@ -4976,16 +5026,26 @@ function BoardTable({ cls, dateKey }) {
 }
 
 function DisplayBoard({ cls, onClose, onPrint }) {
-  const [sharing, setSharing] = useState(false);
   const [boardDate, setBoardDate] = useState(todayKey());
-  const shareReadOnly = async () => {
-    setSharing(true);
+  const [shareError, setShareError] = useState("");
+  const shareReadOnly = () => {
+    setShareError("");
+    // نفتح النافذة أولًا وبشكل متزامن (قبل أي عملية غير متزامنة) — لأن Safari
+    // على الجوال يمنع فتح نافذة جديدة إن حصل بعد أي await، حتى لو كانت
+    // بسبب ضغطة المستخدم نفسها.
+    const win = window.open("", "_blank");
     try {
       const html = buildReadOnlyBoardHtml(cls, boardDate);
-      const blob = new Blob([html], { type: "text/html" });
-      await shareOrDownloadFile(blob, `${cls.subject || "الفصل"}-لوحة-العرض.html`, "text/html");
-    } finally {
-      setSharing(false);
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+      } else {
+        const blob = new Blob([html], { type: "text/html" });
+        downloadBlob(blob, `${cls.subject || "الفصل"}-لوحة-العرض.html`);
+      }
+    } catch (e) {
+      if (win) win.close();
+      setShareError("تعذّرت المشاركة، حاول مرة أخرى.");
     }
   };
   return (
@@ -4996,10 +5056,11 @@ function DisplayBoard({ cls, onClose, onPrint }) {
           <div className="flex items-center flex-wrap gap-2">
             <DateField value={boardDate} onChange={setBoardDate} />
             <IconBtn icon={Printer} label="طباعة" onClick={() => onPrint(boardDate)} />
-            <IconBtn icon={Share2} label={sharing ? "جارٍ التجهيز..." : "مشاركة نسخة للقراءة فقط"} onClick={shareReadOnly} />
+            <IconBtn icon={Share2} label="مشاركة نسخة للقراءة فقط" onClick={shareReadOnly} />
             <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform"><X size={18} color={MUTED} /></button>
           </div>
         </div>
+        {shareError && <p className="text-xs px-5 pt-2" style={{ color: "#C0392B" }}>{shareError}</p>}
         <div className="p-5 overflow-auto">
           <div className="mb-3 text-sm" style={{ color: MUTED }}>{cls.grade} • {cls.teacher} • {formatDateDisplay(boardDate)}</div>
           <BoardTable cls={cls} dateKey={boardDate} />
@@ -5073,14 +5134,14 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
       <button
         title="حذف الفصل"
         onClick={(e) => { e.stopPropagation(); onDelete(cls.id); }}
-        className="absolute top-2.5 right-2.5 z-10 p-1.5 rounded-full hover:opacity-80"
+        className="absolute top-2.5 left-2.5 z-10 p-1.5 rounded-full hover:opacity-80"
         style={{ background: "#FBEDEA" }}
       >
         <Trash2 size={13} color="#9A3B2E" />
       </button>
       <div className="p-4 cursor-pointer relative active:scale-[0.98] transition-transform" onClick={() => !locked && onOpen(cls.id)} style={{ cursor: locked ? "not-allowed" : "pointer" }}>
         {(cls.pinned || locked) && (
-          <div className="absolute top-2 left-2 flex gap-1">
+          <div className="absolute top-2 right-2 flex gap-1">
             {cls.pinned && <span className="p-1 rounded-full" style={{ background: "#EAF3F0" }}><Pin size={11} color="#0F6B5C" /></span>}
             {locked && <span className="p-1 rounded-full" style={{ background: "#FBEDEA" }}><Lock size={11} color="#9A3B2E" /></span>}
           </div>
@@ -5349,7 +5410,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           </div>
         </div>
 
-        <DashboardStrip classes={data.classes.filter((c) => !c.archived)} />
 
         <ScheduleMiniCard schedule={data.schedule} image={data.scheduleImage} onOpen={() => setShowSchedule(true)} />
 
@@ -5643,7 +5703,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
-  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -6108,80 +6167,67 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <div><p className="text-xs" style={{ color: MUTED }}>العام الدراسي</p><p className="font-bold" style={{ color: INK }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p></div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 mb-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" onClick={() => setShowReportPicker(true)} />
-          <button onClick={() => setToolsExpanded((s) => !s)} className="mr-auto flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg hover:bg-black/5" style={{ border: `1px solid ${LINE}`, color: MUTED }}>
-            {toolsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />} أدوات إضافية
-          </button>
         </div>
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
 
-        {toolsExpanded && (
-          <>
-            <div className="rounded-xl p-2.5 mb-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-              <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
-              <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
-              <IconBtn icon={Printer} label="طباعة" onClick={() => setPrintChoice({ type: "class", cls })} />
-              <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
-            </div>
+        <div className="rounded-xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+          <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
+          <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
+          <IconBtn icon={Printer} label="طباعة" onClick={() => setPrintChoice({ type: "class", cls })} />
+          <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
+        </div>
 
-            <div className="rounded-xl p-2.5 mb-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-              <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات الحصة</span>
-              <IconBtn icon={CalendarCheck} label="متابعة الحضور" onClick={() => setShowAttendance(true)} />
-              <IconBtn icon={Newspaper} label="الأحداث" onClick={() => setShowEvents(true)} />
-              <IconBtn icon={Bell} label="تذكير" onClick={() => setShowReminders(true)} />
-              <IconBtn icon={Shuffle} label="اختر لي طالبًا" onClick={() => setShowRandomPicker(true)} />
-              <IconBtn icon={Users} label="مجموعات عشوائية" onClick={() => setShowRandomGroups(true)} />
-            </div>
+        <div className="rounded-xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+          <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات الحصة</span>
+          <IconBtn icon={CalendarCheck} label="متابعة الحضور" onClick={() => setShowAttendance(true)} />
+          <IconBtn icon={Newspaper} label="الأحداث" onClick={() => setShowEvents(true)} />
+          <IconBtn icon={Bell} label="تذكير" onClick={() => setShowReminders(true)} />
+          <IconBtn icon={Shuffle} label="اختر لي طالبًا" onClick={() => setShowRandomPicker(true)} />
+          <IconBtn icon={Users} label="مجموعات عشوائية" onClick={() => setShowRandomGroups(true)} />
+        </div>
 
-            <div className="rounded-xl p-2.5 mb-3 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-              <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
-              <IconBtn
-                icon={Trash2}
-                label={selectedRowIds.length > 0 ? `حذف المحددين (${selectedRowIds.length})` : "حذف (حدد طلابًا أولًا)"}
-                tone="danger"
-                onClick={() => { if (selectedRowIds.length > 0) setConfirmBulkDelete(true); }}
-              />
-              <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
-              <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
-              <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
-              <IconBtn icon={Search} label="بحث" onClick={() => setShowSearch((s) => !s)} />
-              {showSearch && (
-                <div className="relative" style={{ width: "200px" }}>
-                  <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن اسم الطالب..." style={{ ...inputStyle, width: "100%", paddingInlineEnd: "28px" }} />
-                  {search && (
-                    <button
-                      onClick={() => setSearch("")}
-                      title="مسح البحث"
-                      className="absolute top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-black/5"
-                      style={{ insetInlineEnd: "6px" }}
-                    >
-                      <X size={14} color={MUTED} />
-                    </button>
-                  )}
-                </div>
-              )}
-              {cls.columns.length > 0 && (
-                activeFilter ? (
-                  <div className="flex items-center gap-1.5 rounded-lg overflow-hidden" style={{ border: "1px solid #C9E2DB" }}>
-                    <button onClick={() => setShowFilterModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>
-                      <Filter size={15} />
-                      {cls.columns.find((c) => c.id === activeFilter.colId)?.name}
-                    </button>
-                    <button onClick={() => setActiveFilter(null)} title="إزالة التصفية" className="px-2 py-2 hover:bg-black/5" style={{ background: "#EAF3F0" }}>
-                      <X size={14} color="#0F6B5C" />
-                    </button>
-                  </div>
-                ) : (
-                  <IconBtn icon={Filter} label="تصفية" onClick={() => setShowFilterModal(true)} />
-                )
+        <div className="rounded-xl p-1.5 mb-2 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+          <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
+          <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
+          <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
+          <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
+          <IconBtn icon={Search} label="بحث" onClick={() => setShowSearch((s) => !s)} />
+          {showSearch && (
+            <div className="relative" style={{ width: "200px" }}>
+              <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن اسم الطالب..." style={{ ...inputStyle, width: "100%", paddingInlineEnd: "28px" }} />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  title="مسح البحث"
+                  className="absolute top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-black/5"
+                  style={{ insetInlineEnd: "6px" }}
+                >
+                  <X size={14} color={MUTED} />
+                </button>
               )}
             </div>
-          </>
-        )}
+          )}
+          {cls.columns.length > 0 && (
+            activeFilter ? (
+              <div className="flex items-center gap-1.5 rounded-lg overflow-hidden" style={{ border: "1px solid #C9E2DB" }}>
+                <button onClick={() => setShowFilterModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>
+                  <Filter size={15} />
+                  {cls.columns.find((c) => c.id === activeFilter.colId)?.name}
+                </button>
+                <button onClick={() => setActiveFilter(null)} title="إزالة التصفية" className="px-2 py-2 hover:bg-black/5" style={{ background: "#EAF3F0" }}>
+                  <X size={14} color="#0F6B5C" />
+                </button>
+              </div>
+            ) : (
+              <IconBtn icon={Filter} label="تصفية" onClick={() => setShowFilterModal(true)} />
+            )
+          )}
+        </div>
       </div>
 
       <div className="mt-3">
