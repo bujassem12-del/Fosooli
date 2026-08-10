@@ -10,7 +10,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -2881,7 +2881,86 @@ function trashEntryLabel(entry) {
   return "عنصر محذوف";
 }
 
-function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, schoolName, principalName, countryName, ministryName, logoImage, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, onClose }) {
+function AdminPanelModal({ currentUserId, onClose }) {
+  const [profiles, setProfiles] = useState(null);
+  const [error, setError] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  const loadProfiles = async () => {
+    setError("");
+    const { data, error } = await supabase.from("profiles").select("id, email, is_owner, is_disabled, created_at").order("created_at", { ascending: false });
+    if (error) { setError(error.message); return; }
+    setProfiles(data || []);
+  };
+
+  useEffect(() => { loadProfiles(); }, []);
+
+  const toggleDisabled = async (p) => {
+    setBusyId(p.id);
+    const { error } = await supabase.from("profiles").update({ is_disabled: !p.is_disabled }).eq("id", p.id);
+    if (error) setError(error.message); else await loadProfiles();
+    setBusyId(null);
+  };
+
+  const deleteUserData = async (id) => {
+    setBusyId(id);
+    const { error } = await supabase.from("user_data").delete().eq("user_id", id);
+    if (error) setError(error.message);
+    setBusyId(null);
+    setConfirmDeleteId(null);
+  };
+
+  return (
+    <Modal title="لوحة التحكم" onClose={onClose} wide>
+      <p className="text-sm mb-4" style={{ color: MUTED }}>
+        كل الحسابات المسجّلة بالموقع. تعطيل حساب يمنع صاحبه من الدخول فورًا (بدون حذف بياناته). حذف البيانات يمسح فصوله وطلابه بالكامل، لكن يبقى قادرًا على الدخول بحساب فارغ.
+      </p>
+      {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
+      {!profiles ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>...جارٍ التحميل</p>
+      ) : profiles.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد مستخدمون بعد.</p>
+      ) : (
+        <div className="space-y-2">
+          {profiles.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 p-3 rounded-xl flex-wrap" style={{ border: `1px solid ${LINE}`, background: p.is_disabled ? "#FBEDEA" : "#fff" }}>
+              <div className="flex-1 min-w-[160px]">
+                <p className="text-sm font-semibold flex items-center gap-1.5" style={{ color: INK }}>
+                  {p.email}
+                  {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
+                  {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
+                  {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
+                </p>
+                <p className="text-xs" style={{ color: MUTED }}>سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))}</p>
+              </div>
+              {!p.is_owner && p.id !== currentUserId && (
+                <div className="flex gap-2 shrink-0">
+                  <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
+                    {p.is_disabled ? "تفعيل" : "تعطيل"}
+                  </button>
+                  <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
+                    حذف البيانات
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="حذف بيانات الحساب"
+          message="سيُحذف كل ما لدى هذا المستخدم من فصول وطلاب ورصد بشكل نهائي، بدون إمكانية استرجاع. حسابه نفسه يبقى موجودًا ويقدر يدخل بحساب فارغ. متابعة؟"
+          onCancel={() => setConfirmDeleteId(null)}
+          onConfirm={() => deleteUserData(confirmDeleteId)}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, schoolName, principalName, countryName, ministryName, logoImage, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onClose }) {
   const logoInputRef = useRef(null);
   const badgeInputRef = useRef(null);
   const [confirmRemoveLogo, setConfirmRemoveLogo] = useState(false);
@@ -2977,40 +3056,47 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
         </Field>
       </div>
 
-      <div className="p-3 rounded-xl mt-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <p className="text-sm font-semibold mb-1" style={{ color: INK }}>تذييل الصفحة الرئيسية</p>
-        <p className="text-xs mb-3" style={{ color: MUTED }}>بيانات التواصل وشهادات الثقة/الاعتماد التي تظهر أسفل الصفحة الرئيسية — تتحكم فيها إضافةً وحذفًا بالكامل.</p>
+      {isOwner ? (
+        <div className="p-3 rounded-xl mt-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+          <p className="text-sm font-semibold mb-1" style={{ color: INK }}>تذييل الصفحة الرئيسية <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك الموقع</span></p>
+          <p className="text-xs mb-3" style={{ color: MUTED }}>بيانات التواصل وشهادات الثقة/الاعتماد التي تظهر أسفل الصفحة الرئيسية لجميع المشتركين — تتحكم فيها إضافةً وحذفًا بالكامل.</p>
 
-        <p className="text-xs font-semibold mb-2" style={{ color: INK }}>بيانات التواصل</p>
-        <div className="space-y-2 mb-2">
-          {(footerContacts || []).map((c) => (
-            <div key={c.id} className="flex items-center gap-2">
-              <input style={{ ...inputStyle, flex: 1 }} value={c.label} onChange={(e) => onUpdateContact(c.id, { label: e.target.value })} placeholder="التسمية (مثال: الهاتف)" />
-              <input style={{ ...inputStyle, flex: 1 }} value={c.value} onChange={(e) => onUpdateContact(c.id, { value: e.target.value })} placeholder="القيمة" />
-              <button onClick={() => onRemoveContact(c.id)} title="حذف" className="p-1.5 rounded hover:bg-black/5 shrink-0"><X size={14} color={MUTED} /></button>
-            </div>
-          ))}
-        </div>
-        <button onClick={onAddContact} className="text-xs font-semibold flex items-center gap-1 mb-4" style={{ color: "#0F6B5C" }}>
-          <Plus size={13} /> إضافة بيانات تواصل
-        </button>
+          <p className="text-xs font-semibold mb-2" style={{ color: INK }}>بيانات التواصل</p>
+          <div className="space-y-2 mb-2">
+            {(footerContacts || []).map((c) => (
+              <div key={c.id} className="flex items-center gap-2">
+                <input style={{ ...inputStyle, flex: 1 }} value={c.label} onChange={(e) => onUpdateContact(c.id, { label: e.target.value })} placeholder="التسمية (مثال: الهاتف)" />
+                <input style={{ ...inputStyle, flex: 1 }} value={c.value} onChange={(e) => onUpdateContact(c.id, { value: e.target.value })} placeholder="القيمة" />
+                <button onClick={() => onRemoveContact(c.id)} title="حذف" className="p-1.5 rounded hover:bg-black/5 shrink-0"><X size={14} color={MUTED} /></button>
+              </div>
+            ))}
+          </div>
+          <button onClick={onAddContact} className="text-xs font-semibold flex items-center gap-1 mb-4" style={{ color: "#0F6B5C" }}>
+            <Plus size={13} /> إضافة بيانات تواصل
+          </button>
 
-        <p className="text-xs font-semibold mb-2" style={{ color: INK }}>شهادات الثقة / الاعتماد الرسمية</p>
-        <div className="flex flex-wrap gap-2 mb-2">
-          {(footerBadges || []).map((b) => (
-            <div key={b.id} className="relative">
-              <img src={b.image} alt="شهادة" className="w-16 h-16 object-contain rounded-lg dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
-              <button onClick={() => onRemoveBadge(b.id)} title="حذف" className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-                <X size={10} color="#C0392B" />
-              </button>
-            </div>
-          ))}
+          <p className="text-xs font-semibold mb-2" style={{ color: INK }}>شهادات الثقة / الاعتماد الرسمية</p>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(footerBadges || []).map((b) => (
+              <div key={b.id} className="relative">
+                <img src={b.image} alt="شهادة" className="w-16 h-16 object-contain rounded-lg dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+                <button onClick={() => onRemoveBadge(b.id)} title="حذف" className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+                  <X size={10} color="#C0392B" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <input ref={badgeInputRef} type="file" accept="image/*" onChange={handleBadgeUpload} style={{ display: "none" }} />
+          <button onClick={() => badgeInputRef.current?.click()} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+            <Plus size={13} /> إضافة شهادة/شعار ثقة
+          </button>
         </div>
-        <input ref={badgeInputRef} type="file" accept="image/*" onChange={handleBadgeUpload} style={{ display: "none" }} />
-        <button onClick={() => badgeInputRef.current?.click()} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
-          <Plus size={13} /> إضافة شهادة/شعار ثقة
-        </button>
-      </div>
+      ) : (
+        <div className="p-3 rounded-xl mt-4 flex items-start gap-2" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+          <Info size={15} color={MUTED} className="shrink-0 mt-0.5" />
+          <p className="text-xs" style={{ color: MUTED }}>تذييل الصفحة الرئيسية وشهادات الثقة خاصة بمالك الموقع فقط، ولا تظهر لباقي المشتركين.</p>
+        </div>
+      )}
       {confirmRemoveLogo && (
         <ConfirmDialog
           title="إزالة الشعار"
@@ -4427,12 +4513,13 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
   );
 }
 
-function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
+function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("active");
   const [showSettings, setShowSettings] = useState(false);
   const [showTodayActivity, setShowTodayActivity] = useState(false);
   const [showTestsList, setShowTestsList] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showTestBuilder, setShowTestBuilder] = useState(false);
   const [gradingTestId, setGradingTestId] = useState(null);
   const [printingTestId, setPrintingTestId] = useState(null);
@@ -4468,11 +4555,11 @@ function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const addFooterContact = () => setData((d) => ({ ...d, settings: { ...(d.settings || {}), footerContacts: [...((d.settings || {}).footerContacts || []), { id: uid(), label: "", value: "" }] } }));
-  const updateFooterContact = (id, patch) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), footerContacts: ((d.settings || {}).footerContacts || []).map((c) => (c.id === id ? { ...c, ...patch } : c)) } }));
-  const removeFooterContact = (id) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), footerContacts: ((d.settings || {}).footerContacts || []).filter((c) => c.id !== id) } }));
-  const addFooterBadge = (image) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), footerBadges: [...((d.settings || {}).footerBadges || []), { id: uid(), image }] } }));
-  const removeFooterBadge = (id) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), footerBadges: ((d.settings || {}).footerBadges || []).filter((b) => b.id !== id) } }));
+  const addFooterContact = () => updateSiteSettings((s) => ({ ...s, footerContacts: [...(s.footerContacts || []), { id: uid(), label: "", value: "" }] }));
+  const updateFooterContact = (id, patch) => updateSiteSettings((s) => ({ ...s, footerContacts: (s.footerContacts || []).map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
+  const removeFooterContact = (id) => updateSiteSettings((s) => ({ ...s, footerContacts: (s.footerContacts || []).filter((c) => c.id !== id) }));
+  const addFooterBadge = (image) => updateSiteSettings((s) => ({ ...s, footerBadges: [...(s.footerBadges || []), { id: uid(), image }] }));
+  const removeFooterBadge = (id) => updateSiteSettings((s) => ({ ...s, footerBadges: (s.footerBadges || []).filter((b) => b.id !== id) }));
   const classes = data.classes.filter((c) => (tab === "active" ? !c.archived : c.archived));
   const displayClasses = [...classes.filter((c) => c.pinned), ...classes.filter((c) => !c.pinned)];
   const unpinnedIds = classes.filter((c) => !c.pinned).map((c) => c.id);
@@ -4659,6 +4746,7 @@ function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
           <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
           <IconBtn icon={ListTodo} label="نشاطي اليوم" onClick={() => setShowTodayActivity(true)} />
           <IconBtn icon={ListChecks} label="الاختبارات" onClick={() => setShowTestsList(true)} />
+          {isOwner && <IconBtn icon={ShieldCheck} label="لوحة التحكم" tone="primary" onClick={() => setShowAdminPanel(true)} />}
           {classes.length > 0 && (
             <>
               <IconBtn icon={Archive} label={`أرشفة الكل (${classes.length})`} onClick={archiveAllClasses} />
@@ -4827,8 +4915,8 @@ function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
           ministryName={data.settings?.ministryName}
           logoImage={data.settings?.logoImage}
           onChangeSchoolInfo={(patch) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), ...patch } }))}
-          footerContacts={data.settings?.footerContacts}
-          footerBadges={data.settings?.footerBadges}
+          footerContacts={siteSettings.footerContacts}
+          footerBadges={siteSettings.footerBadges}
           onAddContact={addFooterContact}
           onUpdateContact={updateFooterContact}
           onRemoveContact={removeFooterContact}
@@ -4836,6 +4924,7 @@ function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
           onRemoveBadge={removeFooterBadge}
           userEmail={userEmail}
           onSignOut={onSignOut}
+          isOwner={isOwner}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -4848,6 +4937,7 @@ function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
       )}
       {showTodayActivity && <TodayActivityModal classes={data.classes.filter((c) => !c.archived)} onClose={() => setShowTodayActivity(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
+      {showAdminPanel && <AdminPanelModal currentUserId={userId} onClose={() => setShowAdminPanel(false)} />}
       {showTestsList && (
         <TestsListModal
           tests={data.tests || []}
@@ -4890,7 +4980,7 @@ function HomePage({ data, setData, onOpen, userEmail, onSignOut }) {
           onClose={() => { setPrintingTestId(null); setShowTestsList(true); }}
         />
       )}
-      <SiteFooter contacts={data.settings?.footerContacts} badges={data.settings?.footerBadges} />
+      {isOwner && <SiteFooter contacts={siteSettings.footerContacts} badges={siteSettings.footerBadges} />}
     </div>
   );
 }
@@ -5797,12 +5887,49 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState({ page: "home" });
   const [printJob, requestPrint] = usePrint();
+  const [siteSettings, setSiteSettings] = useState({});
+  const [isOwner, setIsOwner] = useState(false);
+  const [disabledMessage, setDisabledMessage] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // إعدادات الموقع العامة (تذييل الصفحة، شعارات الثقة): يقرأها الجميع، لكن
+  // فقط المالك (is_owner) يقدر يكتبها فعليًا — القاعدة الأمنية بجهة الخادم.
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      try {
+        const { data: row } = await supabase.from("site_settings").select("data").eq("id", 1).maybeSingle();
+        if (row && row.data) setSiteSettings(row.data);
+      } catch (e) {
+        console.error("تعذر تحميل إعدادات الموقع", e);
+      }
+      try {
+        const { data: profile } = await supabase.from("profiles").select("is_owner, is_disabled").eq("id", session.user.id).maybeSingle();
+        if (profile?.is_disabled) {
+          setDisabledMessage(true);
+          await supabase.auth.signOut();
+          return;
+        }
+        setIsOwner(!!profile?.is_owner);
+      } catch (e) {
+        console.error("تعذر التحقق من صلاحية المالك", e);
+      }
+    })();
+  }, [session]);
+
+  const updateSiteSettings = (fn) => {
+    setSiteSettings((prev) => {
+      const next = fn(prev);
+      supabase.from("site_settings").upsert({ id: 1, data: next, updated_at: new Date().toISOString() }, { onConflict: "id" })
+        .then(({ error }) => { if (error) console.error("تعذر حفظ إعدادات الموقع (يتطلب صلاحية المالك)", error); });
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -5896,6 +6023,16 @@ export default function App() {
   }
 
   if (!session) {
+    if (disabledMessage) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4" style={{ background: PAPER, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+            <p className="text-sm font-bold mb-2" style={{ color: "#C0392B" }}>هذا الحساب معطّل حاليًا</p>
+            <p className="text-xs" style={{ color: MUTED }}>تواصل مع إدارة الموقع لمزيد من المعلومات.</p>
+          </div>
+        </div>
+      );
+    }
     return <AuthScreen />;
   }
 
@@ -5911,7 +6048,7 @@ export default function App() {
   const appContent = (
     <>
       <PrintStyles />
-      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} onSignOut={() => supabase.auth.signOut()} />}
+      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={() => supabase.auth.signOut()} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} />}
       {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
