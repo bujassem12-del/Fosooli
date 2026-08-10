@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -840,7 +840,7 @@ function jobToTable(job) {
       attendanceStatus(cls, row.id, t) === "absent" ? "غائب" : "حاضر",
       ...cls.columns.map((col) => boardCellValue(cls, row.id, col.id, dateKey)),
     ]);
-    return { title: cls.emoji ? `${cls.emoji} ${cls.subject}` : cls.subject, subtitle: dateKey ? `${cls.grade} • ${formatDateDisplay(dateKey)}` : `${cls.grade} • ${cls.teacher}`, headers, rows, filename: cls.subject || "الفصل" };
+    return { title: cls.emoji ? `${cls.emoji} ${cls.subject}` : cls.subject, subtitle: dateKey ? `${cls.grade} • ${formatDateDisplay(dateKey)}` : `${cls.grade} • ${cls.teacher}`, headers, rows, filename: cls.subject || "الفصل", blankTemplate: true };
   }
   if (job.type === "blank") {
     const cls = job.cls;
@@ -925,7 +925,7 @@ function buildReadOnlyBoardHtml(cls, dateKey) {
       `<td style="padding:8px;font-weight:600;border:1px solid ${LINE};border-inline-start:4px solid ${row.color};">${escapeHtml(row.name)}</td>`,
       `<td style="padding:6px;text-align:center;border:1px solid ${LINE};font-weight:700;color:${status === "absent" ? "#C0392B" : "#0F6B5C"};">${status === "absent" ? "غائب" : "حاضر"}</td>`,
       ...cls.columns.map((col) => {
-        const val = (dateKey ? valueOnDate(cls, row.id, col.id, dateKey) : (cls.cells[`${row.id}:${col.id}`] || lastReportedValue(cls, row.id, col.id))) || "—";
+        const val = (dateKey ? valueOnDate(cls, row.id, col.id, dateKey) : (cls.cells[`${row.id}:${col.id}`] || lastReportedValue(cls, row.id, col.id))) || "";
         return `<td style="padding:6px;text-align:center;border:1px solid ${LINE};">${escapeHtml(String(val))}</td>`;
       }),
     ].join("");
@@ -5536,7 +5536,11 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       <div className="sticky top-0 z-20 pb-2" style={{ background: PAPER }}>
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-2xl font-extrabold" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
+            {siteSettings.siteLogo ? (
+              <img src={siteSettings.siteLogo} alt="فصولي" className="max-h-12 object-contain" />
+            ) : (
+              <h1 className="text-2xl font-extrabold" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
+            )}
             <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -6710,14 +6714,16 @@ function AuthScreen({ siteSettings }) {
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "linear-gradient(180deg, #F3F1E9 0%, #FAF8F3 100%)", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
       <div className="w-full max-w-sm rounded-2xl p-6 modal-panel-in" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 10px 40px rgba(35,38,34,0.08)" }}>
         {siteSettings?.siteLogo ? (
-          <img src={siteSettings.siteLogo} alt="الشعار" className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover" style={{ border: `1px solid ${LINE}` }} />
+          <img src={siteSettings.siteLogo} alt="فصولي" className="max-h-28 mx-auto mb-4 object-contain" />
         ) : (
-          <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#0F6B5C" }}>
-            <BookOpen size={26} color="#fff" strokeWidth={2} />
-          </div>
+          <>
+            <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#0F6B5C" }}>
+              <BookOpen size={26} color="#fff" strokeWidth={2} />
+            </div>
+            <h1 className="text-2xl font-extrabold text-center" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
+            <p className="text-xs text-center mb-1 tracking-wide" style={{ color: MUTED }}>FOSOOLI</p>
+          </>
         )}
-        <h1 className="text-2xl font-extrabold text-center" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
-        <p className="text-xs text-center mb-1 tracking-wide" style={{ color: MUTED }}>FOSOOLI</p>
         <p className="text-sm text-center mb-6" style={{ color: MUTED }}>{mode === "login" ? "سجّل دخولك للمتابعة" : "أنشئ حسابًا جديدًا"}</p>
 
         <Field label="البريد الإلكتروني">
