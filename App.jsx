@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -35,7 +35,13 @@ const COLORS = [
   { name: "أحمر", hex: "#C0392B", light: "#F5DEDB" },
 ];
 function colorLight(hex) {
-  return COLORS.find((c) => c.hex === hex)?.light || "#F3F1E9";
+  const preset = COLORS.find((c) => c.hex === hex);
+  if (preset) return preset.light;
+  if (!hex || hex[0] !== "#" || hex.length !== 7) return "#F3F1E9";
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "#F3F1E9";
+  const mix = (c) => Math.round(c + (255 - c) * 0.82);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
 const CLASS_EMOJIS = ["📐", "📖", "🔬", "🎨", "⚽", "🕌", "🌍", "💻", "✏️", "📊", "🎵", "🧮", "🔤", "🌱", "⚗️", "📚"];
@@ -458,34 +464,38 @@ function buildCertificateCanvas({ countryName, ministryName, schoolName, logoIma
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // Official header block: logo (if provided) + country/ministry/school names.
-  const OFFSET = 60; // shifts everything below down to make room for this header
+  // Official header block: logo to the side (not top-center, to reduce visual
+  // clutter in the vertical center) + country/ministry/school stacked beside it.
+  const OFFSET = 30;
+  const headerTextX = logoImageElement ? width / 2 + 45 : width / 2;
   if (logoImageElement) {
-    const logoSize = 56;
-    ctx.drawImage(logoImageElement, width / 2 - logoSize / 2, 52, logoSize, logoSize);
+    const logoSize = 72;
+    ctx.drawImage(logoImageElement, width - 130, 46, logoSize, logoSize);
   }
-  let hy = logoImageElement ? 122 : 62;
+  let hy = 66;
+  ctx.textAlign = "center";
   if (countryName) {
     ctx.fillStyle = "#232622";
     ctx.font = "bold 15px Tahoma, Arial";
-    ctx.fillText(countryName, width / 2, hy);
+    ctx.fillText(countryName, headerTextX, hy);
     hy += 20;
   }
   if (ministryName) {
     ctx.fillStyle = "#7A7768";
     ctx.font = "14px Tahoma, Arial";
-    ctx.fillText(ministryName, width / 2, hy);
+    ctx.fillText(ministryName, headerTextX, hy);
     hy += 20;
   }
   if (schoolName) {
     ctx.fillStyle = "#7A7768";
     ctx.font = "16px Tahoma, Arial";
-    ctx.fillText(schoolName, width / 2, hy);
+    ctx.fillText(schoolName, headerTextX, hy);
   }
 
+  ctx.textAlign = "center";
   ctx.fillStyle = accent;
-  ctx.font = "bold 44px Tahoma, Arial";
-  ctx.fillText(title, width / 2, 160 + OFFSET);
+  ctx.font = "bold 58px 'Aref Ruqaa', Tahoma, Arial";
+  ctx.fillText(title, width / 2, 168 + OFFSET);
 
   ctx.strokeStyle = accent;
   ctx.lineWidth = 2;
@@ -652,7 +662,12 @@ function downloadBlob(blob, filename) {
 
 // Tries the native device share sheet first (great on mobile for "sharing" a
 // file directly, e.g. to WhatsApp or a parent's number); falls back to a
-// normal download if the Web Share API / file sharing isn't available.
+// normal download if the Web Share API / file sharing isn't available. HTML
+// content specifically falls back to opening in a new tab instead of forcing
+// a download, since a forced-download of HTML is unreliable on iOS Safari
+// (it's a "displayable" type, so Safari often just tries to show it and the
+// download silently does nothing) — opening it always works everywhere, and
+// the user can share/save/print from that tab using their browser's own tools.
 async function shareOrDownloadFile(blob, filename, mime) {
   try {
     const file = new File([blob], filename, { type: mime });
@@ -661,7 +676,14 @@ async function shareOrDownloadFile(blob, filename, mime) {
       return;
     }
   } catch (e) {
-    // fall through to plain download below
+    // fall through to plain download/open below
+  }
+  if (mime === "text/html") {
+    const url = URL.createObjectURL(blob);
+    const opened = window.open(url, "_blank");
+    if (!opened) downloadBlob(blob, filename); // popup blocked — last resort
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return;
   }
   downloadBlob(blob, filename);
 }
@@ -954,7 +976,7 @@ function useFonts() {
     const link = document.createElement("link");
     link.id = "mutabaa-fonts";
     link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap";
+    link.href = "https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Aref+Ruqaa:wght@400;700&display=swap";
     document.head.appendChild(link);
   }, []);
 }
@@ -967,7 +989,7 @@ function PrintStyles() {
       @media print {
         body * { visibility: hidden !important; }
         .app-print-root, .app-print-root * { visibility: visible !important; }
-        .app-print-root { display: block !important; position: absolute; inset: 0; padding: 24px; }
+        .app-print-root { display: block !important; position: absolute; inset: 0; padding: 24px; direction: rtl; }
       }
       @keyframes tossToTrash {
         0% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
@@ -1246,8 +1268,10 @@ const inputStyle = {
 };
 
 function ColorSwatches({ value, onChange, size = 8 }) {
+  const isCustom = !COLORS.some((c) => c.hex === value);
+  const customInputRef = useRef(null);
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {COLORS.map((c) => (
         <button
           key={c.hex}
@@ -1260,6 +1284,28 @@ function ColorSwatches({ value, onChange, size = 8 }) {
           {value === c.hex && <Check size={size * 1.5} color="#fff" strokeWidth={3} />}
         </button>
       ))}
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          title="لون مخصص"
+          onClick={() => customInputRef.current?.click()}
+          className="rounded-full flex items-center justify-center transition-transform hover:scale-110"
+          style={{
+            width: size * 4, height: size * 4,
+            background: isCustom ? value : "conic-gradient(from 90deg, #E63958, #F2B705, #4CAF7D, #3B6FD4, #8B3FD1, #E63958)",
+            boxShadow: isCustom ? `0 0 0 2px #fff, 0 0 0 4px ${value}` : `0 0 0 1px ${LINE}`,
+          }}
+        >
+          {isCustom ? <Check size={size * 1.5} color="#fff" strokeWidth={3} /> : <Pipette size={size * 1.4} color="#fff" style={{ filter: "drop-shadow(0 0 1.5px rgba(0,0,0,0.5))" }} />}
+        </button>
+        <input
+          ref={customInputRef}
+          type="color"
+          value={isCustom ? value : "#0F6B5C"}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ position: "absolute", inset: 0, opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
+        />
+      </div>
     </div>
   );
 }
@@ -2733,6 +2779,28 @@ function rowMatchesFilter(cls, row, filter) {
   }
 }
 
+function StudentPickerModal({ rows, onSelect, onClose }) {
+  const [selected, setSelected] = useState(rows[0]?.id || "");
+  return (
+    <Modal title="عرض تقرير طالب" onClose={onClose}>
+      {rows.length === 0 ? (
+        <p className="text-sm text-center py-6" style={{ color: MUTED }}>لا يوجد طلاب بهذا الفصل بعد.</p>
+      ) : (
+        <>
+          <Field label="اختر الطالب">
+            <select value={selected} onChange={(e) => setSelected(e.target.value)} style={inputStyle}>
+              {rows.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </Field>
+          <button onClick={() => onSelect(selected)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+            عرض التقرير
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function BulkSetPopover({ column, onApply, onClose }) {
   const [val, setVal] = useState("");
   return (
@@ -3636,7 +3704,7 @@ function RandomPickerModal({ rows, onClose }) {
   return (
     <Modal title="عجلة الأسماء" onClose={onClose}>
       <p className="text-sm text-center mb-4" style={{ color: MUTED }}>اضغط على العجلة لاختيار طالب</p>
-      <div className="relative mx-auto mb-5" style={{ width: 300, height: 300 }}>
+      <div className="relative mx-auto mb-5" style={{ width: 340, height: 340 }}>
         <div style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", zIndex: 10, filter: "drop-shadow(0 3px 3px rgba(0,0,0,0.25))" }}>
           <svg width="36" height="44" viewBox="0 0 34 42">
             <path d="M17 0C7.6 0 0 7.6 0 17c0 12.75 17 25 17 25s17-12.25 17-25C34 7.6 26.4 0 17 0z" fill="#232622" />
@@ -3646,7 +3714,7 @@ function RandomPickerModal({ rows, onClose }) {
         <div
           className="rounded-full relative overflow-hidden"
           style={{
-            width: 300, height: 300,
+            width: 340, height: 340,
             background: conicGradient,
             border: "5px solid #fff",
             boxShadow: "0 8px 28px rgba(0,0,0,0.2)",
@@ -3657,12 +3725,14 @@ function RandomPickerModal({ rows, onClose }) {
           {rows.map((row, i) => {
             const midAngle = i * segmentAngle + segmentAngle / 2;
             const flip = midAngle > 90 && midAngle < 270;
+            const labelFontSize = rows.length > 16 ? 11 : rows.length > 10 ? 13 : rows.length > 6 ? 15 : 17;
             return (
               <div key={row.id} style={{ position: "absolute", top: "50%", left: "50%", width: "50%", height: 0, transform: `rotate(${midAngle}deg)`, transformOrigin: "0 0" }}>
                 <span style={{
-                  position: "absolute", left: 22, top: -8,
-                  fontSize: 11, fontWeight: 700, color: "#fff",
-                  whiteSpace: "nowrap", maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis",
+                  position: "absolute", left: 26, top: -10,
+                  fontSize: labelFontSize, fontWeight: 800, color: "#fff",
+                  whiteSpace: "nowrap", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.35)",
                   transform: flip ? "rotate(180deg)" : "none", transformOrigin: "left center",
                 }}>{row.name}</span>
               </div>
@@ -3761,6 +3831,7 @@ function BulkCertificateModal({ cls, rows, schoolName, principalName, countryNam
     if (logoImage) {
       try { logoEl = await loadImage(logoImage); } catch (e) { logoEl = null; }
     }
+    try { await document.fonts.load("bold 58px 'Aref Ruqaa'"); } catch (e) { /* falls back gracefully */ }
     const files = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -3966,6 +4037,7 @@ function CertificateModal({ cls, row, schoolName, principalName, countryName, mi
       if (logoImage) {
         try { logoEl = await loadImage(logoImage); } catch (e) { logoEl = null; }
       }
+      try { await document.fonts.load("bold 58px 'Aref Ruqaa'"); } catch (e) { /* font not available, canvas falls back gracefully */ }
       if (cancelled) return;
       const built = buildCertificateCanvas({
         countryName,
@@ -4149,6 +4221,70 @@ function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
                 ) : (
                   <button onClick={() => setAbsent(row.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: "#C0392B" }}>تحديد كغائب</button>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function RemindersModal({ reminders, onAdd, onDelete, notifPermission, onRequestPermission, onClose }) {
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(todayKey());
+  const [time, setTime] = useState("08:00");
+
+  const submit = () => {
+    if (!title.trim()) return;
+    onAdd({ id: uid(), title: title.trim(), date, time, notified: false });
+    setTitle("");
+  };
+
+  const sorted = [...(reminders || [])].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
+  const now = new Date();
+
+  return (
+    <Modal title="تذكير" onClose={onClose}>
+      {notifPermission !== "granted" && (
+        <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
+          <Bell size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-xs mb-2" style={{ color: "#8A4A1E" }}>فعّل إشعارات المتصفح لتصلك التذكيرات كإشعار بالجهاز — يعمل ما دام الموقع مفتوحًا (حتى بتبويب بالخلفية)، ولا يعمل والمتصفح مغلق تمامًا.</p>
+            <button onClick={onRequestPermission} className="text-xs font-bold px-3 py-1.5 rounded-lg text-white" style={{ background: "#C97A2B" }}>تفعيل الإشعارات</button>
+          </div>
+        </div>
+      )}
+      <Field label="عنوان التذكير">
+        <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: اختبار الوحدة الثانية" />
+      </Field>
+      <div className="grid grid-cols-2 gap-2 mb-1">
+        <Field label="التاريخ">
+          <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="الوقت">
+          <input type="time" style={inputStyle} value={time} onChange={(e) => setTime(e.target.value)} />
+        </Field>
+      </div>
+      <button disabled={!title.trim()} onClick={submit} className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 mb-4" style={{ background: "#0F6B5C" }}>
+        إضافة تذكير
+      </button>
+
+      {sorted.length === 0 ? (
+        <p className="text-sm text-center py-6" style={{ color: MUTED }}>لا يوجد تذكيرات بعد.</p>
+      ) : (
+        <div className="space-y-2">
+          {sorted.map((r) => {
+            const due = new Date(`${r.date}T${r.time}`);
+            const passed = due < now;
+            return (
+              <div key={r.id} className="flex items-center gap-2 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: passed ? "#F8F7F2" : "#fff", opacity: passed ? 0.6 : 1 }}>
+                <Bell size={15} color={passed ? MUTED : "#0F6B5C"} className="shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: INK }}>{r.title}</p>
+                  <p className="text-xs" style={{ color: MUTED }}>{formatDateDisplay(r.date)} — {r.time}</p>
+                </div>
+                <button onClick={() => onDelete(r.id)} title="حذف" className="p-1.5 rounded hover:bg-black/5 shrink-0"><X size={14} color={MUTED} /></button>
               </div>
             );
           })}
@@ -4522,7 +4658,7 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
       {!hasData ? (
         <p className="text-sm" style={{ color: MUTED }}>اضغط لإنشاء جدولك الدراسي الأسبوعي أو رفع صورته</p>
       ) : image ? (
-        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 420, objectFit: "contain", background: "#F3F1E9" }} />
+        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 160, objectFit: "contain", background: "#F3F1E9" }} />
       ) : (
         <table className="w-full border-collapse" style={{ fontSize: 14 }}>
           <thead>
@@ -4934,6 +5070,14 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
       style={{ background: "#fff", border: cls.pinned ? `2px solid #0F6B5C` : `1px solid ${LINE}` }}
     >
       <div className="h-2" style={{ background: cls.color }} />
+      <button
+        title="حذف الفصل"
+        onClick={(e) => { e.stopPropagation(); onDelete(cls.id); }}
+        className="absolute top-2.5 right-2.5 z-10 p-1.5 rounded-full hover:opacity-80"
+        style={{ background: "#FBEDEA" }}
+      >
+        <Trash2 size={13} color="#9A3B2E" />
+      </button>
       <div className="p-4 cursor-pointer relative active:scale-[0.98] transition-transform" onClick={() => !locked && onOpen(cls.id)} style={{ cursor: locked ? "not-allowed" : "pointer" }}>
         {(cls.pinned || locked) && (
           <div className="absolute top-2 left-2 flex gap-1">
@@ -4941,7 +5085,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
             {locked && <span className="p-1 rounded-full" style={{ background: "#FBEDEA" }}><Lock size={11} color="#9A3B2E" /></span>}
           </div>
         )}
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 pl-6">
           {cls.emoji ? <span className="text-base leading-none">{cls.emoji}</span> : <BookOpen size={16} color={cls.color} />}
           <h3 className="font-bold text-base" style={{ color: INK }}>{cls.subject}</h3>
         </div>
@@ -4951,26 +5095,31 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
         {locked && <p className="text-xs mt-1 font-semibold" style={{ color: "#9A3B2E" }}>مقفل — اضغط أيقونة القفل للدخول</p>}
       </div>
       <div className="flex items-center gap-1 px-3 py-2 relative flex-wrap" style={{ borderTop: `1px solid ${LINE}` }}>
-        <button title={cls.pinned ? "إلغاء التثبيت" : "تثبيت الفصل"} onClick={() => onTogglePin(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
-          <Pin size={15} color={cls.pinned ? "#0F6B5C" : MUTED} />
-        </button>
-        <button title={locked ? "فتح القفل" : "قفل الفصل"} onClick={() => onToggleLock(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
-          {locked ? <Lock size={15} color="#9A3B2E" /> : <Unlock size={15} color={MUTED} />}
-        </button>
+        <div className="flex items-center gap-1" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 4 }}>
+          <button title={cls.pinned ? "إلغاء التثبيت" : "تثبيت الفصل"} onClick={() => onTogglePin(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
+            <Pin size={15} color={cls.pinned ? "#0F6B5C" : MUTED} />
+          </button>
+          <button title={locked ? "فتح القفل" : "قفل الفصل"} onClick={() => onToggleLock(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
+            {locked ? <Lock size={15} color="#9A3B2E" /> : <Unlock size={15} color={MUTED} />}
+          </button>
+        </div>
         {!cls.pinned && (
-          <>
+          <div className="flex items-center gap-1" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 4 }}>
             <button title="نقل لأعلى" disabled={isFirst} onClick={() => onMove(cls.id, -1)} className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-30"><ChevronUp size={15} color={MUTED} /></button>
             <button title="نقل لأسفل" disabled={isLast} onClick={() => onMove(cls.id, 1)} className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-30"><ChevronDown size={15} color={MUTED} /></button>
-          </>
+          </div>
         )}
-        <button title="تعديل" onClick={() => onEdit(cls)} className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={15} color={MUTED} /></button>
-        <button title="الوان" onClick={() => setShowColors((s) => !s)} className="p-1.5 rounded-lg hover:bg-black/5"><Palette size={15} color={MUTED} /></button>
-        <button title="تكرار الفصل" onClick={() => onDuplicate(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5"><Copy size={15} color={MUTED} /></button>
-        <button title="بدء فصل دراسي جديد" onClick={() => onNewTerm(cls)} className="p-1.5 rounded-lg hover:bg-black/5"><CalendarPlus size={15} color={MUTED} /></button>
-        <button title={cls.archived ? "إلغاء الأرشفة" : "أرشفة"} onClick={() => onArchive(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
+        <div className="flex items-center gap-1" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 4 }}>
+          <button title="تعديل" onClick={() => onEdit(cls)} className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={15} color={MUTED} /></button>
+          <button title="الوان" onClick={() => setShowColors((s) => !s)} className="p-1.5 rounded-lg hover:bg-black/5"><Palette size={15} color={MUTED} /></button>
+        </div>
+        <div className="flex items-center gap-1">
+          <button title="تكرار الفصل" onClick={() => onDuplicate(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5"><Copy size={15} color={MUTED} /></button>
+          <button title="بدء فصل دراسي جديد" onClick={() => onNewTerm(cls)} className="p-1.5 rounded-lg hover:bg-black/5"><CalendarPlus size={15} color={MUTED} /></button>
+        </div>
+        <button title={cls.archived ? "إلغاء الأرشفة" : "أرشفة"} onClick={() => onArchive(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5 mr-auto">
           {cls.archived ? <ArchiveRestore size={15} color={MUTED} /> : <Archive size={15} color={MUTED} />}
         </button>
-        <button title="حذف" onClick={() => onDelete(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5 mr-auto"><Trash2 size={15} color="#9A3B2E" /></button>
         {showColors && (
           <div className="absolute bottom-12 right-3 z-20 p-2 rounded-xl shadow-lg" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
             <ColorSwatches value={cls.color} onChange={(hex) => { onColor(cls.id, hex); setShowColors(false); }} />
@@ -5220,16 +5369,20 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
         <div className="rounded-xl p-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات</span>
-          <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatestClass} />
-          <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowClassTrash(true)} />
-          <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
-          <IconBtn icon={ListTodo} label="نشاطي اليوم" onClick={() => setShowTodayActivity(true)} />
-          <IconBtn icon={ListChecks} label="الاختبارات" onClick={() => setShowTestsList(true)} />
+          <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 8 }}>
+            <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
+            <IconBtn icon={ListTodo} label="نشاطي اليوم" onClick={() => setShowTodayActivity(true)} />
+            <IconBtn icon={ListChecks} label="الاختبارات" onClick={() => setShowTestsList(true)} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: classes.length > 0 ? `1px solid ${LINE}` : "none", paddingInlineEnd: 8 }}>
+            <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatestClass} />
+            <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowClassTrash(true)} />
+          </div>
           {classes.length > 0 && (
-            <>
+            <div className="flex flex-wrap items-center gap-2">
               <IconBtn icon={Archive} label={`أرشفة الكل (${classes.length})`} onClick={archiveAllClasses} />
               <IconBtn icon={Trash2} label={`حذف الكل (${classes.length})`} tone="danger" onClick={() => setConfirmDeleteAllClasses(true)} />
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -5479,6 +5632,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [printChoice, setPrintChoice] = useState(null);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
+  const [showReminders, setShowReminders] = useState(false);
   const [showRandomPicker, setShowRandomPicker] = useState(false);
   const [showRandomGroups, setShowRandomGroups] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState([]);
@@ -5488,6 +5642,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showBulkCertificateModal, setShowBulkCertificateModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [showReportPicker, setShowReportPicker] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -5673,6 +5829,34 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       return { ...c, events };
     });
   };
+
+  const addReminder = (reminder) => updateClass((c) => ({ ...c, reminders: [...(c.reminders || []), reminder] }));
+  const deleteReminder = (id) => updateClass((c) => ({ ...c, reminders: (c.reminders || []).filter((r) => r.id !== id) }));
+  const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+  const requestNotifPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+  };
+  // يجدول إشعارًا فعليًا بالجهاز لكل تذكير مستقبلي — يعمل ما دام الموقع
+  // مفتوحًا (حتى بتبويب خلفي)، ولا يعمل والمتصفح مغلق تمامًا (يحتاج خادم).
+  useEffect(() => {
+    if (notifPermission !== "granted") return;
+    const timers = (cls.reminders || [])
+      .filter((r) => !r.notified)
+      .map((r) => {
+        const due = new Date(`${r.date}T${r.time}`).getTime();
+        const ms = due - Date.now();
+        if (ms <= 0 || ms > 24 * 60 * 60 * 1000) return null;
+        return setTimeout(() => {
+          new Notification(r.title, { body: `${cls.subject} — تذكير مجدول`, icon: "/favicon.ico" });
+          updateClass((c) => ({ ...c, reminders: (c.reminders || []).map((x) => (x.id === r.id ? { ...x, notified: true } : x)) }));
+        }, ms);
+      })
+      .filter(Boolean);
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cls.reminders, notifPermission]);
 
   const duplicateRowById = (rowId) => {
     updateClass((c) => {
@@ -5924,62 +6108,80 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <div><p className="text-xs" style={{ color: MUTED }}>العام الدراسي</p><p className="font-bold" style={{ color: INK }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p></div>
         </div>
 
-        <div className="rounded-xl p-2.5 mb-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-          <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
-          <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
-          <IconBtn icon={Printer} label="طباعة" onClick={() => setPrintChoice({ type: "class", cls })} />
-          <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
-        </div>
-
-        <div className="rounded-xl p-2.5 mb-3 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-          <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات الحصة</span>
-          <IconBtn icon={CalendarCheck} label="متابعة الحضور" onClick={() => setShowAttendance(true)} />
-          <IconBtn icon={Newspaper} label="الأحداث" onClick={() => setShowEvents(true)} />
-          <IconBtn icon={Shuffle} label="اختر لي طالبًا" onClick={() => setShowRandomPicker(true)} />
-          <IconBtn icon={Users} label="مجموعات عشوائية" onClick={() => setShowRandomGroups(true)} />
+        <div className="flex flex-wrap items-center gap-2 mb-2.5">
+          <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
+          <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
+          <IconBtn icon={FileText} label="تقرير" onClick={() => setShowReportPicker(true)} />
+          <button onClick={() => setToolsExpanded((s) => !s)} className="mr-auto flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg hover:bg-black/5" style={{ border: `1px solid ${LINE}`, color: MUTED }}>
+            {toolsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />} أدوات إضافية
+          </button>
         </div>
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
 
-        <div className="rounded-xl p-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-          <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
-          <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
-          <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
-          <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
-          <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
-          <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
-          <IconBtn icon={Search} label="بحث" onClick={() => setShowSearch((s) => !s)} />
-          {showSearch && (
-            <div className="relative" style={{ width: "200px" }}>
-              <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن اسم الطالب..." style={{ ...inputStyle, width: "100%", paddingInlineEnd: "28px" }} />
-              {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  title="مسح البحث"
-                  className="absolute top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-black/5"
-                  style={{ insetInlineEnd: "6px" }}
-                >
-                  <X size={14} color={MUTED} />
-                </button>
+        {toolsExpanded && (
+          <>
+            <div className="rounded-xl p-2.5 mb-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+              <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
+              <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
+              <IconBtn icon={Printer} label="طباعة" onClick={() => setPrintChoice({ type: "class", cls })} />
+              <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
+            </div>
+
+            <div className="rounded-xl p-2.5 mb-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+              <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات الحصة</span>
+              <IconBtn icon={CalendarCheck} label="متابعة الحضور" onClick={() => setShowAttendance(true)} />
+              <IconBtn icon={Newspaper} label="الأحداث" onClick={() => setShowEvents(true)} />
+              <IconBtn icon={Bell} label="تذكير" onClick={() => setShowReminders(true)} />
+              <IconBtn icon={Shuffle} label="اختر لي طالبًا" onClick={() => setShowRandomPicker(true)} />
+              <IconBtn icon={Users} label="مجموعات عشوائية" onClick={() => setShowRandomGroups(true)} />
+            </div>
+
+            <div className="rounded-xl p-2.5 mb-3 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+              <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
+              <IconBtn
+                icon={Trash2}
+                label={selectedRowIds.length > 0 ? `حذف المحددين (${selectedRowIds.length})` : "حذف (حدد طلابًا أولًا)"}
+                tone="danger"
+                onClick={() => { if (selectedRowIds.length > 0) setConfirmBulkDelete(true); }}
+              />
+              <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
+              <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
+              <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
+              <IconBtn icon={Search} label="بحث" onClick={() => setShowSearch((s) => !s)} />
+              {showSearch && (
+                <div className="relative" style={{ width: "200px" }}>
+                  <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن اسم الطالب..." style={{ ...inputStyle, width: "100%", paddingInlineEnd: "28px" }} />
+                  {search && (
+                    <button
+                      onClick={() => setSearch("")}
+                      title="مسح البحث"
+                      className="absolute top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-black/5"
+                      style={{ insetInlineEnd: "6px" }}
+                    >
+                      <X size={14} color={MUTED} />
+                    </button>
+                  )}
+                </div>
+              )}
+              {cls.columns.length > 0 && (
+                activeFilter ? (
+                  <div className="flex items-center gap-1.5 rounded-lg overflow-hidden" style={{ border: "1px solid #C9E2DB" }}>
+                    <button onClick={() => setShowFilterModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>
+                      <Filter size={15} />
+                      {cls.columns.find((c) => c.id === activeFilter.colId)?.name}
+                    </button>
+                    <button onClick={() => setActiveFilter(null)} title="إزالة التصفية" className="px-2 py-2 hover:bg-black/5" style={{ background: "#EAF3F0" }}>
+                      <X size={14} color="#0F6B5C" />
+                    </button>
+                  </div>
+                ) : (
+                  <IconBtn icon={Filter} label="تصفية" onClick={() => setShowFilterModal(true)} />
+                )
               )}
             </div>
-          )}
-          {cls.columns.length > 0 && (
-            activeFilter ? (
-              <div className="flex items-center gap-1.5 rounded-lg overflow-hidden" style={{ border: "1px solid #C9E2DB" }}>
-                <button onClick={() => setShowFilterModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>
-                  <Filter size={15} />
-                  {cls.columns.find((c) => c.id === activeFilter.colId)?.name}
-                </button>
-                <button onClick={() => setActiveFilter(null)} title="إزالة التصفية" className="px-2 py-2 hover:bg-black/5" style={{ background: "#EAF3F0" }}>
-                  <X size={14} color="#0F6B5C" />
-                </button>
-              </div>
-            ) : (
-              <IconBtn icon={Filter} label="تصفية" onClick={() => setShowFilterModal(true)} />
-            )
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       <div className="mt-3">
@@ -6020,7 +6222,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 {columnMeta.map((col, i) => (
                   <th
                     key={col.id}
-                    className={`p-2 text-center relative ${col.id === animatingColId ? "trash-toss" : ""}`}
+                    className={`p-1.5 text-center relative ${col.id === animatingColId ? "trash-toss" : ""}`}
                     style={{
                       background: colorLight(col.color),
                       border: `1px solid ${LINE}`,
@@ -6033,11 +6235,13 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                       zIndex: col.pinned ? 9 : 7,
                     }}
                   >
-                    <div className="flex items-center justify-center gap-1">
-                      <MiniIconBtn icon={ChevronRight} title="نقل لليمين" disabled={i === 0} onClick={() => moveColumn(col.id, -1)} />
-                      <MiniIconBtn icon={ChevronLeft} title="نقل لليسار" disabled={i === columnMeta.length - 1} onClick={() => moveColumn(col.id, 1)} />
+                    <div className="flex items-center justify-center gap-1 mb-1">
                       <span className="font-semibold">{col.name}</span>
                       {col.autoRenew && <RefreshCw size={11} color="#0F6B5C" title="تفريغ تلقائي مفعّل" />}
+                    </div>
+                    <div className="flex items-center justify-center gap-0.5">
+                      <MiniIconBtn icon={ChevronRight} title="نقل لليمين" disabled={i === 0} onClick={() => moveColumn(col.id, -1)} />
+                      <MiniIconBtn icon={ChevronLeft} title="نقل لليسار" disabled={i === columnMeta.length - 1} onClick={() => moveColumn(col.id, 1)} />
                       <MiniIconBtn icon={col.pinned ? Pin : PinOff} title={col.pinned ? "إلغاء التثبيت" : "تثبيت العمود"} color={col.pinned ? "#0F6B5C" : MUTED} onClick={() => togglePinned(col.id)} />
                       <MiniIconBtn icon={Users} title="رصد نفس القيمة لجميع الطلاب" onClick={() => setBulkSetColId(bulkSetColId === col.id ? null : col.id)} />
                       <MiniIconBtn icon={Pencil} title="تعديل العمود" onClick={() => setColModal({ mode: "edit", data: col })} />
@@ -6047,13 +6251,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                     )}
                   </th>
                 ))}
-                <th className="p-1.5 text-center" style={{ background: "#FBEDEA", border: `1px solid ${LINE}`, color: "#9A3B2E", width: 60, minWidth: 60, position: "sticky", top: 0, insetInlineEnd: 125, zIndex: 9 }}>الغياب</th>
-                <th className="p-1.5 text-center" style={{ background: "#EEEEE7", border: `1px solid ${LINE}`, color: INK, width: 70, minWidth: 70, position: "sticky", top: 0, insetInlineEnd: 55, zIndex: 9 }}>
-                  <div className="flex items-center justify-center gap-1"><ClipboardList size={13} /><span className="font-semibold text-sm">تقرير</span></div>
-                </th>
-                <th className="p-1.5 text-center" title="حذف" style={{ background: "#FBEDEA", border: `1px solid ${LINE}`, color: "#9A3B2E", width: 55, minWidth: 55, position: "sticky", top: 0, insetInlineEnd: 0, zIndex: 9 }}>
-                  <div className="flex items-center justify-center gap-1"><Trash2 size={13} /></div>
-                </th>
+                <th className="p-1.5 text-center" style={{ background: "#FBEDEA", border: `1px solid ${LINE}`, color: "#9A3B2E", width: 60, minWidth: 60, position: "sticky", top: 0, insetInlineEnd: 0, zIndex: 9 }}>الغياب</th>
               </tr>
             </thead>
             <tbody>
@@ -6107,22 +6305,12 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         <Cell column={col} value={cls.cells[`${row.id}:${col.id}`]} onChange={(v) => setCell(row, col, v)} />
                       </td>
                     ))}
-                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: "#fff", position: "sticky", insetInlineEnd: 125, zIndex: 2 }}>
+                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: "#fff", position: "sticky", insetInlineEnd: 0, zIndex: 2 }}>
                       {blinkRowId === row.id ? (
                         <span className="inline-block w-10 h-4" />
                       ) : (
                         <button onClick={() => markAbsentToday(row.id)} className="text-xs font-bold hover:opacity-70" style={{ color: "#C0392B" }}>غياب</button>
                       )}
-                    </td>
-                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: "#fff", position: "sticky", insetInlineEnd: 55, zIndex: 2 }}>
-                      <button onClick={() => setReportRowId(row.id)} title="عرض التقرير" className="flex items-center justify-center mx-auto p-1.5 rounded-md hover:bg-black/5" style={{ border: `1px solid ${LINE}`, color: INK }}>
-                        <FileText size={13} />
-                      </button>
-                    </td>
-                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: "#fff", position: "sticky", insetInlineEnd: 0, zIndex: 2 }}>
-                      <button onClick={() => quickDeleteRow(row)} title="حذف الصف بالكامل" className="p-1 rounded-lg hover:bg-black/5 mx-auto">
-                        <Trash2 size={14} color="#C0392B" />
-                      </button>
                     </td>
                   </tr>
                 );
@@ -6207,6 +6395,16 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onShare={(dateKey) => exportPdfShare({ type: "attendance", cls, dateKey })}
         />
       )}
+      {showReminders && (
+        <RemindersModal
+          reminders={cls.reminders}
+          onAdd={addReminder}
+          onDelete={deleteReminder}
+          notifPermission={notifPermission}
+          onRequestPermission={requestNotifPermission}
+          onClose={() => setShowReminders(false)}
+        />
+      )}
       {showEvents && (
         <EventsModal
           events={cls.events}
@@ -6259,6 +6457,13 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
             clearSelection();
           }}
           onClose={() => setShowMoveModal(false)}
+        />
+      )}
+      {showReportPicker && (
+        <StudentPickerModal
+          rows={cls.rows}
+          onSelect={(rowId) => { setReportRowId(rowId); setShowReportPicker(false); }}
+          onClose={() => setShowReportPicker(false)}
         />
       )}
       {confirmBulkDelete && (
@@ -6543,7 +6748,7 @@ export default function App() {
           <button onClick={backHome} className="mt-3 text-sm font-semibold" style={{ color: "#0F6B5C" }}>العودة للرئيسية</button>
         </div>
       )}
-      <div className="app-print-root">
+      <div className="app-print-root" dir="rtl">
         <PrintContent job={printJob} />
       </div>
     </>
