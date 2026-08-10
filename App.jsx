@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import {
   Plus, Pencil, Palette, Trash2, Archive, ArchiveRestore, LayoutGrid,
   Printer, Search, ArrowRight, X, Check, Minus, Hash, Type,
@@ -2883,6 +2884,179 @@ function trashEntryLabel(entry) {
 
 const SUBSCRIPTION_LABELS = { free: "مجاني", trial: "تجريبي", active: "مشترك", expired: "منتهي" };
 
+function TransferStudentsModal({ profiles, onClose }) {
+  const [sourceId, setSourceId] = useState("");
+  const [destId, setDestId] = useState("");
+  const [sourceData, setSourceData] = useState(null);
+  const [destData, setDestData] = useState(null);
+  const [sourceClassId, setSourceClassId] = useState("");
+  const [destClassId, setDestClassId] = useState("");
+  const [selectedRowIds, setSelectedRowIds] = useState([]);
+  const [includeGrades, setIncludeGrades] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const loadUserData = async (id, setter) => {
+    const { data, error } = await supabase.from("user_data").select("data").eq("user_id", id).maybeSingle();
+    if (error) { setError(error.message); return; }
+    setter(data?.data || { classes: [] });
+  };
+
+  useEffect(() => {
+    setSourceClassId(""); setSelectedRowIds([]); setSourceData(null);
+    if (sourceId) loadUserData(sourceId, setSourceData);
+  }, [sourceId]);
+  useEffect(() => {
+    setDestClassId(""); setDestData(null);
+    if (destId) loadUserData(destId, setDestData);
+  }, [destId]);
+
+  const sourceClass = sourceData?.classes?.find((c) => c.id === sourceClassId);
+  const destClass = destData?.classes?.find((c) => c.id === destClassId);
+
+  const toggleRow = (id) => setSelectedRowIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  const executeTransfer = async () => {
+    if (!sourceClass || !destClass || selectedRowIds.length === 0) return;
+    setBusy(true); setError("");
+    try {
+      const newRows = [];
+      const newCellsForDest = {};
+      const newReportsForDest = {};
+      selectedRowIds.forEach((rowId) => {
+        const row = sourceClass.rows.find((r) => r.id === rowId);
+        if (!row) return;
+        const newId = uid();
+        newRows.push({ ...row, id: newId });
+        if (includeGrades) {
+          sourceClass.columns.forEach((srcCol) => {
+            const destCol = destClass.columns.find((dc) => dc.name === srcCol.name);
+            if (!destCol) return;
+            const val = sourceClass.cells[`${rowId}:${srcCol.id}`];
+            if (val) newCellsForDest[`${newId}:${destCol.id}`] = val;
+          });
+          const srcReports = sourceClass.reports?.[rowId] || [];
+          const remapped = srcReports
+            .map((e) => {
+              const srcCol = sourceClass.columns.find((c) => c.id === e.colId);
+              const destCol = srcCol ? destClass.columns.find((dc) => dc.name === srcCol.name) : null;
+              if (!destCol) return null;
+              return { ...e, id: uid(), colId: destCol.id, colName: destCol.name, colColor: destCol.color };
+            })
+            .filter(Boolean);
+          if (remapped.length > 0) newReportsForDest[newId] = remapped;
+        }
+      });
+
+      const updatedDestClass = {
+        ...destClass,
+        rows: [...destClass.rows, ...newRows],
+        cells: { ...destClass.cells, ...newCellsForDest },
+        reports: { ...(destClass.reports || {}), ...newReportsForDest },
+      };
+      const newDestData = { ...destData, classes: destData.classes.map((c) => (c.id === destClassId ? updatedDestClass : c)) };
+
+      const remainingReports = { ...(sourceClass.reports || {}) };
+      selectedRowIds.forEach((id) => delete remainingReports[id]);
+      const updatedSourceClass = {
+        ...sourceClass,
+        rows: sourceClass.rows.filter((r) => !selectedRowIds.includes(r.id)),
+        cells: Object.fromEntries(Object.entries(sourceClass.cells).filter(([k]) => !selectedRowIds.some((id) => k.startsWith(`${id}:`)))),
+        reports: remainingReports,
+      };
+      const newSourceData = { ...sourceData, classes: sourceData.classes.map((c) => (c.id === sourceClassId ? updatedSourceClass : c)) };
+
+      const { error: e1 } = await supabase.from("user_data").update({ data: newSourceData, updated_at: new Date().toISOString() }).eq("user_id", sourceId);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase.from("user_data").update({ data: newDestData, updated_at: new Date().toISOString() }).eq("user_id", destId);
+      if (e2) throw e2;
+      setDone(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="نقل طلاب بين حسابين" onClose={onClose} wide>
+      <p className="text-sm mb-4" style={{ color: MUTED }}>أداة خاصة بالمالك — تنقل طلابًا من فصل بحساب معلم إلى فصل بحساب معلم آخر مباشرة.</p>
+      {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
+      {done ? (
+        <div className="text-center py-6">
+          <p className="text-sm font-bold mb-4" style={{ color: "#0F6B5C" }}>تم النقل بنجاح ✓</p>
+          <button onClick={onClose} className="px-5 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>إغلاق</button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <Field label="من حساب">
+                <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} style={inputStyle}>
+                  <option value="">اختر معلمًا...</option>
+                  {profiles.map((p) => <option key={p.id} value={p.id}>{p.email}</option>)}
+                </select>
+              </Field>
+              {sourceData && (
+                <Field label="الفصل">
+                  <select value={sourceClassId} onChange={(e) => { setSourceClassId(e.target.value); setSelectedRowIds([]); }} style={inputStyle}>
+                    <option value="">اختر فصلًا...</option>
+                    {sourceData.classes.map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade} ({c.rows?.length || 0} طالب)</option>)}
+                  </select>
+                </Field>
+              )}
+              {sourceClass && (
+                <div className="rounded-xl p-2 max-h-52 overflow-y-auto" style={{ border: `1px solid ${LINE}` }}>
+                  {sourceClass.rows.length === 0 ? (
+                    <p className="text-xs text-center py-3" style={{ color: MUTED }}>لا يوجد طلاب بهذا الفصل.</p>
+                  ) : sourceClass.rows.map((r) => (
+                    <label key={r.id} className="flex items-center gap-2 py-1.5 text-sm" style={{ color: INK }}>
+                      <input type="checkbox" checked={selectedRowIds.includes(r.id)} onChange={() => toggleRow(r.id)} />
+                      {r.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <Field label="إلى حساب">
+                <select value={destId} onChange={(e) => setDestId(e.target.value)} style={inputStyle}>
+                  <option value="">اختر معلمًا...</option>
+                  {profiles.filter((p) => p.id !== sourceId).map((p) => <option key={p.id} value={p.id}>{p.email}</option>)}
+                </select>
+              </Field>
+              {destData && (
+                <Field label="الفصل الوجهة">
+                  <select value={destClassId} onChange={(e) => setDestClassId(e.target.value)} style={inputStyle}>
+                    <option value="">اختر فصلًا...</option>
+                    {destData.classes.map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade}</option>)}
+                  </select>
+                </Field>
+              )}
+              <label className="flex items-start gap-2 text-sm font-medium mt-2" style={{ color: INK }}>
+                <input type="checkbox" checked={includeGrades} onChange={(e) => setIncludeGrades(e.target.checked)} className="mt-0.5" />
+                <span>
+                  نقل الدرجات والرصد معهم
+                  <span className="block text-xs font-normal mt-0.5" style={{ color: MUTED }}>يُنقل فقط ما كان له عمود بنفس الاسم بالفصل الوجهة.</span>
+                </span>
+              </label>
+            </div>
+          </div>
+          <button
+            disabled={busy || !sourceClass || !destClass || selectedRowIds.length === 0}
+            onClick={executeTransfer}
+            className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+            style={{ background: "#0F6B5C" }}
+          >
+            {busy ? "جارٍ النقل..." : `نقل ${selectedRowIds.length} طالب`}
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onClose }) {
   const [profiles, setProfiles] = useState(null);
   const [usage, setUsage] = useState({}); // user_id -> { classes, students }
@@ -2895,6 +3069,8 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   const [announcementActive, setAnnouncementActive] = useState(!!siteSettings.announcementActive);
   const [siteTagline, setSiteTagline] = useState(siteSettings.siteTagline || "");
   const [resetSentId, setResetSentId] = useState(null);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [sortBy, setSortBy] = useState("newest");
   const logoInputRef = useRef(null);
 
   const loadAll = async () => {
@@ -2987,13 +3163,46 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
     XLSX.writeFile(wb, "مستخدمو-فصولي.xlsx");
   };
 
-  const filtered = (profiles || []).filter((p) => p.email?.toLowerCase().includes(search.toLowerCase()));
+  const todayISO = todayKey();
+  const isExpiringSoon = (p) => {
+    if (!p.subscription_expires_at || (p.subscription_status !== "active" && p.subscription_status !== "trial")) return false;
+    const days = (new Date(p.subscription_expires_at) - new Date(todayISO)) / 86400000;
+    return days >= 0 && days <= 7;
+  };
+  const isExpired = (p) => p.subscription_expires_at && p.subscription_expires_at < todayISO && (p.subscription_status === "active" || p.subscription_status === "trial");
+
+  const filtered = (profiles || [])
+    .filter((p) => p.email?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (sortBy === "oldest") return new Date(a.created_at) - new Date(b.created_at);
+      if (sortBy === "classes") return (usage[b.id]?.classes || 0) - (usage[a.id]?.classes || 0);
+      if (sortBy === "expiry") return (a.subscription_expires_at || "9999") < (b.subscription_expires_at || "9999") ? -1 : 1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
   const totalUsers = profiles?.length || 0;
   const activeUsers = (profiles || []).filter((p) => !p.is_disabled).length;
   const disabledUsers = totalUsers - activeUsers;
   const totalClasses = Object.values(usage).reduce((s, u) => s + u.classes, 0);
   const totalStudents = Object.values(usage).reduce((s, u) => s + u.students, 0);
   const paidUsers = (profiles || []).filter((p) => p.subscription_status === "active").length;
+  const expiringSoonUsers = (profiles || []).filter(isExpiringSoon).length;
+
+  // بيانات نمو التسجيل لآخر 30 يومًا
+  const growthData = (() => {
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      days.push({ date: key, label: `${d.getDate()}/${d.getMonth() + 1}`, count: 0 });
+    }
+    (profiles || []).forEach((p) => {
+      const key = p.created_at?.slice(0, 10);
+      const day = days.find((d) => d.date === key);
+      if (day) day.count++;
+    });
+    return days;
+  })();
 
   return (
     <Modal title="لوحة التحكم" onClose={onClose} lg>
@@ -3013,7 +3222,25 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
           </div>
         ))}
       </div>
-      {disabledUsers > 0 && <p className="text-xs mb-4" style={{ color: "#9A3B2E" }}>{disabledUsers} حساب معطّل حاليًا</p>}
+      <div className="flex gap-4 flex-wrap mb-4">
+        {disabledUsers > 0 && <p className="text-xs" style={{ color: "#9A3B2E" }}>{disabledUsers} حساب معطّل حاليًا</p>}
+        {expiringSoonUsers > 0 && <p className="text-xs font-semibold" style={{ color: "#C97A2B" }}>⏳ {expiringSoonUsers} اشتراك سينتهي خلال ٧ أيام</p>}
+      </div>
+
+      <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+        <p className="text-sm font-semibold mb-3" style={{ color: INK }}>تسجيلات آخر ٣٠ يومًا</p>
+        <div style={{ width: "100%", height: 140 }}>
+          <ResponsiveContainer>
+            <LineChart data={growthData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={4} stroke={MUTED} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={24} stroke={MUTED} />
+              <Tooltip contentStyle={{ fontSize: 12, direction: "rtl" }} labelFormatter={(l) => `يوم ${l}`} formatter={(v) => [v, "تسجيلات"]} />
+              <Line type="monotone" dataKey="count" stroke="#0F6B5C" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
         <p className="text-sm font-semibold mb-2" style={{ color: INK }}>هوية الموقع</p>
@@ -3047,9 +3274,16 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-3">
-        <input style={{ ...inputStyle, flex: 1 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالبريد الإلكتروني..." />
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <input style={{ ...inputStyle, flex: 1, minWidth: 160 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالبريد الإلكتروني..." />
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-sm rounded-xl px-3 py-2" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
+          <option value="newest">الأحدث تسجيلًا</option>
+          <option value="oldest">الأقدم تسجيلًا</option>
+          <option value="classes">الأكثر فصولًا</option>
+          <option value="expiry">أقرب انتهاء اشتراك</option>
+        </select>
         <IconBtn icon={ImageDown} label="تصدير Excel" onClick={exportUsersList} />
+        <IconBtn icon={Send} label="نقل طلاب بين حسابين" onClick={() => setShowTransfer(true)} />
       </div>
 
       {!profiles ? (
@@ -3066,6 +3300,8 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
                     {p.email}
                     {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
                     {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
+                    {isExpired(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>اشتراك منتهي</span>}
+                    {!isExpired(p) && isExpiringSoon(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FCEFE2", color: "#C97A2B" }}>⏳ ينتهي قريبًا</span>}
                     {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
                   </p>
                   <p className="text-xs" style={{ color: MUTED }}>
@@ -3130,6 +3366,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
           onConfirm={() => promoteToOwner(confirmPromoteId)}
         />
       )}
+      {showTransfer && <TransferStudentsModal profiles={profiles || []} onClose={() => setShowTransfer(false)} />}
     </Modal>
   );
 }
