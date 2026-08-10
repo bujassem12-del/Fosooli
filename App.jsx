@@ -1041,6 +1041,8 @@ function PrintStyles() {
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
       .card-in { animation: cardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .modal-max-height { max-height: 85vh; }
+      @supports (max-height: 85dvh) { .modal-max-height { max-height: 85dvh; } }
     `}</style>
   );
 }
@@ -1282,7 +1284,7 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className={`rounded-2xl shadow-2xl w-full ${widthClass} max-h-[90vh] overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
+        className={`rounded-2xl shadow-2xl w-full ${widthClass} modal-max-height overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
         style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)` }}
       >
         <div
@@ -3571,8 +3573,9 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   );
 }
 
-function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, schoolName, principalName, countryName, ministryName, logoImage, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onClose }) {
+function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, schoolName, principalName, countryName, ministryName, logoImage, teacherPhoto, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onClose }) {
   const logoInputRef = useRef(null);
+  const teacherPhotoInputRef = useRef(null);
   const badgeInputRef = useRef(null);
   const [confirmRemoveLogo, setConfirmRemoveLogo] = useState(false);
   const [tab, setTab] = useState("general");
@@ -3581,6 +3584,14 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => onChangeSchoolInfo({ logoImage: reader.result });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+  const handleTeacherPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onChangeSchoolInfo({ teacherPhoto: reader.result });
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -3672,6 +3683,24 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
           </Field>
           <Field label="اسم مدير/ة المدرسة">
             <input style={inputStyle} value={principalName || ""} onChange={(e) => onChangeSchoolInfo({ principalName: e.target.value })} placeholder="مثال: أ. سعد القحطاني" />
+          </Field>
+          <Field label="صورتك الشخصية (اختياري)" hint="تظهر في التقارير والشهادات عند تفعيل خيار تضمينها.">
+            <input ref={teacherPhotoInputRef} type="file" accept="image/*" onChange={handleTeacherPhotoChange} style={{ display: "none" }} />
+            <div className="flex items-center gap-2">
+              {teacherPhoto ? (
+                <img src={teacherPhoto} alt="صورتك" className="w-10 h-10 rounded-full object-cover dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+              ) : (
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#F3F1E9" }}><User size={16} color={MUTED} /></div>
+              )}
+              <button type="button" onClick={() => teacherPhotoInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
+                <Camera size={15} color="#0F6B5C" /> {teacherPhoto ? "استبدال الصورة" : "رفع صورة"}
+              </button>
+              {teacherPhoto && (
+                <button type="button" onClick={() => onChangeSchoolInfo({ teacherPhoto: null })} title="إزالة" className="p-1.5 rounded hover:bg-black/5">
+                  <ImageOff size={15} color={MUTED} />
+                </button>
+              )}
+            </div>
           </Field>
           <Field label="شعار الوزارة / المدرسة (اختياري)" hint="ارفع الشعار الرسمي الذي تملكه — لا يمكن للتطبيق توليد الشعارات الحكومية تلقائيًا.">
             <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
@@ -4884,55 +4913,58 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
 
   return (
     <Modal title={`تقرير الطالب — ${row.name}`} onClose={onClose} lg>
-      <div className="rounded-2xl p-4 mb-4 flex flex-wrap items-center gap-4" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
-        {row.photo ? (
-          <img src={row.photo} alt={row.name} className="w-12 h-12 rounded-full object-cover shrink-0 dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
-        ) : (
-          <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0" style={{ background: row.color, color: "#fff" }}>
-            {(row.name || "؟").trim().charAt(0)}
-          </div>
-        )}
-        <div className="flex-1" style={{ minWidth: 160 }}>
-          <p className="font-bold text-base" style={{ color: INK }}>{row.name}</p>
-          <p className="text-xs" style={{ color: MUTED }}>{cls.subject} • {cls.grade} • {cls.teacher}</p>
-        </div>
-      </div>
-
-      {(groups.length > 0 || (row.medicalNote && row.medicalNote.trim())) && (
-        <div className="flex gap-3 overflow-x-auto mb-4 pb-1">
-          {row.medicalNote && row.medicalNote.trim() && (
-            <div className="rounded-2xl p-3 text-center shrink-0 relative" style={{ background: "#FBEDEA", border: "2px solid #C0392B", minWidth: 92, maxWidth: 170 }}>
-              <button
-                onClick={() => setShowMedicalBanner((s) => !s)}
-                title={showMedicalBanner ? "إخفاء التفاصيل" : "إظهار التفاصيل"}
-                className="absolute top-1.5 left-1.5 p-1 rounded-full hover:bg-black/10"
-              >
-                {showMedicalBanner ? <Eye size={12} color="#9A3B2E" /> : <EyeOff size={12} color="#9A3B2E" />}
-              </button>
-              <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: "#C0392B" }}>
-                <AlertTriangle size={16} color="#fff" strokeWidth={2.5} />
-              </div>
-              <p className="text-xs font-extrabold mb-1" style={{ color: "#9A3B2E" }}>تنبيه خاص</p>
-              {showMedicalBanner && (
-                <p className="text-[11px] leading-snug" style={{ color: "#7A2E22", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{row.medicalNote}</p>
-              )}
+      <div className="rounded-2xl p-4 mb-3" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
+        <div className="flex flex-wrap items-center gap-4 mb-3">
+          {row.photo ? (
+            <img src={row.photo} alt={row.name} className="w-12 h-12 rounded-full object-cover shrink-0 dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+          ) : (
+            <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0" style={{ background: row.color, color: "#fff" }}>
+              {(row.name || "؟").trim().charAt(0)}
             </div>
           )}
-          {groups.map((g) => (
-            <div key={g.colId} className="rounded-2xl p-3 text-center shrink-0" style={{ background: `${g.colColor}14`, minWidth: 92 }}>
-              <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: g.colColor }}>
-                <Check size={16} color="#fff" strokeWidth={3} />
-              </div>
-              <p className="text-2xl font-extrabold" style={{ color: INK }}>{g.items.length}</p>
-              <p className="text-xs" style={{ color: MUTED }}>{g.colName}</p>
-            </div>
-          ))}
+          <div className="flex-1" style={{ minWidth: 160 }}>
+            <p className="font-bold text-base" style={{ color: INK }}>{row.name}</p>
+            <p className="text-xs" style={{ color: MUTED }}>{cls.subject} • {cls.grade} • {cls.teacher}</p>
+          </div>
+          <p className="text-xs font-semibold shrink-0" style={{ color: MUTED }}>{entries.length} رصد إجمالي عبر {groups.length} تصنيف</p>
         </div>
-      )}
+
+        {(groups.length > 0 || (row.medicalNote && row.medicalNote.trim())) && (
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {row.medicalNote && row.medicalNote.trim() && (
+              <div className="rounded-2xl p-3 text-center shrink-0 relative" style={{ background: "#FBEDEA", border: "2px solid #C0392B", minWidth: 92, maxWidth: 170 }}>
+                <button
+                  onClick={() => setShowMedicalBanner((s) => !s)}
+                  title={showMedicalBanner ? "إخفاء التفاصيل" : "إظهار التفاصيل"}
+                  className="absolute top-1.5 left-1.5 p-1 rounded-full hover:bg-black/10"
+                >
+                  {showMedicalBanner ? <Eye size={12} color="#9A3B2E" /> : <EyeOff size={12} color="#9A3B2E" />}
+                </button>
+                <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: "#C0392B" }}>
+                  <AlertTriangle size={16} color="#fff" strokeWidth={2.5} />
+                </div>
+                <p className="text-xs font-extrabold mb-1" style={{ color: "#9A3B2E" }}>تنبيه خاص</p>
+                {showMedicalBanner && (
+                  <p className="text-[11px] leading-snug" style={{ color: "#7A2E22", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{row.medicalNote}</p>
+                )}
+              </div>
+            )}
+            {groups.map((g) => (
+              <div key={g.colId} className="rounded-2xl p-3 text-center shrink-0" style={{ background: `${g.colColor}14`, minWidth: 92 }}>
+                <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: g.colColor }}>
+                  <Check size={16} color="#fff" strokeWidth={3} />
+                </div>
+                <p className="text-2xl font-extrabold" style={{ color: INK }}>{g.items.length}</p>
+                <p className="text-xs" style={{ color: MUTED }}>{g.colName}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {flaggedGroups.map((g) => (
         showBehaviorBanner ? (
-          <div key={g.colId} className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 flex-wrap" style={{ background: "#FBEDEA", border: "1px solid #F0D2CB" }}>
+          <div key={g.colId} className="flex items-center justify-between gap-3 p-3 rounded-xl mb-3 flex-wrap" style={{ background: "#FBEDEA", border: "1px solid #F0D2CB" }}>
             <div className="flex items-start gap-2">
               <MessageSquareWarning size={16} color="#9A3B2E" className="shrink-0 mt-0.5" />
               <p className="text-sm font-semibold" style={{ color: "#7A2E22" }}>
@@ -4951,15 +4983,13 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
         ) : null
       ))}
       {!showBehaviorBanner && flaggedGroups.length > 0 && (
-        <button onClick={() => setShowBehaviorBanner(true)} className="flex items-center gap-1.5 text-xs font-semibold mb-4 px-2.5 py-1 rounded-full" style={{ color: "#9A3B2E", border: "1px solid #F0D2CB" }}>
+        <button onClick={() => setShowBehaviorBanner(true)} className="flex items-center gap-1.5 text-xs font-semibold mb-3 px-2.5 py-1 rounded-full" style={{ color: "#9A3B2E", border: "1px solid #F0D2CB" }}>
           <EyeOff size={13} /> تنبيهات السلوك مخفية — إظهار
         </button>
       )}
 
-      <p className="text-sm font-semibold mb-2" style={{ color: INK }}>{entries.length} رصد إجمالي عبر {groups.length} تصنيف</p>
-
-      <div className="rounded-xl p-2.5 mb-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-        <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>التقرير</span>
+      <div className="rounded-xl p-2.5 mb-2 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+        <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات التقرير</span>
         <IconBtn icon={Pencil} label={editing ? "إنهاء التعديل" : "تعديل"} onClick={() => setEditing((s) => !s)} />
         <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${LINE}` }}>
           <button onClick={onRestoreLatest} title="استعادة آخر محذوف من هذا التقرير" className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:opacity-80" style={{ color: INK }}>
@@ -4970,6 +5000,9 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
           </button>
         </div>
         <IconBtn icon={Activity} label="خطة علاجية" onClick={() => setShowRemedialPlan(true)} />
+        {entries.length > 0 && (
+          <IconBtn icon={Trash2} label="حذف كل التقرير" tone="danger" onClick={() => setConfirmDeleteAll(true)} />
+        )}
       </div>
 
       <div className="rounded-xl p-2.5 mb-4 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
@@ -4978,9 +5011,6 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
         <IconBtn icon={Award} label="شهادة تقدير" onClick={() => setShowCertificate(true)} />
         <IconBtn icon={Share2} label="مشاركة تقرير هذا الطالب فقط" onClick={shareStudentReadOnly} />
         {shareStudentError && <p className="text-xs w-full" style={{ color: "#C0392B" }}>{shareStudentError}</p>}
-        {entries.length > 0 && (
-          <IconBtn icon={Trash2} label="حذف كل التقرير" tone="danger" onClick={() => setConfirmDeleteAll(true)} />
-        )}
       </div>
 
       {groups.length === 0 ? (
@@ -5729,6 +5759,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           countryName={data.settings?.countryName}
           ministryName={data.settings?.ministryName}
           logoImage={data.settings?.logoImage}
+          teacherPhoto={data.settings?.teacherPhoto}
           onChangeSchoolInfo={(patch) => setData((d) => ({ ...d, settings: { ...(d.settings || {}), ...patch } }))}
           footerContacts={siteSettings.footerContacts}
           footerBadges={siteSettings.footerBadges}
