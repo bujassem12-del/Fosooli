@@ -1242,7 +1242,7 @@ function PrintFormatModal({ onClose, onChoose }) {
 }
 
 function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50 }) {
-  const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md";
+  const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md md:max-w-lg";
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [entered, setEntered] = useState(false);
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, startPos: { x: 0, y: 0 } });
@@ -1489,7 +1489,7 @@ function ColumnDraftForm({ draft, onChange, onRemove, removable }) {
         تفريغ تلقائي لهذا العمود
       </label>
       <p className="text-xs mt-1" style={{ color: MUTED }}>
-        يُفرَّغ الرصد تلقائيًا فقط عندما يكون "التجديد التلقائي" مفعّلاً في الصف <b>و</b> في العمود معًا — هذا يتيح لك استثناء عمود معيّن (مثل الدرجة النهائية) من الاختفاء حتى لو كان الصف مفعّلاً فيه التجديد.
+        بعد ٢.٥ ثانية من تسجيل أي قيمة، تُفرَّغ الخانة تلقائيًا — مفيد للرصد السريع المتكرر (مثل المشاركة) بدون الحاجة تمسح يدويًا بين كل طالب وآخر.
       </p>
       <Field label="رصد نفس القيمة لجميع الطلاب فور الإنشاء (اختياري)">
         {draft.type === "dropdown" ? (
@@ -1678,13 +1678,6 @@ function RowDraftForm({ draft, onChange, onRemove, removable }) {
       <Field label="لون الصف">
         <ColorSwatches value={draft.color} onChange={(color) => set({ color })} />
       </Field>
-      <label className="flex items-center gap-2 text-sm font-medium mt-1" style={{ color: INK }}>
-        <input type="checkbox" checked={draft.autoRenew} onChange={(e) => set({ autoRenew: e.target.checked })} />
-        تجديد تلقائي لهذا الصف
-      </label>
-      <p className="text-xs mt-1" style={{ color: MUTED }}>
-        يعمل فقط مع الأعمدة التي فُعِّل فيها "تفريغ تلقائي" أيضًا؛ أي عمود لا يفعّلها يحتفظ برصده لهذا الصف حتى لو كان الصف نفسه مفعّلًا فيه التجديد.
-      </p>
       <Field label="ملاحظة طبية / تنبيه خاص (اختياري)" hint="يظهر كأيقونة تنبيه واضحة بجانب اسم الطالب في كل مكان — للحالات التي تحتاج انتباهًا سريعًا.">
         <textarea
           style={{ ...inputStyle, minHeight: "60px", resize: "vertical" }}
@@ -4820,17 +4813,17 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
   return (
     <button
       onClick={onOpen}
-      className="text-right rounded-2xl p-4 mb-5 hover:opacity-90 transition-opacity block"
+      className="text-right rounded-2xl p-3 mb-3 hover:opacity-90 transition-opacity block"
       style={{ background: "#fff", border: `1px solid ${LINE}`, width: "100%" }}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <CalendarRange size={18} color="#0F6B5C" />
-        <span className="font-bold text-base" style={{ color: INK }}>الجدول الدراسي</span>
+      <div className="flex items-center gap-2 mb-2">
+        <CalendarRange size={16} color="#0F6B5C" />
+        <span className="font-bold text-sm" style={{ color: INK }}>الجدول الدراسي</span>
       </div>
       {!hasData ? (
         <p className="text-sm" style={{ color: MUTED }}>اضغط لإنشاء جدولك الدراسي الأسبوعي أو رفع صورته</p>
       ) : image ? (
-        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 55, objectFit: "contain", background: "#F3F1E9" }} />
+        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 36, objectFit: "contain", background: "#F3F1E9" }} />
       ) : (
         <table className="w-full border-collapse" style={{ fontSize: 14 }}>
           <thead>
@@ -5526,7 +5519,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
     : [];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 page-fade-in">
+    <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 py-6 page-fade-in">
       {siteSettings.announcementActive && siteSettings.announcement && (
         <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
           <Info size={16} color="#0F6B5C" className="shrink-0 mt-0.5" />
@@ -5675,7 +5668,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           {tab === "active" ? (<><p className="font-semibold mb-1">لا توجد فصول بعد</p><p className="text-sm">اضغط على علامة + لإضافة أول فصل دراسي</p></>) : (<p className="text-sm">لا توجد فصول مؤرشفة</p>)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {displayClasses.map((cls) => (
             <ClassCard
               key={cls.id}
@@ -5867,7 +5860,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       return next;
     });
     if (value && value.trim()) playFeedback(feedbackEnabled);
-    if (row.autoRenew && col.autoRenew && value && value.trim()) {
+    if (col.autoRenew && value && value.trim()) {
       const key = `${row.id}:${col.id}`;
       if (timers.current[key]) clearTimeout(timers.current[key]);
       timers.current[key] = setTimeout(() => {
@@ -6472,7 +6465,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         {row.medicalNote && row.medicalNote.trim() && (
                           <span title={`تنبيه: ${row.medicalNote}`} className="shrink-0"><AlertTriangle size={12} color="#C97A2B" /></span>
                         )}
-                        {row.autoRenew && <RefreshCw size={11} color="#0F6B5C" title="تجديد تلقائي مفعّل" className="shrink-0" />}
                       </div>
                       <div className="flex items-center gap-0.5" style={{ paddingInlineStart: 20 }}>
                         <MiniIconBtn icon={ChevronUp} title="نقل لأعلى" disabled={i === 0} onClick={() => moveRow(row.id, -1)} />
