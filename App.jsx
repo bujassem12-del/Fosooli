@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -5331,6 +5331,8 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
 function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("active");
+  const [mobileTab, setMobileTab] = useState("home");
+  const [reportsSearch, setReportsSearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showTodayActivity, setShowTodayActivity] = useState(false);
   const [showTestsList, setShowTestsList] = useState(false);
@@ -5378,6 +5380,10 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
   const classes = data.classes.filter((c) => (tab === "active" ? !c.archived : c.archived));
   const displayClasses = [...classes.filter((c) => c.pinned), ...classes.filter((c) => !c.pinned)];
   const unpinnedIds = classes.filter((c) => !c.pinned).map((c) => c.id);
+  const allStudentsFlat = data.classes.filter((c) => !c.archived).flatMap((cls) => (cls.rows || []).map((row) => ({ row, cls })));
+  const allRemindersFlat = data.classes
+    .flatMap((cls) => (cls.reminders || []).map((r) => ({ ...r, clsName: cls.subject })))
+    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
 
   const saveClass = (payload) => {
     setData((d) => {
@@ -5519,7 +5525,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
     : [];
 
   return (
-    <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 py-6 page-fade-in">
+    <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 py-6 pb-24 md:pb-6 page-fade-in">
       {siteSettings.announcementActive && siteSettings.announcement && (
         <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
           <Info size={16} color="#0F6B5C" className="shrink-0 mt-0.5" />
@@ -5552,6 +5558,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         </div>
 
 
+        {mobileTab === "home" && (<>
         <ScheduleMiniCard schedule={data.schedule} image={data.scheduleImage} onOpen={() => setShowSchedule(true)} />
 
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
@@ -5586,9 +5593,11 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             </div>
           )}
         </div>
+        </>)}
       </div>
 
       <div className="mt-5">
+      {mobileTab === "home" && (<>
       {showSearch && (
         <div className="mb-5">
           <div className="relative" style={{ maxWidth: "320px" }}>
@@ -5688,6 +5697,96 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               animating={cls.id === animatingClassId}
             />
           ))}
+        </div>
+      )}
+      </>)}
+
+      {mobileTab === "reports" && (
+        <div className="pb-4">
+          <h2 className="font-bold text-lg mb-3" style={{ color: INK }}>التقارير</h2>
+          <input
+            value={reportsSearch}
+            onChange={(e) => setReportsSearch(e.target.value)}
+            placeholder="ابحث عن اسم طالب..."
+            style={inputStyle}
+            className="mb-3"
+          />
+          <div className="space-y-2">
+            {allStudentsFlat
+              .filter((x) => x.row.name.toLowerCase().includes(reportsSearch.toLowerCase()))
+              .map((x) => (
+                <button
+                  key={x.row.id}
+                  onClick={() => onOpen(x.cls.id)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+                  style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+                >
+                  {x.row.photo ? (
+                    <img src={x.row.photo} alt={x.row.name} className="w-9 h-9 rounded-full object-cover shrink-0 dark-mode-img-fix" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0" style={{ background: x.row.color, color: "#fff" }}>
+                      {(x.row.name || "؟").trim().charAt(0)}
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold" style={{ color: INK }}>{x.row.name}</p>
+                    <p className="text-xs" style={{ color: MUTED }}>{x.cls.subject} • {x.cls.grade}</p>
+                  </div>
+                  <ChevronLeft size={16} color={MUTED} />
+                </button>
+              ))}
+            {allStudentsFlat.length === 0 && <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد طلاب بعد.</p>}
+          </div>
+        </div>
+      )}
+
+      {mobileTab === "notifications" && (
+        <div className="pb-4">
+          <h2 className="font-bold text-lg mb-3" style={{ color: INK }}>الإشعارات</h2>
+          {siteSettings.announcementActive && siteSettings.announcement && (
+            <div className="flex items-start gap-2 p-3 rounded-xl mb-3" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
+              <Info size={16} color="#0F6B5C" className="shrink-0 mt-0.5" />
+              <p className="text-sm" style={{ color: "#0F6B5C" }}>{siteSettings.announcement}</p>
+            </div>
+          )}
+          <div className="space-y-2">
+            {allRemindersFlat.map((r) => (
+              <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+                <Bell size={16} color="#0F6B5C" className="shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: INK }}>{r.title}</p>
+                  <p className="text-xs" style={{ color: MUTED }}>{r.clsName} • {formatDateDisplay(r.date)} — {r.time}</p>
+                </div>
+              </div>
+            ))}
+            {allRemindersFlat.length === 0 && !(siteSettings.announcementActive && siteSettings.announcement) && (
+              <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد إشعارات حاليًا.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mobileTab === "more" && (
+        <div className="pb-4 space-y-2">
+          <h2 className="font-bold text-lg mb-3" style={{ color: INK }}>المزيد</h2>
+          <button onClick={() => setShowSettings(true)} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <Settings size={18} color={MUTED} /><span className="text-sm font-semibold flex-1" style={{ color: INK }}>الإعدادات</span><ChevronLeft size={16} color={MUTED} />
+          </button>
+          {isOwner && (
+            <button onClick={() => setShowAdminPanel(true)} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              <ShieldCheck size={18} color="#0F6B5C" /><span className="text-sm font-semibold flex-1" style={{ color: INK }}>لوحة التحكم</span><ChevronLeft size={16} color={MUTED} />
+            </button>
+          )}
+          <button onClick={() => setShowGuide(true)} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <HelpCircle size={18} color={MUTED} /><span className="text-sm font-semibold flex-1" style={{ color: INK }}>كيف أبدأ؟</span><ChevronLeft size={16} color={MUTED} />
+          </button>
+          <button onClick={() => setShowTestsList(true)} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <ListChecks size={18} color={MUTED} /><span className="text-sm font-semibold flex-1" style={{ color: INK }}>الاختبارات</span><ChevronLeft size={16} color={MUTED} />
+          </button>
+          <button onClick={onSignOut} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: "1px solid #F0D2CB", background: "#fff" }}>
+            <LogOut size={18} color="#C0392B" /><span className="text-sm font-semibold flex-1" style={{ color: "#C0392B" }}>تسجيل الخروج</span>
+          </button>
+          {userEmail && <p className="text-xs text-center pt-2" style={{ color: MUTED }}>{userEmail}</p>}
         </div>
       )}
       </div>
@@ -5814,6 +5913,24 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         />
       )}
       {isOwner && <SiteFooter contacts={siteSettings.footerContacts} badges={siteSettings.footerBadges} />}
+
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch" style={{ background: "#fff", borderTop: `1px solid ${LINE}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
+        {[
+          { id: "home", label: "الرئيسية", icon: Home },
+          { id: "reports", label: "التقارير", icon: BarChart3 },
+          { id: "notifications", label: "الإشعارات", icon: Bell },
+          { id: "more", label: "المزيد", icon: MoreHorizontal },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setMobileTab(t.id)}
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5"
+          >
+            <t.icon size={22} color={mobileTab === t.id ? "#0F6B5C" : MUTED} strokeWidth={mobileTab === t.id ? 2.5 : 2} />
+            <span className="text-[11px] font-semibold" style={{ color: mobileTab === t.id ? "#0F6B5C" : MUTED }}>{t.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
