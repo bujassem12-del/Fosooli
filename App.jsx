@@ -2881,63 +2881,147 @@ function trashEntryLabel(entry) {
   return "عنصر محذوف";
 }
 
-function AdminPanelModal({ currentUserId, onClose }) {
+function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onClose }) {
   const [profiles, setProfiles] = useState(null);
+  const [usage, setUsage] = useState({}); // user_id -> { classes, students }
   const [error, setError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmPromoteId, setConfirmPromoteId] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [announcement, setAnnouncement] = useState(siteSettings.announcement || "");
+  const [announcementActive, setAnnouncementActive] = useState(!!siteSettings.announcementActive);
 
-  const loadProfiles = async () => {
+  const loadAll = async () => {
     setError("");
-    const { data, error } = await supabase.from("profiles").select("id, email, is_owner, is_disabled, created_at").order("created_at", { ascending: false });
-    if (error) { setError(error.message); return; }
-    setProfiles(data || []);
+    const { data: profilesData, error: pErr } = await supabase.from("profiles").select("id, email, is_owner, is_disabled, created_at").order("created_at", { ascending: false });
+    if (pErr) { setError(pErr.message); return; }
+    setProfiles(profilesData || []);
+
+    const { data: userData, error: uErr } = await supabase.from("user_data").select("user_id, data");
+    if (uErr) { setError(uErr.message); return; }
+    const map = {};
+    (userData || []).forEach((row) => {
+      const classes = row.data?.classes || [];
+      const students = classes.reduce((sum, c) => sum + (c.rows?.length || 0), 0);
+      map[row.user_id] = { classes: classes.length, students };
+    });
+    setUsage(map);
   };
 
-  useEffect(() => { loadProfiles(); }, []);
+  useEffect(() => { loadAll(); }, []);
 
   const toggleDisabled = async (p) => {
     setBusyId(p.id);
     const { error } = await supabase.from("profiles").update({ is_disabled: !p.is_disabled }).eq("id", p.id);
-    if (error) setError(error.message); else await loadProfiles();
+    if (error) setError(error.message); else await loadAll();
     setBusyId(null);
+  };
+
+  const promoteToOwner = async (id) => {
+    setBusyId(id);
+    const { error } = await supabase.from("profiles").update({ is_owner: true }).eq("id", id);
+    if (error) setError(error.message); else await loadAll();
+    setBusyId(null);
+    setConfirmPromoteId(null);
   };
 
   const deleteUserData = async (id) => {
     setBusyId(id);
     const { error } = await supabase.from("user_data").delete().eq("user_id", id);
-    if (error) setError(error.message);
+    if (error) setError(error.message); else await loadAll();
     setBusyId(null);
     setConfirmDeleteId(null);
   };
 
+  const saveAnnouncement = () => {
+    updateSiteSettings((s) => ({ ...s, announcement: announcement.trim(), announcementActive }));
+  };
+
+  const exportUsersList = () => {
+    const rows = (profiles || []).map((p) => ({
+      "البريد الإلكتروني": p.email,
+      "الحالة": p.is_disabled ? "معطّل" : "نشط",
+      "مالك": p.is_owner ? "نعم" : "لا",
+      "الفصول": usage[p.id]?.classes || 0,
+      "الطلاب": usage[p.id]?.students || 0,
+      "تاريخ التسجيل": p.created_at?.slice(0, 10) || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "المستخدمون");
+    XLSX.writeFile(wb, "مستخدمو-فصولي.xlsx");
+  };
+
+  const filtered = (profiles || []).filter((p) => p.email?.toLowerCase().includes(search.toLowerCase()));
+  const totalUsers = profiles?.length || 0;
+  const activeUsers = (profiles || []).filter((p) => !p.is_disabled).length;
+  const disabledUsers = totalUsers - activeUsers;
+  const totalClasses = Object.values(usage).reduce((s, u) => s + u.classes, 0);
+  const totalStudents = Object.values(usage).reduce((s, u) => s + u.students, 0);
+
   return (
-    <Modal title="لوحة التحكم" onClose={onClose} wide>
-      <p className="text-sm mb-4" style={{ color: MUTED }}>
-        كل الحسابات المسجّلة بالموقع. تعطيل حساب يمنع صاحبه من الدخول فورًا (بدون حذف بياناته). حذف البيانات يمسح فصوله وطلابه بالكامل، لكن يبقى قادرًا على الدخول بحساب فارغ.
-      </p>
+    <Modal title="لوحة التحكم" onClose={onClose} lg>
       {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {[
+          { label: "المستخدمون", value: totalUsers },
+          { label: "نشطون", value: activeUsers },
+          { label: "الفصول", value: totalClasses },
+          { label: "الطلاب", value: totalStudents },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+            <p className="text-xl font-extrabold" style={{ color: INK }}>{s.value}</p>
+            <p className="text-xs" style={{ color: MUTED }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+      {disabledUsers > 0 && <p className="text-xs mb-4" style={{ color: "#9A3B2E" }}>{disabledUsers} حساب معطّل حاليًا</p>}
+
+      <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+        <p className="text-sm font-semibold mb-2" style={{ color: INK }}>إعلان عام لكل المستخدمين</p>
+        <textarea style={{ ...inputStyle, minHeight: 60 }} value={announcement} onChange={(e) => setAnnouncement(e.target.value)} placeholder="مثال: صيانة مجدولة يوم الخميس، أو ميزة جديدة أُضيفت..." />
+        <div className="flex items-center justify-between mt-2">
+          <label className="flex items-center gap-2 text-sm font-medium" style={{ color: INK }}>
+            <input type="checkbox" checked={announcementActive} onChange={(e) => setAnnouncementActive(e.target.checked)} />
+            إظهار الإعلان الآن
+          </label>
+          <button onClick={saveAnnouncement} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-3">
+        <input style={{ ...inputStyle, flex: 1 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالبريد الإلكتروني..." />
+        <IconBtn icon={ImageDown} label="تصدير Excel" onClick={exportUsersList} />
+      </div>
+
       {!profiles ? (
         <p className="text-sm text-center py-8" style={{ color: MUTED }}>...جارٍ التحميل</p>
-      ) : profiles.length === 0 ? (
-        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد مستخدمون بعد.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد نتائج.</p>
       ) : (
         <div className="space-y-2">
-          {profiles.map((p) => (
+          {filtered.map((p) => (
             <div key={p.id} className="flex items-center gap-2 p-3 rounded-xl flex-wrap" style={{ border: `1px solid ${LINE}`, background: p.is_disabled ? "#FBEDEA" : "#fff" }}>
               <div className="flex-1 min-w-[160px]">
-                <p className="text-sm font-semibold flex items-center gap-1.5" style={{ color: INK }}>
+                <p className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: INK }}>
                   {p.email}
                   {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
                   {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
                   {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
                 </p>
-                <p className="text-xs" style={{ color: MUTED }}>سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))}</p>
+                <p className="text-xs" style={{ color: MUTED }}>
+                  سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))} • {usage[p.id]?.classes || 0} فصل • {usage[p.id]?.students || 0} طالب
+                </p>
               </div>
               {!p.is_owner && p.id !== currentUserId && (
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 flex-wrap">
                   <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
                     {p.is_disabled ? "تفعيل" : "تعطيل"}
+                  </button>
+                  <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                    ترقية لمالك
                   </button>
                   <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
                     حذف البيانات
@@ -2954,6 +3038,15 @@ function AdminPanelModal({ currentUserId, onClose }) {
           message="سيُحذف كل ما لدى هذا المستخدم من فصول وطلاب ورصد بشكل نهائي، بدون إمكانية استرجاع. حسابه نفسه يبقى موجودًا ويقدر يدخل بحساب فارغ. متابعة؟"
           onCancel={() => setConfirmDeleteId(null)}
           onConfirm={() => deleteUserData(confirmDeleteId)}
+        />
+      )}
+      {confirmPromoteId && (
+        <ConfirmDialog
+          title="ترقية إلى مالك"
+          message="سيحصل هذا الحساب على كل صلاحيات المالك (تعديل تذييل الموقع، تعطيل/حذف أي حساب آخر، ترقية حسابات أخرى). لا يمكن التراجع عن هذا إلا يدويًا من قاعدة البيانات. متابعة؟"
+          confirmLabel="ترقية"
+          onCancel={() => setConfirmPromoteId(null)}
+          onConfirm={() => promoteToOwner(confirmPromoteId)}
         />
       )}
     </Modal>
@@ -4705,6 +4798,12 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 page-fade-in">
+      {siteSettings.announcementActive && siteSettings.announcement && (
+        <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
+          <Info size={16} color="#0F6B5C" className="shrink-0 mt-0.5" />
+          <p className="text-sm" style={{ color: "#0F6B5C" }}>{siteSettings.announcement}</p>
+        </div>
+      )}
       <div className="sticky top-0 z-20 pb-2" style={{ background: PAPER }}>
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -4937,7 +5036,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       )}
       {showTodayActivity && <TodayActivityModal classes={data.classes.filter((c) => !c.archived)} onClose={() => setShowTodayActivity(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
-      {showAdminPanel && <AdminPanelModal currentUserId={userId} onClose={() => setShowAdminPanel(false)} />}
+      {showAdminPanel && <AdminPanelModal currentUserId={userId} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} onClose={() => setShowAdminPanel(false)} />}
       {showTestsList && (
         <TestsListModal
           tests={data.tests || []}
