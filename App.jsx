@@ -2881,6 +2881,8 @@ function trashEntryLabel(entry) {
   return "عنصر محذوف";
 }
 
+const SUBSCRIPTION_LABELS = { free: "مجاني", trial: "تجريبي", active: "مشترك", expired: "منتهي" };
+
 function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onClose }) {
   const [profiles, setProfiles] = useState(null);
   const [usage, setUsage] = useState({}); // user_id -> { classes, students }
@@ -2891,10 +2893,13 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   const [search, setSearch] = useState("");
   const [announcement, setAnnouncement] = useState(siteSettings.announcement || "");
   const [announcementActive, setAnnouncementActive] = useState(!!siteSettings.announcementActive);
+  const [siteTagline, setSiteTagline] = useState(siteSettings.siteTagline || "");
+  const [resetSentId, setResetSentId] = useState(null);
+  const logoInputRef = useRef(null);
 
   const loadAll = async () => {
     setError("");
-    const { data: profilesData, error: pErr } = await supabase.from("profiles").select("id, email, is_owner, is_disabled, created_at").order("created_at", { ascending: false });
+    const { data: profilesData, error: pErr } = await supabase.from("profiles").select("id, email, is_owner, is_disabled, subscription_status, subscription_expires_at, created_at").order("created_at", { ascending: false });
     if (pErr) { setError(pErr.message); return; }
     setProfiles(profilesData || []);
 
@@ -2934,8 +2939,35 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
     setConfirmDeleteId(null);
   };
 
+  const updateSubscription = async (id, patch) => {
+    setBusyId(id);
+    const { error } = await supabase.from("profiles").update(patch).eq("id", id);
+    if (error) setError(error.message); else await loadAll();
+    setBusyId(null);
+  };
+
+  const sendPasswordReset = async (email, id) => {
+    setBusyId(id);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) setError(error.message); else setResetSentId(id);
+    setBusyId(null);
+  };
+
   const saveAnnouncement = () => {
     updateSiteSettings((s) => ({ ...s, announcement: announcement.trim(), announcementActive }));
+  };
+
+  const saveSiteIdentity = () => {
+    updateSiteSettings((s) => ({ ...s, siteTagline: siteTagline.trim() }));
+  };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => updateSiteSettings((s) => ({ ...s, siteLogo: reader.result }));
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const exportUsersList = () => {
@@ -2943,6 +2975,8 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
       "البريد الإلكتروني": p.email,
       "الحالة": p.is_disabled ? "معطّل" : "نشط",
       "مالك": p.is_owner ? "نعم" : "لا",
+      "حالة الاشتراك": SUBSCRIPTION_LABELS[p.subscription_status] || p.subscription_status,
+      "تاريخ انتهاء الاشتراك": p.subscription_expires_at || "",
       "الفصول": usage[p.id]?.classes || 0,
       "الطلاب": usage[p.id]?.students || 0,
       "تاريخ التسجيل": p.created_at?.slice(0, 10) || "",
@@ -2959,15 +2993,17 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   const disabledUsers = totalUsers - activeUsers;
   const totalClasses = Object.values(usage).reduce((s, u) => s + u.classes, 0);
   const totalStudents = Object.values(usage).reduce((s, u) => s + u.students, 0);
+  const paidUsers = (profiles || []).filter((p) => p.subscription_status === "active").length;
 
   return (
     <Modal title="لوحة التحكم" onClose={onClose} lg>
       {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
         {[
           { label: "المستخدمون", value: totalUsers },
           { label: "نشطون", value: activeUsers },
+          { label: "مشتركون", value: paidUsers },
           { label: "الفصول", value: totalClasses },
           { label: "الطلاب", value: totalStudents },
         ].map((s) => (
@@ -2978,6 +3014,26 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
         ))}
       </div>
       {disabledUsers > 0 && <p className="text-xs mb-4" style={{ color: "#9A3B2E" }}>{disabledUsers} حساب معطّل حاليًا</p>}
+
+      <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+        <p className="text-sm font-semibold mb-2" style={{ color: INK }}>هوية الموقع</p>
+        <div className="flex items-center gap-3 mb-3">
+          {siteSettings.siteLogo ? (
+            <img src={siteSettings.siteLogo} alt="الشعار" className="w-12 h-12 rounded-xl object-cover" style={{ border: `1px solid ${LINE}` }} />
+          ) : (
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#0F6B5C" }}><BookOpen size={20} color="#fff" /></div>
+          )}
+          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
+          <button onClick={() => logoInputRef.current?.click()} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: INK }}>تغيير الشعار</button>
+          {siteSettings.siteLogo && (
+            <button onClick={() => updateSiteSettings((s) => ({ ...s, siteLogo: null }))} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#C0392B" }}>إزالة</button>
+          )}
+        </div>
+        <input style={inputStyle} value={siteTagline} onChange={(e) => setSiteTagline(e.target.value)} placeholder="الوصف المختصر تحت اسم الموقع بالصفحة الرئيسية" />
+        <div className="flex justify-end mt-2">
+          <button onClick={saveSiteIdentity} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
+        </div>
+      </div>
 
       <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
         <p className="text-sm font-semibold mb-2" style={{ color: INK }}>إعلان عام لكل المستخدمين</p>
@@ -3003,31 +3059,56 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
       ) : (
         <div className="space-y-2">
           {filtered.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 p-3 rounded-xl flex-wrap" style={{ border: `1px solid ${LINE}`, background: p.is_disabled ? "#FBEDEA" : "#fff" }}>
-              <div className="flex-1 min-w-[160px]">
-                <p className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: INK }}>
-                  {p.email}
-                  {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
-                  {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
-                  {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
-                </p>
-                <p className="text-xs" style={{ color: MUTED }}>
-                  سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))} • {usage[p.id]?.classes || 0} فصل • {usage[p.id]?.students || 0} طالب
-                </p>
-              </div>
-              {!p.is_owner && p.id !== currentUserId && (
-                <div className="flex gap-2 shrink-0 flex-wrap">
-                  <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
-                    {p.is_disabled ? "تفعيل" : "تعطيل"}
-                  </button>
-                  <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
-                    ترقية لمالك
-                  </button>
-                  <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
-                    حذف البيانات
-                  </button>
+            <div key={p.id} className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: p.is_disabled ? "#FBEDEA" : "#fff" }}>
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <div className="flex-1 min-w-[160px]">
+                  <p className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: INK }}>
+                    {p.email}
+                    {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
+                    {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
+                    {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
+                  </p>
+                  <p className="text-xs" style={{ color: MUTED }}>
+                    سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))} • {usage[p.id]?.classes || 0} فصل • {usage[p.id]?.students || 0} طالب
+                  </p>
                 </div>
-              )}
+                {!p.is_owner && p.id !== currentUserId && (
+                  <div className="flex gap-2 shrink-0 flex-wrap">
+                    <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
+                      {p.is_disabled ? "تفعيل" : "تعطيل"}
+                    </button>
+                    <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                      ترقية لمالك
+                    </button>
+                    <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
+                      حذف البيانات
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap pt-2" style={{ borderTop: `1px solid ${LINE}` }}>
+                <select
+                  value={p.subscription_status || "free"}
+                  onChange={(e) => updateSubscription(p.id, { subscription_status: e.target.value })}
+                  disabled={busyId === p.id}
+                  className="text-xs rounded-lg px-2 py-1.5"
+                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+                >
+                  {Object.entries(SUBSCRIPTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <input
+                  type="date"
+                  value={p.subscription_expires_at || ""}
+                  onChange={(e) => updateSubscription(p.id, { subscription_expires_at: e.target.value || null })}
+                  disabled={busyId === p.id}
+                  className="text-xs rounded-lg px-2 py-1.5"
+                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+                  title="تاريخ انتهاء الاشتراك"
+                />
+                <button disabled={busyId === p.id} onClick={() => sendPasswordReset(p.email, p.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-auto" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                  {resetSentId === p.id ? "أُرسل ✓" : "إرسال رابط إعادة تعيين كلمة المرور"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -4807,10 +4888,15 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       <div className="sticky top-0 z-20 pb-2" style={{ background: PAPER }}>
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-2xl font-extrabold" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>دفتر المتابعة</h1>
-            <p className="text-sm mt-1" style={{ color: MUTED }}>فصولك الدراسية في مكان واحد</p>
+            <h1 className="text-2xl font-extrabold" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
+            <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
           </div>
           <div className="flex items-center gap-2">
+            {isOwner && (
+              <button onClick={() => setShowAdminPanel(true)} title="لوحة التحكم" className="w-10 h-10 rounded-full flex items-center justify-center hover:opacity-90" style={{ background: "#0F6B5C" }}>
+                <ShieldCheck size={18} color="#fff" />
+              </button>
+            )}
             <button onClick={() => setShowGuide(true)} title="كيف أبدأ؟" className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/5" style={{ border: `1px solid ${LINE}` }}>
               <HelpCircle size={18} color={MUTED} />
             </button>
@@ -4845,7 +4931,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
           <IconBtn icon={ListTodo} label="نشاطي اليوم" onClick={() => setShowTodayActivity(true)} />
           <IconBtn icon={ListChecks} label="الاختبارات" onClick={() => setShowTestsList(true)} />
-          {isOwner && <IconBtn icon={ShieldCheck} label="لوحة التحكم" tone="primary" onClick={() => setShowAdminPanel(true)} />}
           {classes.length > 0 && (
             <>
               <IconBtn icon={Archive} label={`أرشفة الكل (${classes.length})`} onClick={archiveAllClasses} />
@@ -5894,7 +5979,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   );
 }
 
-function AuthScreen() {
+function AuthScreen({ siteSettings }) {
   const [mode, setMode] = useState("login"); // 'login' | 'signup'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -5937,9 +6022,13 @@ function AuthScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "linear-gradient(180deg, #F3F1E9 0%, #FAF8F3 100%)", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
       <div className="w-full max-w-sm rounded-2xl p-6 modal-panel-in" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 10px 40px rgba(35,38,34,0.08)" }}>
-        <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#0F6B5C" }}>
-          <BookOpen size={26} color="#fff" strokeWidth={2} />
-        </div>
+        {siteSettings?.siteLogo ? (
+          <img src={siteSettings.siteLogo} alt="الشعار" className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover" style={{ border: `1px solid ${LINE}` }} />
+        ) : (
+          <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#0F6B5C" }}>
+            <BookOpen size={26} color="#fff" strokeWidth={2} />
+          </div>
+        )}
         <h1 className="text-2xl font-extrabold text-center" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
         <p className="text-xs text-center mb-1 tracking-wide" style={{ color: MUTED }}>FOSOOLI</p>
         <p className="text-sm text-center mb-6" style={{ color: MUTED }}>{mode === "login" ? "سجّل دخولك للمتابعة" : "أنشئ حسابًا جديدًا"}</p>
@@ -5996,17 +6085,22 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // إعدادات الموقع العامة (تذييل الصفحة، شعارات الثقة): يقرأها الجميع، لكن
-  // فقط المالك (is_owner) يقدر يكتبها فعليًا — القاعدة الأمنية بجهة الخادم.
+  // إعدادات الموقع العامة (تذييل الصفحة، الشعار، شهادات الثقة): تُحمَّل حتى
+  // قبل تسجيل الدخول (تظهر بشاشة الدخول نفسها)، ويقرأها الجميع، لكن فقط
+  // المالك (is_owner) يقدر يكتبها فعليًا — القاعدة الأمنية بجهة الخادم.
+  const loadSiteSettings = async () => {
+    try {
+      const { data: row } = await supabase.from("site_settings").select("data").eq("id", 1).maybeSingle();
+      if (row && row.data) setSiteSettings(row.data);
+    } catch (e) {
+      console.error("تعذر تحميل إعدادات الموقع", e);
+    }
+  };
+  useEffect(() => { loadSiteSettings(); }, []);
+
   useEffect(() => {
     if (!session) return;
     (async () => {
-      try {
-        const { data: row } = await supabase.from("site_settings").select("data").eq("id", 1).maybeSingle();
-        if (row && row.data) setSiteSettings(row.data);
-      } catch (e) {
-        console.error("تعذر تحميل إعدادات الموقع", e);
-      }
       try {
         const { data: profile } = await supabase.from("profiles").select("is_owner, is_disabled").eq("id", session.user.id).maybeSingle();
         if (profile?.is_disabled) {
@@ -6132,7 +6226,7 @@ export default function App() {
         </div>
       );
     }
-    return <AuthScreen />;
+    return <AuthScreen siteSettings={siteSettings} />;
   }
 
   if (!loaded) {
