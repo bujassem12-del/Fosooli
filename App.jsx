@@ -6758,24 +6758,34 @@ function AuthScreen({ siteSettings }) {
 export class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null, info: null };
   }
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
   }
   componentDidCatch(error, info) {
     console.error("حدث خطأ غير متوقع في الواجهة:", error, info);
+    this.setState({ info });
   }
   render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center px-4" style={{ background: PAPER, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
-          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+          <div className="w-full max-w-lg rounded-2xl p-6 text-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
             <p className="text-sm font-bold mb-2" style={{ color: "#C0392B" }}>حدث خطأ غير متوقع</p>
-            <p className="text-xs mb-4" style={{ color: MUTED }}>حاول إعادة تحميل الصفحة. لو تكرر الخطأ، أخبرنا بالخطوة اللي سويتها بالضبط قبل ظهوره.</p>
-            <button onClick={() => window.location.reload()} className="px-5 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+            <p className="text-xs mb-4" style={{ color: MUTED }}>حاول إعادة تحميل الصفحة. لو تكرر الخطأ، خذ لقطة شاشة من التفاصيل بالأسفل وأرسلها.</p>
+            <button onClick={() => window.location.reload()} className="px-5 py-2 rounded-lg text-sm font-bold text-white mb-4" style={{ background: "#0F6B5C" }}>
               إعادة تحميل الصفحة
             </button>
+            <div className="text-start p-3 rounded-lg overflow-auto" style={{ background: "#F8F7F2", border: `1px solid ${LINE}`, maxHeight: 260 }}>
+              <p className="text-xs font-mono" style={{ color: "#C0392B", direction: "ltr", textAlign: "left" }}>{String(this.state.error?.message || this.state.error || "")}</p>
+              {this.state.error?.stack && (
+                <pre className="text-[10px] mt-2 whitespace-pre-wrap" style={{ color: MUTED, direction: "ltr", textAlign: "left" }}>{this.state.error.stack}</pre>
+              )}
+              {this.state.info?.componentStack && (
+                <pre className="text-[10px] mt-2 whitespace-pre-wrap" style={{ color: MUTED, direction: "ltr", textAlign: "left" }}>{this.state.info.componentStack}</pre>
+              )}
+            </div>
           </div>
         </div>
       );
