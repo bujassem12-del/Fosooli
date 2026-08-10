@@ -3405,6 +3405,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
   const logoInputRef = useRef(null);
   const badgeInputRef = useRef(null);
   const [confirmRemoveLogo, setConfirmRemoveLogo] = useState(false);
+  const [tab, setTab] = useState("general");
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3423,120 +3424,146 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
   };
   return (
     <Modal title="الإعدادات" onClose={onClose}>
-      {userEmail && (
-        <div className="flex items-center justify-between p-3 rounded-xl mb-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-          <div>
-            <p className="text-xs" style={{ color: MUTED }}>الحساب</p>
-            <p className="text-sm font-semibold" style={{ color: INK }}>{userEmail}</p>
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+        {[
+          { id: "general", label: "عام" },
+          { id: "school", label: "بيانات المدرسة" },
+          { id: "footer", label: "تذييل الصفحة" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className="text-sm font-semibold px-4 py-2 rounded-xl shrink-0"
+            style={{ background: tab === t.id ? "#0F6B5C" : "transparent", color: tab === t.id ? "#fff" : MUTED, border: `1px solid ${tab === t.id ? "#0F6B5C" : LINE}` }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "general" && (
+        <>
+          {userEmail && (
+            <div className="flex items-center justify-between p-3 rounded-xl mb-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              <div>
+                <p className="text-xs" style={{ color: MUTED }}>الحساب</p>
+                <p className="text-sm font-semibold" style={{ color: INK }}>{userEmail}</p>
+              </div>
+              <button onClick={onSignOut} className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>تسجيل الخروج</button>
+            </div>
+          )}
+          <div className="flex items-center justify-between p-3 rounded-xl mb-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <div className="flex items-center gap-2">
+              {darkMode ? <Moon size={18} color="#0F6B5C" /> : <Sun size={18} color={MUTED} />}
+              <div>
+                <p className="text-sm font-semibold" style={{ color: INK }}>الوضع الليلي</p>
+                <p className="text-xs" style={{ color: MUTED }}>ألوان داكنة أريح للعين في الإضاءة الخافتة</p>
+              </div>
+            </div>
+            <button
+              onClick={onToggleDarkMode}
+              className="w-11 h-6 rounded-full shrink-0 relative transition-colors"
+              style={{ background: darkMode ? "#0F6B5C" : LINE }}
+            >
+              <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [darkMode ? "right" : "left"]: "2px" }} />
+            </button>
           </div>
-          <button onClick={onSignOut} className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>تسجيل الخروج</button>
+          <div className="flex items-center justify-between p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <div className="flex items-center gap-2">
+              {feedback ? <Volume2 size={18} color="#0F6B5C" /> : <VolumeX size={18} color={MUTED} />}
+              <div>
+                <p className="text-sm font-semibold" style={{ color: INK }}>تنبيه صوتي واهتزاز عند الرصد</p>
+                <p className="text-xs" style={{ color: MUTED }}>تأكيد سريع (صوت + اهتزاز خفيف) كل مرة تسجّل غيابًا أو قيمة</p>
+              </div>
+            </div>
+            <button
+              onClick={onToggleFeedback}
+              className="w-11 h-6 rounded-full shrink-0 relative transition-colors"
+              style={{ background: feedback ? "#0F6B5C" : LINE }}
+            >
+              <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [feedback ? "right" : "left"]: "2px" }} />
+            </button>
+          </div>
+        </>
+      )}
+
+      {tab === "school" && (
+        <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+          <p className="text-sm font-semibold mb-1" style={{ color: INK }}>بيانات المدرسة</p>
+          <p className="text-xs mb-3" style={{ color: MUTED }}>تُستخدم في شهادات التقدير وأي مستندات رسمية أخرى.</p>
+          <Field label="اسم الدولة">
+            <input style={inputStyle} value={countryName || ""} onChange={(e) => onChangeSchoolInfo({ countryName: e.target.value })} placeholder="مثال: المملكة العربية السعودية" />
+          </Field>
+          <Field label="اسم الوزارة">
+            <input style={inputStyle} value={ministryName || ""} onChange={(e) => onChangeSchoolInfo({ ministryName: e.target.value })} placeholder="مثال: وزارة التعليم" />
+          </Field>
+          <Field label="اسم المدرسة">
+            <input style={inputStyle} value={schoolName || ""} onChange={(e) => onChangeSchoolInfo({ schoolName: e.target.value })} placeholder="مثال: مدرسة الأمل الابتدائية" />
+          </Field>
+          <Field label="اسم مدير/ة المدرسة">
+            <input style={inputStyle} value={principalName || ""} onChange={(e) => onChangeSchoolInfo({ principalName: e.target.value })} placeholder="مثال: أ. سعد القحطاني" />
+          </Field>
+          <Field label="شعار الوزارة / المدرسة (اختياري)" hint="ارفع الشعار الرسمي الذي تملكه — لا يمكن للتطبيق توليد الشعارات الحكومية تلقائيًا.">
+            <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => logoInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
+                <Camera size={15} color="#0F6B5C" /> {logoImage ? "استبدال الشعار" : "رفع شعار"}
+              </button>
+              {logoImage && (
+                <>
+                  <img src={logoImage} alt="الشعار" className="w-9 h-9 rounded object-contain dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+                  <button type="button" onClick={() => setConfirmRemoveLogo(true)} title="إزالة الشعار" className="p-1.5 rounded hover:bg-black/5">
+                    <ImageOff size={15} color={MUTED} />
+                  </button>
+                </>
+              )}
+            </div>
+          </Field>
         </div>
       )}
-      <div className="flex items-center justify-between p-3 rounded-xl mb-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <div className="flex items-center gap-2">
-          {darkMode ? <Moon size={18} color="#0F6B5C" /> : <Sun size={18} color={MUTED} />}
-          <div>
-            <p className="text-sm font-semibold" style={{ color: INK }}>الوضع الليلي</p>
-            <p className="text-xs" style={{ color: MUTED }}>ألوان داكنة أريح للعين في الإضاءة الخافتة</p>
-          </div>
-        </div>
-        <button
-          onClick={onToggleDarkMode}
-          className="w-11 h-6 rounded-full shrink-0 relative transition-colors"
-          style={{ background: darkMode ? "#0F6B5C" : LINE }}
-        >
-          <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [darkMode ? "right" : "left"]: "2px" }} />
-        </button>
-      </div>
-      <div className="flex items-center justify-between p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <div className="flex items-center gap-2">
-          {feedback ? <Volume2 size={18} color="#0F6B5C" /> : <VolumeX size={18} color={MUTED} />}
-          <div>
-            <p className="text-sm font-semibold" style={{ color: INK }}>تنبيه صوتي واهتزاز عند الرصد</p>
-            <p className="text-xs" style={{ color: MUTED }}>تأكيد سريع (صوت + اهتزاز خفيف) كل مرة تسجّل غيابًا أو قيمة</p>
-          </div>
-        </div>
-        <button
-          onClick={onToggleFeedback}
-          className="w-11 h-6 rounded-full shrink-0 relative transition-colors"
-          style={{ background: feedback ? "#0F6B5C" : LINE }}
-        >
-          <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [feedback ? "right" : "left"]: "2px" }} />
-        </button>
-      </div>
-      <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <p className="text-sm font-semibold mb-1" style={{ color: INK }}>بيانات المدرسة</p>
-        <p className="text-xs mb-3" style={{ color: MUTED }}>تُستخدم في شهادات التقدير وأي مستندات رسمية أخرى.</p>
-        <Field label="اسم الدولة">
-          <input style={inputStyle} value={countryName || ""} onChange={(e) => onChangeSchoolInfo({ countryName: e.target.value })} placeholder="مثال: المملكة العربية السعودية" />
-        </Field>
-        <Field label="اسم الوزارة">
-          <input style={inputStyle} value={ministryName || ""} onChange={(e) => onChangeSchoolInfo({ ministryName: e.target.value })} placeholder="مثال: وزارة التعليم" />
-        </Field>
-        <Field label="اسم المدرسة">
-          <input style={inputStyle} value={schoolName || ""} onChange={(e) => onChangeSchoolInfo({ schoolName: e.target.value })} placeholder="مثال: مدرسة الأمل الابتدائية" />
-        </Field>
-        <Field label="اسم مدير/ة المدرسة">
-          <input style={inputStyle} value={principalName || ""} onChange={(e) => onChangeSchoolInfo({ principalName: e.target.value })} placeholder="مثال: أ. سعد القحطاني" />
-        </Field>
-        <Field label="شعار الوزارة / المدرسة (اختياري)" hint="ارفع الشعار الرسمي الذي تملكه — لا يمكن للتطبيق توليد الشعارات الحكومية تلقائيًا.">
-          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => logoInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
-              <Camera size={15} color="#0F6B5C" /> {logoImage ? "استبدال الشعار" : "رفع شعار"}
+
+      {tab === "footer" && (
+        isOwner ? (
+          <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-1" style={{ color: INK }}>تذييل الصفحة الرئيسية <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك الموقع</span></p>
+            <p className="text-xs mb-3" style={{ color: MUTED }}>بيانات التواصل وشهادات الثقة/الاعتماد التي تظهر أسفل الصفحة الرئيسية لجميع المشتركين — تتحكم فيها إضافةً وحذفًا بالكامل.</p>
+
+            <p className="text-xs font-semibold mb-2" style={{ color: INK }}>بيانات التواصل</p>
+            <div className="space-y-2 mb-2">
+              {(footerContacts || []).map((c) => (
+                <div key={c.id} className="flex items-center gap-2">
+                  <input style={{ ...inputStyle, flex: 1 }} value={c.label} onChange={(e) => onUpdateContact(c.id, { label: e.target.value })} placeholder="التسمية (مثال: الهاتف)" />
+                  <input style={{ ...inputStyle, flex: 1 }} value={c.value} onChange={(e) => onUpdateContact(c.id, { value: e.target.value })} placeholder="القيمة" />
+                  <button onClick={() => onRemoveContact(c.id)} title="حذف" className="p-1.5 rounded hover:bg-black/5 shrink-0"><X size={14} color={MUTED} /></button>
+                </div>
+              ))}
+            </div>
+            <button onClick={onAddContact} className="text-xs font-semibold flex items-center gap-1 mb-4" style={{ color: "#0F6B5C" }}>
+              <Plus size={13} /> إضافة بيانات تواصل
             </button>
-            {logoImage && (
-              <>
-                <img src={logoImage} alt="الشعار" className="w-9 h-9 rounded object-contain dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
-                <button type="button" onClick={() => setConfirmRemoveLogo(true)} title="إزالة الشعار" className="p-1.5 rounded hover:bg-black/5">
-                  <ImageOff size={15} color={MUTED} />
-                </button>
-              </>
-            )}
-          </div>
-        </Field>
-      </div>
 
-      {isOwner ? (
-        <div className="p-3 rounded-xl mt-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-          <p className="text-sm font-semibold mb-1" style={{ color: INK }}>تذييل الصفحة الرئيسية <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك الموقع</span></p>
-          <p className="text-xs mb-3" style={{ color: MUTED }}>بيانات التواصل وشهادات الثقة/الاعتماد التي تظهر أسفل الصفحة الرئيسية لجميع المشتركين — تتحكم فيها إضافةً وحذفًا بالكامل.</p>
-
-          <p className="text-xs font-semibold mb-2" style={{ color: INK }}>بيانات التواصل</p>
-          <div className="space-y-2 mb-2">
-            {(footerContacts || []).map((c) => (
-              <div key={c.id} className="flex items-center gap-2">
-                <input style={{ ...inputStyle, flex: 1 }} value={c.label} onChange={(e) => onUpdateContact(c.id, { label: e.target.value })} placeholder="التسمية (مثال: الهاتف)" />
-                <input style={{ ...inputStyle, flex: 1 }} value={c.value} onChange={(e) => onUpdateContact(c.id, { value: e.target.value })} placeholder="القيمة" />
-                <button onClick={() => onRemoveContact(c.id)} title="حذف" className="p-1.5 rounded hover:bg-black/5 shrink-0"><X size={14} color={MUTED} /></button>
-              </div>
-            ))}
+            <p className="text-xs font-semibold mb-2" style={{ color: INK }}>شهادات الثقة / الاعتماد الرسمية</p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {(footerBadges || []).map((b) => (
+                <div key={b.id} className="relative">
+                  <img src={b.image} alt="شهادة" className="w-16 h-16 object-contain rounded-lg dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+                  <button onClick={() => onRemoveBadge(b.id)} title="حذف" className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+                    <X size={10} color="#C0392B" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <input ref={badgeInputRef} type="file" accept="image/*" onChange={handleBadgeUpload} style={{ display: "none" }} />
+            <button onClick={() => badgeInputRef.current?.click()} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+              <Plus size={13} /> إضافة شهادة/شعار ثقة
+            </button>
           </div>
-          <button onClick={onAddContact} className="text-xs font-semibold flex items-center gap-1 mb-4" style={{ color: "#0F6B5C" }}>
-            <Plus size={13} /> إضافة بيانات تواصل
-          </button>
-
-          <p className="text-xs font-semibold mb-2" style={{ color: INK }}>شهادات الثقة / الاعتماد الرسمية</p>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {(footerBadges || []).map((b) => (
-              <div key={b.id} className="relative">
-                <img src={b.image} alt="شهادة" className="w-16 h-16 object-contain rounded-lg dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
-                <button onClick={() => onRemoveBadge(b.id)} title="حذف" className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-                  <X size={10} color="#C0392B" />
-                </button>
-              </div>
-            ))}
+        ) : (
+          <div className="p-3 rounded-xl flex items-start gap-2" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+            <Info size={15} color={MUTED} className="shrink-0 mt-0.5" />
+            <p className="text-xs" style={{ color: MUTED }}>تذييل الصفحة الرئيسية وشهادات الثقة خاصة بمالك الموقع فقط، ولا تظهر لباقي المشتركين.</p>
           </div>
-          <input ref={badgeInputRef} type="file" accept="image/*" onChange={handleBadgeUpload} style={{ display: "none" }} />
-          <button onClick={() => badgeInputRef.current?.click()} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
-            <Plus size={13} /> إضافة شهادة/شعار ثقة
-          </button>
-        </div>
-      ) : (
-        <div className="p-3 rounded-xl mt-4 flex items-start gap-2" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
-          <Info size={15} color={MUTED} className="shrink-0 mt-0.5" />
-          <p className="text-xs" style={{ color: MUTED }}>تذييل الصفحة الرئيسية وشهادات الثقة خاصة بمالك الموقع فقط، ولا تظهر لباقي المشتركين.</p>
-        </div>
+        )
       )}
       {confirmRemoveLogo && (
         <ConfirmDialog
@@ -5170,9 +5197,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             <button onClick={() => setShowSettings(true)} title="الإعدادات" className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/5" style={{ border: `1px solid ${LINE}` }}>
               <Settings size={18} color={MUTED} />
             </button>
-            <button onClick={() => setModal({ mode: "add" })} className="w-12 h-12 rounded-full flex items-center justify-center shadow-md hover:opacity-90 active:scale-95 transition-all" style={{ background: "#0F6B5C" }}>
-              <Plus size={22} color="#fff" strokeWidth={2.5} />
-            </button>
           </div>
         </div>
 
@@ -5188,6 +5212,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           <button onClick={() => setTab("archived")} className="px-4 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5"
             style={{ background: tab === "archived" ? INK : "transparent", color: tab === "archived" ? "#fff" : MUTED, border: `1px solid ${tab === "archived" ? INK : LINE}` }}>
             <FolderClock size={14} />المؤرشفة ({data.classes.filter((c) => c.archived).length})
+          </button>
+          <button onClick={() => setModal({ mode: "add" })} className="mr-auto flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition-all" style={{ background: "#0F6B5C" }}>
+            <Plus size={18} strokeWidth={2.5} /> إضافة فصل جديد
           </button>
         </div>
 
