@@ -200,9 +200,9 @@ function clearAbsentUpdater(rowId, dateKey) {
     return { ...c, attendance: { ...(c.attendance || {}), [dateKey]: dayRec }, reports };
   };
 }
-function wrapCanvasText(ctx, text, maxWidth) {
+function wrapCanvasText(ctx, text, maxWidth, emptyFallback = "—") {
   const raw = String(text ?? "").trim();
-  if (!raw) return ["—"];
+  if (!raw) return [emptyFallback];
   const words = raw.split(/\s+/);
   const lines = [];
   let line = "";
@@ -245,7 +245,7 @@ function buildTableCanvas({ title, subtitle, headers, rows, blankTemplate = fals
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = "13px Tahoma, Arial";
   const emptyPlaceholder = blankTemplate ? "" : "—";
-  const rowLines = rows.map((r) => r.map((val) => wrapCanvasText(measure, val ? String(val) : emptyPlaceholder, cellW - 16)));
+  const rowLines = rows.map((r) => r.map((val) => wrapCanvasText(measure, val ? String(val) : emptyPlaceholder, cellW - 16, emptyPlaceholder)));
   const rowHeights = rowLines.map((cellsLines) => Math.max(...cellsLines.map((lines) => lines.length)) * lineH + cellPadV);
   const height = titleH + headerH + rowHeights.reduce((a, b) => a + b, 0) + pad;
   const canvas = document.createElement("canvas");
@@ -1012,21 +1012,21 @@ function PrintStyles() {
       @keyframes spin { to { transform: rotate(360deg); } }
       @keyframes modalBackdropIn { from { opacity: 0; } to { opacity: 1; } }
       @keyframes modalPanelIn {
-        from { opacity: 0; transform: translateY(14px) scale(0.97); }
+        from { opacity: 0; transform: translateY(48px) scale(0.88); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
-      .modal-backdrop-in { animation: modalBackdropIn 0.18s ease-out forwards; }
-      .modal-panel-in { animation: modalPanelIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      .modal-backdrop-in { animation: modalBackdropIn 0.3s ease-out forwards; }
+      .modal-panel-in { animation: modalPanelIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       @keyframes pageFadeIn {
-        from { opacity: 0; transform: translateY(6px); }
+        from { opacity: 0; transform: translateY(24px); }
         to { opacity: 1; transform: translateY(0); }
       }
-      .page-fade-in { animation: pageFadeIn 0.25s ease-out forwards; }
+      .page-fade-in { animation: pageFadeIn 0.5s ease-out forwards; }
       @keyframes cardIn {
-        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        from { opacity: 0; transform: translateY(24px) scale(0.9); }
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
-      .card-in { animation: cardIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .card-in { animation: cardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
     `}</style>
   );
 }
@@ -1230,30 +1230,29 @@ function PrintFormatModal({ onClose, onChoose }) {
 function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50 }) {
   const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md";
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [entered, setEntered] = useState(false);
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, startPos: { x: 0, y: 0 } });
 
-  const dragStart = (clientX, clientY) => {
-    dragRef.current = { dragging: true, startX: clientX, startY: clientY, startPos: pos };
-  };
   useEffect(() => {
-    const move = (clientX, clientY) => {
-      if (!dragRef.current.dragging) return;
-      setPos({ x: dragRef.current.startPos.x + (clientX - dragRef.current.startX), y: dragRef.current.startPos.y + (clientY - dragRef.current.startY) });
-    };
-    const onMouseMove = (e) => move(e.clientX, e.clientY);
-    const onTouchMove = (e) => { if (e.touches[0]) move(e.touches[0].clientX, e.touches[0].clientY); };
-    const onEnd = () => { dragRef.current.dragging = false; };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onEnd);
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("touchend", onEnd);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onEnd);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onEnd);
-    };
+    const t = setTimeout(() => setEntered(true), 520);
+    return () => clearTimeout(t);
   }, []);
+
+  const onPointerDown = (e) => {
+    dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, startPos: pos };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current.dragging) return;
+    setPos({
+      x: dragRef.current.startPos.x + (e.clientX - dragRef.current.startX),
+      y: dragRef.current.startPos.y + (e.clientY - dragRef.current.startY),
+    });
+  };
+  const onPointerUp = (e) => {
+    dragRef.current.dragging = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  };
 
   return (
     <div
@@ -1262,14 +1261,16 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className={`rounded-2xl shadow-2xl w-full ${widthClass} max-h-[90vh] overflow-y-auto modal-panel-in`}
+        className={`rounded-2xl shadow-2xl w-full ${widthClass} max-h-[90vh] overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
         style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)` }}
       >
         <div
           className="flex items-center justify-between px-5 py-4 sticky top-0"
           style={{ background: PAPER, borderBottom: `1px solid ${LINE}`, cursor: "grab", touchAction: "none", userSelect: "none" }}
-          onMouseDown={(e) => { dragStart(e.clientX, e.clientY); }}
-          onTouchStart={(e) => { if (e.touches[0]) dragStart(e.touches[0].clientX, e.touches[0].clientY); }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
         >
           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: INK }}>
             <Move size={14} color={MUTED} />
@@ -1308,44 +1309,28 @@ const inputStyle = {
 };
 
 function ColorSwatches({ value, onChange, size = 8 }) {
-  const isCustom = !COLORS.some((c) => c.hex === value);
   const customInputRef = useRef(null);
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {COLORS.map((c) => (
-        <button
-          key={c.hex}
-          type="button"
-          title={c.name}
-          onClick={() => onChange(c.hex)}
-          className="rounded-full flex items-center justify-center transition-transform hover:scale-110 shrink-0"
-          style={{ width: size * 4, height: size * 4, background: c.hex, boxShadow: value === c.hex ? `0 0 0 2px #fff, 0 0 0 4px ${c.hex}` : "none" }}
-        >
-          {value === c.hex && <Check size={size * 1.5} color="#fff" strokeWidth={3} />}
-        </button>
-      ))}
+    <div className="flex items-center gap-2">
       <div className="relative shrink-0">
         <button
           type="button"
-          title="لون مخصص"
+          title="اختر لونًا"
           onClick={() => customInputRef.current?.click()}
           className="rounded-full flex items-center justify-center transition-transform hover:scale-110"
-          style={{
-            width: size * 4, height: size * 4,
-            background: isCustom ? value : "conic-gradient(from 90deg, #E63958, #F2B705, #4CAF7D, #3B6FD4, #8B3FD1, #E63958)",
-            boxShadow: isCustom ? `0 0 0 2px #fff, 0 0 0 4px ${value}` : `0 0 0 1px ${LINE}`,
-          }}
+          style={{ width: size * 5, height: size * 5, background: value || "#0F6B5C", boxShadow: `0 0 0 2px #fff, 0 0 0 4px ${value || "#0F6B5C"}` }}
         >
-          {isCustom ? <Check size={size * 1.5} color="#fff" strokeWidth={3} /> : <Pipette size={size * 1.4} color="#fff" style={{ filter: "drop-shadow(0 0 1.5px rgba(0,0,0,0.5))" }} />}
+          <Pipette size={size * 1.6} color="#fff" style={{ filter: "drop-shadow(0 0 1.5px rgba(0,0,0,0.5))" }} />
         </button>
         <input
           ref={customInputRef}
           type="color"
-          value={isCustom ? value : "#0F6B5C"}
+          value={value || "#0F6B5C"}
           onChange={(e) => onChange(e.target.value)}
           style={{ position: "absolute", inset: 0, opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
         />
       </div>
+      <span className="text-xs font-mono" style={{ color: MUTED }}>{value || "#0F6B5C"}</span>
     </div>
   );
 }
@@ -1356,6 +1341,16 @@ function OptionsEditor({ options, onChange }) {
   const update = (id, patch) => onChange(options.map((o) => (o.id === id ? { ...o, ...patch } : o)));
   const remove = (id) => onChange(options.filter((o) => o.id !== id));
   const add = () => onChange([...options, { id: uid(), label: "", color: COLORS[0].hex }]);
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const addBulk = () => {
+    const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    const added = lines.map((label, i) => ({ id: uid(), label, color: COLORS[i % COLORS.length].hex }));
+    onChange([...options, ...added]);
+    setBulkText("");
+    setShowBulk(false);
+  };
   return (
     <div>
       <div className="space-y-2">
@@ -1369,11 +1364,14 @@ function OptionsEditor({ options, onChange }) {
               className="flex-1 text-sm outline-none bg-transparent"
               style={{ color: INK }}
             />
-            <div className="flex gap-1 shrink-0">
-              {COLORS.slice(0, 6).map((c) => (
-                <button key={c.hex} type="button" onClick={() => update(o.id, { color: c.hex })}
-                  className="w-4 h-4 rounded-full" style={{ background: c.hex, boxShadow: o.color === c.hex ? `0 0 0 2px #fff, 0 0 0 3px ${c.hex}` : "none" }} />
-              ))}
+            <div className="relative shrink-0">
+              <button type="button" title="لون الخيار" className="w-5 h-5 rounded-full" style={{ background: o.color, boxShadow: `0 0 0 1px ${LINE}` }} />
+              <input
+                type="color"
+                value={o.color}
+                onChange={(e) => update(o.id, { color: e.target.value })}
+                style={{ position: "absolute", inset: 0, opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
+              />
             </div>
             <button type="button" onClick={() => remove(o.id)} className="p-1 rounded hover:bg-black/5 shrink-0">
               <X size={13} color={MUTED} />
@@ -1381,9 +1379,27 @@ function OptionsEditor({ options, onChange }) {
           </div>
         ))}
       </div>
-      <button type="button" onClick={add} className="mt-2 text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
-        <Plus size={13} /> إضافة خيار
-      </button>
+      <div className="flex items-center gap-3 mt-2">
+        <button type="button" onClick={add} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+          <Plus size={13} /> إضافة خيار
+        </button>
+        <button type="button" onClick={() => setShowBulk((s) => !s)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+          <ListPlus size={13} /> إضافة خيارات دفعة واحدة
+        </button>
+      </div>
+      {showBulk && (
+        <div className="mt-2 p-2 rounded-lg" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+          <textarea
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            placeholder={"اكتب كل خيار بسطر مستقل، مثال:\nممتاز\nجيد جدًا\nجيد\nيحتاج تحسين"}
+            style={{ ...inputStyle, minHeight: 90, background: "#fff" }}
+          />
+          <button type="button" disabled={!bulkText.trim()} onClick={addBulk} className="mt-2 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: "#0F6B5C" }}>
+            إضافة الخيارات
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2026,7 +2042,6 @@ function buildRemedialPlanCanvas({
   ].map((s) => ({ ...s, lines: wrapCanvasText(mctx, s.value && s.value.trim() ? s.value : "—", contentWidth) }));
 
   let headerHeight = 40;
-  if (logoImageElement) headerHeight += 62;
   if (countryName) headerHeight += 18;
   if (ministryName) headerHeight += 18;
   if (schoolName) headerHeight += 22;
@@ -2047,8 +2062,7 @@ function buildRemedialPlanCanvas({
 
   let hy = 40;
   if (logoImageElement) {
-    ctx.drawImage(logoImageElement, width / 2 - 26, hy - 26, 52, 52);
-    hy += 40;
+    ctx.drawImage(logoImageElement, width - 110, 18, 56, 56);
   }
   if (countryName) { ctx.font = "bold 14px Tahoma, Arial"; ctx.fillStyle = "#232622"; ctx.fillText(countryName, width / 2, hy); hy += 18; }
   if (ministryName) { ctx.font = "13px Tahoma, Arial"; ctx.fillStyle = "#7A7768"; ctx.fillText(ministryName, width / 2, hy); hy += 18; }
@@ -3973,6 +3987,38 @@ const REMEDIAL_TEMPLATES = [
     goals: "تحسين مستوى الانتباه والمشاركة داخل الحصة، وانتظام الطالب في تسليم الواجبات المطلوبة.",
     methods: "متابعة يومية قصيرة لتحفيز الطالب، تقسيم المهام لأجزاء صغيرة يسهل إنجازها، تعزيز إيجابي فوري لأي تحسن ولو بسيط، والتواصل المستمر مع ولي الأمر لدعم المتابعة المنزلية.",
   },
+  {
+    id: "behavior",
+    name: "السلوك والانضباط الصفي",
+    weaknessSigns: "كثرة الحركة والانشغال عن الدرس، مقاطعة المعلم والزملاء، صعوبة الالتزام بتعليمات الصف، وتكرار المشكلات مع الزملاء.",
+    causes: "ضعف في مهارات ضبط النفس، رغبة في لفت الانتباه، أو صعوبة في فهم حدود السلوك المقبول داخل الصف.",
+    goals: "أن يلتزم الطالب بقوانين الصف الأساسية لفترة زمنية محددة، وأن يقل عدد الملاحظات السلوكية بشكل ملحوظ.",
+    methods: "نظام تعزيز فوري وواضح للسلوك الإيجابي، اتفاق مسبق مع الطالب على قواعد بسيطة ومفهومة، تجاهل السلوكيات البسيطة غير المؤذية، وتواصل منتظم مع ولي الأمر لمتابعة نفس النهج بالمنزل.",
+  },
+  {
+    id: "attention",
+    name: "التركيز والانتباه",
+    weaknessSigns: "شرود ذهني متكرر أثناء الشرح، صعوبة إنهاء المهمة الواحدة، نسيان التعليمات بعد وقت قصير، وتشتت سريع بأقل مؤثر خارجي.",
+    causes: "قصر مدى الانتباه الطبيعي للمرحلة العمرية، بيئة صفية مشتتة، أو إرهاق وقلة نوم كافٍ.",
+    goals: "زيادة المدة الزمنية التي يستطيع الطالب التركيز فيها على مهمة واحدة تدريجيًا، وإنهاء المهام القصيرة دون تذكير متكرر.",
+    methods: "تقسيم المهمة لأجزاء زمنية قصيرة مع فواصل راحة، تقليل المشتتات القريبة من الطالب، تعليمات واضحة ومختصرة خطوة بخطوة، وتعزيز فوري عند إتمام أي جزء من المهمة.",
+  },
+  {
+    id: "handwriting",
+    name: "الخط والتنظيم الكتابي",
+    weaknessSigns: "خط غير واضح أو غير منتظم، صعوبة محاذاة الكتابة على السطر، بطء شديد في الكتابة اليدوية، وعدم ترتيب الدفاتر والواجبات.",
+    causes: "ضعف في المهارات الحركية الدقيقة، قلة التدريب على الكتابة اليدوية، أو إمساك غير صحيح للقلم.",
+    goals: "تحسين وضوح الخط وانتظامه على السطر، وزيادة سرعة الكتابة تدريجيًا دون التأثير على وضوحها.",
+    methods: "تمارين قصيرة يومية على تتبع الحروف والكلمات، التأكد من طريقة إمساك القلم الصحيحة، استخدام أوراق مسطّرة بمساعدات بصرية، وتعزيز إيجابي لأي تحسن في الترتيب والوضوح.",
+  },
+  {
+    id: "social",
+    name: "المهارات الاجتماعية",
+    weaknessSigns: "صعوبة في تكوين صداقات، انعزال عن الأنشطة الجماعية، صعوبة في التعبير عن المشاعر بطريقة مناسبة، وتكرار الخلافات مع الزملاء.",
+    causes: "قلة الفرص للتفاعل الاجتماعي الإيجابي، خجل زائد، أو ضعف في مهارات التواصل والتعبير.",
+    goals: "أن يشارك الطالب في نشاط جماعي واحد على الأقل بانتظام، وأن يعبّر عن احتياجاته بطريقة لفظية مناسبة.",
+    methods: "إشراك الطالب تدريجيًا في أنشطة جماعية صغيرة، نمذجة طرق التواصل الإيجابي، تعزيز فوري لأي محاولة تفاعل إيجابية، والتنسيق مع ولي الأمر لتوفير فرص اجتماعية مشابهة خارج المدرسة.",
+  },
 ];
 
 function RemedialPlanModal({ cls, row, schoolName, principalName, countryName, ministryName, logoImage, onClose }) {
@@ -5030,18 +5076,32 @@ function DisplayBoard({ cls, onClose, onPrint }) {
   const [shareError, setShareError] = useState("");
   const shareReadOnly = () => {
     setShareError("");
-    // نفتح النافذة أولًا وبشكل متزامن (قبل أي عملية غير متزامنة) — لأن Safari
-    // على الجوال يمنع فتح نافذة جديدة إن حصل بعد أي await، حتى لو كانت
-    // بسبب ضغطة المستخدم نفسها.
+    const html = buildReadOnlyBoardHtml(cls, boardDate);
+    const filename = `${cls.subject || "الفصل"}-لوحة-العرض.html`;
+    const blob = new Blob([html], { type: "text/html" });
+
+    // المحاولة الأولى: صفحة اختيار المشاركة الحقيقية للجهاز (واتساب،
+    // الرسائل، البريد...) — يجب استدعاؤها هنا مباشرة (بدون أي await قبلها)
+    // ليعتبرها المتصفح ناتجة عن ضغطة المستخدم مباشرة.
+    try {
+      const file = new File([blob], filename, { type: "text/html" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: filename }).catch(() => {});
+        return;
+      }
+    } catch (e) {
+      // المتصفح ما يدعم مشاركة الملفات — نكمل للخيار البديل بالأسفل
+    }
+
+    // خيار بديل: فتح نافذة جديدة فيها المحتوى مباشرة (يعمل في كل المتصفحات
+    // دون استثناء). نفتحها هنا بشكل متزامن أيضًا لنفس السبب أعلاه.
     const win = window.open("", "_blank");
     try {
-      const html = buildReadOnlyBoardHtml(cls, boardDate);
       if (win) {
         win.document.write(html);
         win.document.close();
       } else {
-        const blob = new Blob([html], { type: "text/html" });
-        downloadBlob(blob, `${cls.subject || "الفصل"}-لوحة-العرض.html`);
+        downloadBlob(blob, filename);
       }
     } catch (e) {
       if (win) win.close();
@@ -6160,17 +6220,11 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <ArrowRight size={16} /> رجوع للفصول
         </button>
 
-        <div className="rounded-2xl p-4 mb-3 flex flex-wrap items-center gap-x-8 gap-y-2" style={{ background: "#fff", border: `1px solid ${LINE}`, borderInlineStart: `6px solid ${cls.color}` }}>
-          <div><p className="text-xs" style={{ color: MUTED }}>المادة</p><p className="font-bold flex items-center gap-1.5" style={{ color: INK }}>{cls.emoji && <span>{cls.emoji}</span>}{cls.subject}</p></div>
-          <div><p className="text-xs" style={{ color: MUTED }}>الصف</p><p className="font-bold" style={{ color: INK }}>{cls.grade}</p></div>
-          <div><p className="text-xs" style={{ color: MUTED }}>المعلم</p><p className="font-bold" style={{ color: INK }}>{cls.teacher}</p></div>
-          <div><p className="text-xs" style={{ color: MUTED }}>العام الدراسي</p><p className="font-bold" style={{ color: INK }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p></div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5 mb-2">
-          <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
-          <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
-          <IconBtn icon={FileText} label="تقرير" onClick={() => setShowReportPicker(true)} />
+        <div className="rounded-xl px-2.5 py-1.5 mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5" style={{ background: "#fff", border: `1px solid ${LINE}`, borderInlineStart: `4px solid ${cls.color}` }}>
+          <p className="text-sm font-bold flex items-center gap-1" style={{ color: INK }}>{cls.emoji && <span>{cls.emoji}</span>}{cls.subject}</p>
+          <p className="text-xs" style={{ color: MUTED }}>{cls.grade}</p>
+          <p className="text-xs" style={{ color: MUTED }}>{cls.teacher}</p>
+          <p className="text-xs" style={{ color: MUTED }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p>
         </div>
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
@@ -6193,6 +6247,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
         <div className="rounded-xl p-1.5 mb-2 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
+          <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
+          <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
+          <IconBtn icon={FileText} label="تقرير" onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
