@@ -3071,6 +3071,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   const [resetSentId, setResetSentId] = useState(null);
   const [showTransfer, setShowTransfer] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
+  const [tab, setTab] = useState("overview");
   const logoInputRef = useRef(null);
 
   const loadAll = async () => {
@@ -3208,146 +3209,175 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
     <Modal title="لوحة التحكم" onClose={onClose} lg>
       {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {[
-          { label: "المستخدمون", value: totalUsers },
-          { label: "نشطون", value: activeUsers },
-          { label: "مشتركون", value: paidUsers },
-          { label: "الفصول", value: totalClasses },
-          { label: "الطلاب", value: totalStudents },
-        ].map((s) => (
-          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-            <p className="text-xl font-extrabold" style={{ color: INK }}>{s.value}</p>
-            <p className="text-xs" style={{ color: MUTED }}>{s.label}</p>
-          </div>
+          { id: "overview", label: "نظرة عامة" },
+          { id: "site", label: "إعدادات الموقع" },
+          { id: "users", label: "المستخدمون" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className="text-sm font-semibold px-4 py-2 rounded-xl shrink-0"
+            style={{ background: tab === t.id ? "#0F6B5C" : "transparent", color: tab === t.id ? "#fff" : MUTED, border: `1px solid ${tab === t.id ? "#0F6B5C" : LINE}` }}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
-      <div className="flex gap-4 flex-wrap mb-4">
-        {disabledUsers > 0 && <p className="text-xs" style={{ color: "#9A3B2E" }}>{disabledUsers} حساب معطّل حاليًا</p>}
-        {expiringSoonUsers > 0 && <p className="text-xs font-semibold" style={{ color: "#C97A2B" }}>⏳ {expiringSoonUsers} اشتراك سينتهي خلال ٧ أيام</p>}
-      </div>
 
-      <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <p className="text-sm font-semibold mb-3" style={{ color: INK }}>تسجيلات آخر ٣٠ يومًا</p>
-        <div style={{ width: "100%", height: 140 }}>
-          <ResponsiveContainer>
-            <LineChart data={growthData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={4} stroke={MUTED} />
-              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={24} stroke={MUTED} />
-              <Tooltip contentStyle={{ fontSize: 12, direction: "rtl" }} labelFormatter={(l) => `يوم ${l}`} formatter={(v) => [v, "تسجيلات"]} />
-              <Line type="monotone" dataKey="count" stroke="#0F6B5C" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      {tab === "overview" && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+            {[
+              { label: "المستخدمون", value: totalUsers },
+              { label: "نشطون", value: activeUsers },
+              { label: "مشتركون", value: paidUsers },
+              { label: "الفصول", value: totalClasses },
+              { label: "الطلاب", value: totalStudents },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+                <p className="text-xl font-extrabold" style={{ color: INK }}>{s.value}</p>
+                <p className="text-xs" style={{ color: MUTED }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-4 flex-wrap mb-4">
+            {disabledUsers > 0 && <p className="text-xs" style={{ color: "#9A3B2E" }}>{disabledUsers} حساب معطّل حاليًا</p>}
+            {expiringSoonUsers > 0 && <p className="text-xs font-semibold" style={{ color: "#C97A2B" }}>⏳ {expiringSoonUsers} اشتراك سينتهي خلال ٧ أيام</p>}
+          </div>
 
-      <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <p className="text-sm font-semibold mb-2" style={{ color: INK }}>هوية الموقع</p>
-        <div className="flex items-center gap-3 mb-3">
-          {siteSettings.siteLogo ? (
-            <img src={siteSettings.siteLogo} alt="الشعار" className="w-12 h-12 rounded-xl object-cover" style={{ border: `1px solid ${LINE}` }} />
+          <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-3" style={{ color: INK }}>تسجيلات آخر ٣٠ يومًا</p>
+            <div style={{ width: "100%", height: 140 }}>
+              <ResponsiveContainer>
+                <LineChart data={growthData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={4} stroke={MUTED} />
+                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={24} stroke={MUTED} />
+                  <Tooltip contentStyle={{ fontSize: 12, direction: "rtl" }} labelFormatter={(l) => `يوم ${l}`} formatter={(v) => [v, "تسجيلات"]} />
+                  <Line type="monotone" dataKey="count" stroke="#0F6B5C" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === "site" && (
+        <>
+          <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: INK }}>هوية الموقع</p>
+            <div className="flex items-center gap-3 mb-3">
+              {siteSettings.siteLogo ? (
+                <img src={siteSettings.siteLogo} alt="الشعار" className="w-12 h-12 rounded-xl object-cover" style={{ border: `1px solid ${LINE}` }} />
+              ) : (
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#0F6B5C" }}><BookOpen size={20} color="#fff" /></div>
+              )}
+              <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
+              <button onClick={() => logoInputRef.current?.click()} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: INK }}>تغيير الشعار</button>
+              {siteSettings.siteLogo && (
+                <button onClick={() => updateSiteSettings((s) => ({ ...s, siteLogo: null }))} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#C0392B" }}>إزالة</button>
+              )}
+            </div>
+            <input style={inputStyle} value={siteTagline} onChange={(e) => setSiteTagline(e.target.value)} placeholder="الوصف المختصر تحت اسم الموقع بالصفحة الرئيسية" />
+            <div className="flex justify-end mt-2">
+              <button onClick={saveSiteIdentity} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: INK }}>إعلان عام لكل المستخدمين</p>
+            <textarea style={{ ...inputStyle, minHeight: 60 }} value={announcement} onChange={(e) => setAnnouncement(e.target.value)} placeholder="مثال: صيانة مجدولة يوم الخميس، أو ميزة جديدة أُضيفت..." />
+            <div className="flex items-center justify-between mt-2">
+              <label className="flex items-center gap-2 text-sm font-medium" style={{ color: INK }}>
+                <input type="checkbox" checked={announcementActive} onChange={(e) => setAnnouncementActive(e.target.checked)} />
+                إظهار الإعلان الآن
+              </label>
+              <button onClick={saveAnnouncement} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === "users" && (
+        <>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <input style={{ ...inputStyle, flex: 1, minWidth: 160 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالبريد الإلكتروني..." />
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-sm rounded-xl px-3 py-2" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
+              <option value="newest">الأحدث تسجيلًا</option>
+              <option value="oldest">الأقدم تسجيلًا</option>
+              <option value="classes">الأكثر فصولًا</option>
+              <option value="expiry">أقرب انتهاء اشتراك</option>
+            </select>
+            <IconBtn icon={ImageDown} label="تصدير Excel" onClick={exportUsersList} />
+            <IconBtn icon={Send} label="نقل طلاب بين حسابين" onClick={() => setShowTransfer(true)} />
+          </div>
+
+          {!profiles ? (
+            <p className="text-sm text-center py-8" style={{ color: MUTED }}>...جارٍ التحميل</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد نتائج.</p>
           ) : (
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#0F6B5C" }}><BookOpen size={20} color="#fff" /></div>
-          )}
-          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
-          <button onClick={() => logoInputRef.current?.click()} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: INK }}>تغيير الشعار</button>
-          {siteSettings.siteLogo && (
-            <button onClick={() => updateSiteSettings((s) => ({ ...s, siteLogo: null }))} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#C0392B" }}>إزالة</button>
-          )}
-        </div>
-        <input style={inputStyle} value={siteTagline} onChange={(e) => setSiteTagline(e.target.value)} placeholder="الوصف المختصر تحت اسم الموقع بالصفحة الرئيسية" />
-        <div className="flex justify-end mt-2">
-          <button onClick={saveSiteIdentity} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
-        </div>
-      </div>
-
-      <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <p className="text-sm font-semibold mb-2" style={{ color: INK }}>إعلان عام لكل المستخدمين</p>
-        <textarea style={{ ...inputStyle, minHeight: 60 }} value={announcement} onChange={(e) => setAnnouncement(e.target.value)} placeholder="مثال: صيانة مجدولة يوم الخميس، أو ميزة جديدة أُضيفت..." />
-        <div className="flex items-center justify-between mt-2">
-          <label className="flex items-center gap-2 text-sm font-medium" style={{ color: INK }}>
-            <input type="checkbox" checked={announcementActive} onChange={(e) => setAnnouncementActive(e.target.checked)} />
-            إظهار الإعلان الآن
-          </label>
-          <button onClick={saveAnnouncement} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <input style={{ ...inputStyle, flex: 1, minWidth: 160 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالبريد الإلكتروني..." />
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-sm rounded-xl px-3 py-2" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
-          <option value="newest">الأحدث تسجيلًا</option>
-          <option value="oldest">الأقدم تسجيلًا</option>
-          <option value="classes">الأكثر فصولًا</option>
-          <option value="expiry">أقرب انتهاء اشتراك</option>
-        </select>
-        <IconBtn icon={ImageDown} label="تصدير Excel" onClick={exportUsersList} />
-        <IconBtn icon={Send} label="نقل طلاب بين حسابين" onClick={() => setShowTransfer(true)} />
-      </div>
-
-      {!profiles ? (
-        <p className="text-sm text-center py-8" style={{ color: MUTED }}>...جارٍ التحميل</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد نتائج.</p>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((p) => (
-            <div key={p.id} className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: p.is_disabled ? "#FBEDEA" : "#fff" }}>
-              <div className="flex items-center gap-2 flex-wrap mb-2">
-                <div className="flex-1 min-w-[160px]">
-                  <p className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: INK }}>
-                    {p.email}
-                    {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
-                    {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
-                    {isExpired(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>اشتراك منتهي</span>}
-                    {!isExpired(p) && isExpiringSoon(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FCEFE2", color: "#C97A2B" }}>⏳ ينتهي قريبًا</span>}
-                    {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
-                  </p>
-                  <p className="text-xs" style={{ color: MUTED }}>
-                    سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))} • {usage[p.id]?.classes || 0} فصل • {usage[p.id]?.students || 0} طالب
-                  </p>
-                </div>
-                {!p.is_owner && p.id !== currentUserId && (
-                  <div className="flex gap-2 shrink-0 flex-wrap">
-                    <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
-                      {p.is_disabled ? "تفعيل" : "تعطيل"}
-                    </button>
-                    <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
-                      ترقية لمالك
-                    </button>
-                    <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
-                      حذف البيانات
+            <div className="space-y-2">
+              {filtered.map((p) => (
+                <div key={p.id} className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: p.is_disabled ? "#FBEDEA" : "#fff" }}>
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <div className="flex-1 min-w-[160px]">
+                      <p className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: INK }}>
+                        {p.email}
+                        {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
+                        {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
+                        {isExpired(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>اشتراك منتهي</span>}
+                        {!isExpired(p) && isExpiringSoon(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FCEFE2", color: "#C97A2B" }}>⏳ ينتهي قريبًا</span>}
+                        {p.id === currentUserId && <span className="text-xs" style={{ color: MUTED }}>(أنت)</span>}
+                      </p>
+                      <p className="text-xs" style={{ color: MUTED }}>
+                        سجّل بتاريخ {formatDateDisplay(p.created_at?.slice(0, 10))} • {usage[p.id]?.classes || 0} فصل • {usage[p.id]?.students || 0} طالب
+                      </p>
+                    </div>
+                    {!p.is_owner && p.id !== currentUserId && (
+                      <div className="flex gap-2 shrink-0 flex-wrap">
+                        <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
+                          {p.is_disabled ? "تفعيل" : "تعطيل"}
+                        </button>
+                        <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                          ترقية لمالك
+                        </button>
+                        <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
+                          حذف البيانات
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap pt-2" style={{ borderTop: `1px solid ${LINE}` }}>
+                    <select
+                      value={p.subscription_status || "free"}
+                      onChange={(e) => updateSubscription(p.id, { subscription_status: e.target.value })}
+                      disabled={busyId === p.id}
+                      className="text-xs rounded-lg px-2 py-1.5"
+                      style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+                    >
+                      {Object.entries(SUBSCRIPTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <input
+                      type="date"
+                      value={p.subscription_expires_at || ""}
+                      onChange={(e) => updateSubscription(p.id, { subscription_expires_at: e.target.value || null })}
+                      disabled={busyId === p.id}
+                      className="text-xs rounded-lg px-2 py-1.5"
+                      style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+                      title="تاريخ انتهاء الاشتراك"
+                    />
+                    <button disabled={busyId === p.id} onClick={() => sendPasswordReset(p.email, p.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-auto" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                      {resetSentId === p.id ? "أُرسل ✓" : "إرسال رابط إعادة تعيين كلمة المرور"}
                     </button>
                   </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2 flex-wrap pt-2" style={{ borderTop: `1px solid ${LINE}` }}>
-                <select
-                  value={p.subscription_status || "free"}
-                  onChange={(e) => updateSubscription(p.id, { subscription_status: e.target.value })}
-                  disabled={busyId === p.id}
-                  className="text-xs rounded-lg px-2 py-1.5"
-                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
-                >
-                  {Object.entries(SUBSCRIPTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-                <input
-                  type="date"
-                  value={p.subscription_expires_at || ""}
-                  onChange={(e) => updateSubscription(p.id, { subscription_expires_at: e.target.value || null })}
-                  disabled={busyId === p.id}
-                  className="text-xs rounded-lg px-2 py-1.5"
-                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
-                  title="تاريخ انتهاء الاشتراك"
-                />
-                <button disabled={busyId === p.id} onClick={() => sendPasswordReset(p.email, p.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-auto" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
-                  {resetSentId === p.id ? "أُرسل ✓" : "إرسال رابط إعادة تعيين كلمة المرور"}
-                </button>
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
       {confirmDeleteId && (
         <ConfirmDialog
