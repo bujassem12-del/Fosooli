@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -941,7 +941,6 @@ function buildReadOnlyBoardHtml(cls, dateKey) {
   .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: #F3F1E9; font-size: 12px; color: ${MUTED}; margin-bottom: 16px; }
 </style></head>
 <body>
-  <div class="badge">📄 نسخة للقراءة فقط — لا يمكن التعديل</div>
   <h1>${escapeHtml(cls.subject)}</h1>
   <p class="sub">${escapeHtml(cls.grade)} • ${escapeHtml(cls.teacher)} • ${escapeHtml(cls.yearHijri || "")} هـ / ${escapeHtml(cls.yearGregorian || "")} م</p>
   <table><thead><tr>${headHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>
@@ -983,7 +982,6 @@ function buildReadOnlyStudentHtml(cls, row, entries) {
   .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; background: #F3F1E9; font-size: 12px; color: ${MUTED}; margin-bottom: 16px; }
 </style></head>
 <body>
-  <div class="badge">📄 نسخة للقراءة فقط — خاصة بهذا الطالب فقط</div>
   <h1>${escapeHtml(row.name)}</h1>
   <p class="sub">${escapeHtml(cls.subject)} • ${escapeHtml(cls.grade)} • ${escapeHtml(cls.teacher)}</p>
   ${groups.length === 0 ? `<p style="color:${MUTED};">لا يوجد رصد بعد.</p>` : sectionsHtml}
@@ -1363,23 +1361,24 @@ function ColorSwatches({ value, onChange, size = 8 }) {
 // ---------- option editor (per-option color) ----------
 
 function OptionsEditor({ options, onChange }) {
-  const update = (id, patch) => onChange(options.map((o) => (o.id === id ? { ...o, ...patch } : o)));
-  const remove = (id) => onChange(options.filter((o) => o.id !== id));
-  const add = () => onChange([...options, { id: uid(), label: "", color: COLORS[0].hex }]);
+  const safeOptions = options || [];
+  const update = (id, patch) => onChange(safeOptions.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+  const remove = (id) => onChange(safeOptions.filter((o) => o.id !== id));
+  const add = () => onChange([...safeOptions, { id: uid(), label: "", color: COLORS[0].hex }]);
   const [showBulk, setShowBulk] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const addBulk = () => {
     const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
     const added = lines.map((label, i) => ({ id: uid(), label, color: COLORS[i % COLORS.length].hex }));
-    onChange([...options, ...added]);
+    onChange([...safeOptions, ...added]);
     setBulkText("");
     setShowBulk(false);
   };
   return (
     <div>
       <div className="space-y-2">
-        {options.map((o) => (
+        {safeOptions.map((o) => (
           <div key={o.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
             <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: o.color }} />
             <input
@@ -1475,7 +1474,7 @@ function ColumnDraftForm({ draft, onChange, onRemove, removable }) {
       </Field>
       {draft.type === "dropdown" && (
         <Field label="خيارات القائمة (لكل خيار لونه الخاص)">
-          <OptionsEditor options={draft.options} onChange={(options) => set({ options })} />
+          <OptionsEditor options={draft.options || []} onChange={(options) => set({ options })} />
         </Field>
       )}
       <Field label="لون العمود">
@@ -1673,7 +1672,7 @@ function RowDraftForm({ draft, onChange, onRemove, removable }) {
       </Field>
       {draft.type === "dropdown" && (
         <Field label="خيارات القائمة">
-          <OptionsEditor options={draft.options} onChange={(options) => set({ options })} />
+          <OptionsEditor options={draft.options || []} onChange={(options) => set({ options })} />
         </Field>
       )}
       <Field label="لون الصف">
@@ -4831,7 +4830,7 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
       {!hasData ? (
         <p className="text-sm" style={{ color: MUTED }}>اضغط لإنشاء جدولك الدراسي الأسبوعي أو رفع صورته</p>
       ) : image ? (
-        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 90, objectFit: "contain", background: "#F3F1E9" }} />
+        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 55, objectFit: "contain", background: "#F3F1E9" }} />
       ) : (
         <table className="w-full border-collapse" style={{ fontSize: 14 }}>
           <thead>
@@ -6764,6 +6763,35 @@ function AuthScreen({ siteSettings }) {
 }
 
 // ---------- App root ----------
+
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error("حدث خطأ غير متوقع في الواجهة:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4" style={{ background: PAPER, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+            <p className="text-sm font-bold mb-2" style={{ color: "#C0392B" }}>حدث خطأ غير متوقع</p>
+            <p className="text-xs mb-4" style={{ color: MUTED }}>حاول إعادة تحميل الصفحة. لو تكرر الخطأ، أخبرنا بالخطوة اللي سويتها بالضبط قبل ظهوره.</p>
+            <button onClick={() => window.location.reload()} className="px-5 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+              إعادة تحميل الصفحة
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   useFonts();
