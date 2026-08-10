@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -303,7 +303,7 @@ function buildTableCanvas({ title, subtitle, headers, rows, blankTemplate = fals
 // colored section per category (behavior, homework, participation, notes,
 // exams...) each with its own mini date/time/value table — legible enough
 // to print and hand to a parent.
-function buildReportCanvas({ title, subtitle, groups }) {
+function buildReportCanvas({ title, subtitle, groups, photoImageElement }) {
   const pad = 24, titleH = 70, summaryH = 34, sectionH = 34, colHeaderH = 26, lineH = 17, cellPadV = 12, sectionGap = 18;
   const colWidths = [180, 90, 300];
   const tableW = colWidths.reduce((a, b) => a + b, 0);
@@ -326,6 +326,16 @@ function buildReportCanvas({ title, subtitle, groups }) {
   ctx.direction = "rtl";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  if (photoImageElement) {
+    const r = 26;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(width - pad - r, pad + r, r, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(photoImageElement, width - pad - r * 2, pad, r * 2, r * 2);
+    ctx.restore();
+  }
   ctx.fillStyle = INK;
   ctx.font = "bold 20px Tahoma, Arial";
   ctx.fillText(title, width / 2, pad + 14);
@@ -851,19 +861,23 @@ function jobToTable(job) {
   return { title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `تقرير-${row.name}` };
 }
 
-function jobToCanvas(job) {
+async function jobToCanvas(job) {
   if (job.type === "report") {
     const { cls, row, entries } = job;
     const groups = groupEntries(entries);
-    return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups });
+    let photoImageElement = null;
+    if (row.photo) {
+      try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
+    }
+    return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement });
   }
   const table = jobToTable(job);
   return buildTableCanvas(table);
 }
 
-function exportPng(job) {
+async function exportPng(job) {
   const filename = jobToTable(job).filename;
-  const { canvas } = jobToCanvas(job);
+  const { canvas } = await jobToCanvas(job);
   canvas.toBlob((blob) => downloadBlob(blob, `${filename}.png`));
 }
 
@@ -871,7 +885,7 @@ function exportPng(job) {
 // it directly via the device share sheet when available, otherwise downloads it.
 async function exportPdfShare(job) {
   const filename = jobToTable(job).filename;
-  const { canvas, logicalWidth, logicalHeight } = jobToCanvas(job);
+  const { canvas, logicalWidth, logicalHeight } = await jobToCanvas(job);
   const dataUrl = canvas.toDataURL("image/jpeg", 0.97);
   const blob = buildPdfFromJpegDataUrl(dataUrl, canvas.width, canvas.height, logicalWidth, logicalHeight);
   await shareOrDownloadFile(blob, `${filename}.pdf`, "application/pdf");
@@ -1238,20 +1252,27 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
     return () => clearTimeout(t);
   }, []);
 
-  const onPointerDown = (e) => {
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!dragRef.current.dragging) return;
+      setPos({
+        x: dragRef.current.startPos.x + (e.clientX - dragRef.current.startX),
+        y: dragRef.current.startPos.y + (e.clientY - dragRef.current.startY),
+      });
+    };
+    const onUp = () => { dragRef.current.dragging = false; };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  const onHeaderPointerDown = (e) => {
     dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, startPos: pos };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e) => {
-    if (!dragRef.current.dragging) return;
-    setPos({
-      x: dragRef.current.startPos.x + (e.clientX - dragRef.current.startX),
-      y: dragRef.current.startPos.y + (e.clientY - dragRef.current.startY),
-    });
-  };
-  const onPointerUp = (e) => {
-    dragRef.current.dragging = false;
-    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
   };
 
   return (
@@ -1267,16 +1288,18 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
         <div
           className="flex items-center justify-between px-5 py-4 sticky top-0"
           style={{ background: PAPER, borderBottom: `1px solid ${LINE}`, cursor: "grab", touchAction: "none", userSelect: "none" }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerDown={onHeaderPointerDown}
         >
           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: INK }}>
             <Move size={14} color={MUTED} />
             {title}
           </h3>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform">
+          <button
+            onClick={onClose}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform shrink-0"
+            style={{ touchAction: "auto" }}
+          >
             <X size={18} color={MUTED} />
           </button>
         </div>
@@ -1608,6 +1631,15 @@ function emptyRowDraft() {
 
 function RowDraftForm({ draft, onChange, onRemove, removable }) {
   const set = (patch) => onChange({ ...draft, ...patch });
+  const photoInputRef = useRef(null);
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => set({ photo: reader.result });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
   return (
     <div className="rounded-xl p-3 mb-3" style={{ border: `1px solid ${LINE}`, background: "#FCFBF7" }}>
       {removable && (
@@ -1615,6 +1647,22 @@ function RowDraftForm({ draft, onChange, onRemove, removable }) {
           <button onClick={onRemove} className="p-1 rounded hover:bg-black/5"><X size={14} color={MUTED} /></button>
         </div>
       )}
+      <Field label="صورة الطالب (اختياري)" hint="تظهر في التقرير، وتظهر بالشهادات عند تفعيل خيار تضمين الصورة.">
+        <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
+        <div className="flex items-center gap-2">
+          {draft.photo ? (
+            <img src={draft.photo} alt="صورة الطالب" className="w-12 h-12 rounded-full object-cover dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+          ) : (
+            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: "#F3F1E9" }}><User size={20} color={MUTED} /></div>
+          )}
+          <button type="button" onClick={() => photoInputRef.current?.click()} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: INK }}>
+            {draft.photo ? "تغيير الصورة" : "رفع صورة"}
+          </button>
+          {draft.photo && (
+            <button type="button" onClick={() => set({ photo: null })} className="text-xs font-semibold" style={{ color: "#C0392B" }}>إزالة</button>
+          )}
+        </div>
+      </Field>
       <Field label="اسم الصف">
         <input style={inputStyle} value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="مثال: اسم الطالب" />
       </Field>
@@ -4754,7 +4802,7 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
       {!hasData ? (
         <p className="text-sm" style={{ color: MUTED }}>اضغط لإنشاء جدولك الدراسي الأسبوعي أو رفع صورته</p>
       ) : image ? (
-        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 160, objectFit: "contain", background: "#F3F1E9" }} />
+        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 90, objectFit: "contain", background: "#F3F1E9" }} />
       ) : (
         <table className="w-full border-collapse" style={{ fontSize: 14 }}>
           <thead>
@@ -4794,7 +4842,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
   const [showMedicalBanner, setShowMedicalBanner] = useState(true);
   const [showCertificate, setShowCertificate] = useState(false);
   const [showBehaviorBanner, setShowBehaviorBanner] = useState(true);
-  const [sharingStudent, setSharingStudent] = useState(false);
+  const [shareStudentError, setShareStudentError] = useState("");
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [showRemedialPlan, setShowRemedialPlan] = useState(false);
@@ -4806,14 +4854,25 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
     setNoteText("");
   };
 
-  const shareStudentReadOnly = async () => {
-    setSharingStudent(true);
+  const shareStudentReadOnly = () => {
+    setShareStudentError("");
+    const html = buildReadOnlyStudentHtml(cls, row, entries);
+    const filename = `تقرير-${row.name}.html`;
+    const blob = new Blob([html], { type: "text/html" });
     try {
-      const html = buildReadOnlyStudentHtml(cls, row, entries);
-      const blob = new Blob([html], { type: "text/html" });
-      await shareOrDownloadFile(blob, `تقرير-${row.name}.html`, "text/html");
-    } finally {
-      setSharingStudent(false);
+      const file = new File([blob], filename, { type: "text/html" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: filename }).catch(() => {});
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    const win = window.open("", "_blank");
+    try {
+      if (win) { win.document.write(html); win.document.close(); }
+      else downloadBlob(blob, filename);
+    } catch (e) {
+      if (win) win.close();
+      setShareStudentError("تعذّرت المشاركة، حاول مرة أخرى.");
     }
   };
 
@@ -4826,9 +4885,13 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
   return (
     <Modal title={`تقرير الطالب — ${row.name}`} onClose={onClose} lg>
       <div className="rounded-2xl p-4 mb-4 flex flex-wrap items-center gap-4" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
-        <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0" style={{ background: row.color, color: "#fff" }}>
-          {(row.name || "؟").trim().charAt(0)}
-        </div>
+        {row.photo ? (
+          <img src={row.photo} alt={row.name} className="w-12 h-12 rounded-full object-cover shrink-0 dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+        ) : (
+          <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0" style={{ background: row.color, color: "#fff" }}>
+            {(row.name || "؟").trim().charAt(0)}
+          </div>
+        )}
         <div className="flex-1" style={{ minWidth: 160 }}>
           <p className="font-bold text-base" style={{ color: INK }}>{row.name}</p>
           <p className="text-xs" style={{ color: MUTED }}>{cls.subject} • {cls.grade} • {cls.teacher}</p>
@@ -4913,7 +4976,8 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
         <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>المخرجات</span>
         <IconBtn icon={Printer} label="طباعة" onClick={() => onPrint()} />
         <IconBtn icon={Award} label="شهادة تقدير" onClick={() => setShowCertificate(true)} />
-        <IconBtn icon={Share2} label={sharingStudent ? "جارٍ التجهيز..." : "مشاركة تقرير هذا الطالب فقط"} onClick={shareStudentReadOnly} />
+        <IconBtn icon={Share2} label="مشاركة تقرير هذا الطالب فقط" onClick={shareStudentReadOnly} />
+        {shareStudentError && <p className="text-xs w-full" style={{ color: "#C0392B" }}>{shareStudentError}</p>}
         {entries.length > 0 && (
           <IconBtn icon={Trash2} label="حذف كل التقرير" tone="danger" onClick={() => setConfirmDeleteAll(true)} />
         )}
