@@ -4910,6 +4910,17 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
     return col?.behaviorFlag && g.items.length >= (col.behaviorThreshold || 3);
   });
 
+  const toolCards = [
+    { key: "edit", icon: Pencil, label: editing ? "إنهاء التعديل" : "تعديل", color: "#3B4C8C", onClick: () => setEditing((s) => !s) },
+    { key: "restore", icon: RotateCcw, label: "استعادة آخر حذف", color: "#0F6B5C", onClick: onRestoreLatest },
+    { key: "trash", icon: FolderOpen, label: "سجل المحذوفات", color: "#6B7A3A", onClick: () => setShowTrash(true) },
+    { key: "remedial", icon: Activity, label: "خطة علاجية", color: "#7A4E9E", onClick: () => setShowRemedialPlan(true) },
+    { key: "print", icon: Printer, label: "طباعة", color: "#2E7DA6", onClick: () => onPrint() },
+    { key: "certificate", icon: Award, label: "شهادة تقدير", color: "#C97A2B", onClick: () => setShowCertificate(true) },
+    { key: "share", icon: Share2, label: "مشاركة التقرير", color: "#5B6472", onClick: shareStudentReadOnly },
+    ...(entries.length > 0 ? [{ key: "deleteAll", icon: Trash2, label: "حذف كل التقرير", color: "#C0392B", onClick: () => setConfirmDeleteAll(true) }] : []),
+  ];
+
   return (
     <Modal title={`تقرير الطالب — ${row.name}`} onClose={onClose} lg>
       <div className="rounded-2xl p-4 mb-3" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
@@ -4928,37 +4939,42 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
           <p className="text-xs font-semibold shrink-0" style={{ color: MUTED }}>{entries.length} رصد إجمالي عبر {groups.length} تصنيف</p>
         </div>
 
-        {(groups.length > 0 || (row.medicalNote && row.medicalNote.trim())) && (
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {row.medicalNote && row.medicalNote.trim() && (
-              <div className="rounded-2xl p-3 text-center shrink-0 relative" style={{ background: "#FBEDEA", border: "2px solid #C0392B", minWidth: 92, maxWidth: 170 }}>
-                <button
-                  onClick={() => setShowMedicalBanner((s) => !s)}
-                  title={showMedicalBanner ? "إخفاء التفاصيل" : "إظهار التفاصيل"}
-                  className="absolute top-1.5 left-1.5 p-1 rounded-full hover:bg-black/10"
-                >
-                  {showMedicalBanner ? <Eye size={12} color="#9A3B2E" /> : <EyeOff size={12} color="#9A3B2E" />}
-                </button>
-                <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: "#C0392B" }}>
-                  <AlertTriangle size={16} color="#fff" strokeWidth={2.5} />
-                </div>
-                <p className="text-xs font-extrabold mb-1" style={{ color: "#9A3B2E" }}>تنبيه خاص</p>
-                {showMedicalBanner && (
-                  <p className="text-[11px] leading-snug" style={{ color: "#7A2E22", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{row.medicalNote}</p>
-                )}
-              </div>
+        {row.medicalNote && row.medicalNote.trim() && (
+          <div className="rounded-xl p-3 mb-3 relative" style={{ background: "#FBEDEA", border: "2px solid #C0392B" }}>
+            <button
+              onClick={() => setShowMedicalBanner((s) => !s)}
+              title={showMedicalBanner ? "إخفاء التفاصيل" : "إظهار التفاصيل"}
+              className="absolute top-1.5 left-1.5 p-1 rounded-full hover:bg-black/10"
+            >
+              {showMedicalBanner ? <Eye size={12} color="#9A3B2E" /> : <EyeOff size={12} color="#9A3B2E" />}
+            </button>
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} color="#9A3B2E" strokeWidth={2.5} />
+              <p className="text-xs font-extrabold" style={{ color: "#9A3B2E" }}>تنبيه خاص</p>
+            </div>
+            {showMedicalBanner && (
+              <p className="text-xs leading-snug mt-1.5" style={{ color: "#7A2E22", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{row.medicalNote}</p>
             )}
-            {groups.map((g) => (
-              <div key={g.colId} className="rounded-2xl p-3 text-center shrink-0" style={{ background: `${g.colColor}14`, minWidth: 92 }}>
-                <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: g.colColor }}>
-                  <Check size={16} color="#fff" strokeWidth={3} />
-                </div>
-                <p className="text-2xl font-extrabold" style={{ color: INK }}>{g.items.length}</p>
-                <p className="text-xs" style={{ color: MUTED }}>{g.colName}</p>
-              </div>
-            ))}
           </div>
         )}
+
+        <p className="text-xs font-bold mb-2" style={{ color: MUTED }}>أدوات التقرير</p>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {toolCards.map((t) => (
+            <button
+              key={t.key}
+              onClick={t.onClick}
+              className="rounded-2xl p-3 text-center shrink-0 hover:opacity-90 active:scale-95 transition-all"
+              style={{ background: `${t.color}14`, minWidth: 88 }}
+            >
+              <div className="w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: t.color }}>
+                <t.icon size={16} color="#fff" strokeWidth={2.5} />
+              </div>
+              <p className="text-xs font-semibold" style={{ color: INK }}>{t.label}</p>
+            </button>
+          ))}
+        </div>
+        {shareStudentError && <p className="text-xs mt-2" style={{ color: "#C0392B" }}>{shareStudentError}</p>}
       </div>
 
       {flaggedGroups.map((g) => (
@@ -4986,31 +5002,6 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
           <EyeOff size={13} /> تنبيهات السلوك مخفية — إظهار
         </button>
       )}
-
-      <div className="rounded-xl p-2.5 mb-2 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-        <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات التقرير</span>
-        <IconBtn icon={Pencil} label={editing ? "إنهاء التعديل" : "تعديل"} onClick={() => setEditing((s) => !s)} />
-        <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${LINE}` }}>
-          <button onClick={onRestoreLatest} title="استعادة آخر محذوف من هذا التقرير" className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:opacity-80" style={{ color: INK }}>
-            <RotateCcw size={15} /> استعادة
-          </button>
-          <button onClick={() => setShowTrash(true)} title="سجل المحذوفات من هذا التقرير" className="px-2.5 py-2 hover:bg-black/5" style={{ borderInlineStart: `1px solid ${LINE}` }}>
-            <FolderOpen size={15} color={MUTED} />
-          </button>
-        </div>
-        <IconBtn icon={Activity} label="خطة علاجية" onClick={() => setShowRemedialPlan(true)} />
-        {entries.length > 0 && (
-          <IconBtn icon={Trash2} label="حذف كل التقرير" tone="danger" onClick={() => setConfirmDeleteAll(true)} />
-        )}
-      </div>
-
-      <div className="rounded-xl p-2.5 mb-4 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
-        <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>المخرجات</span>
-        <IconBtn icon={Printer} label="طباعة" onClick={() => onPrint()} />
-        <IconBtn icon={Award} label="شهادة تقدير" onClick={() => setShowCertificate(true)} />
-        <IconBtn icon={Share2} label="مشاركة تقرير هذا الطالب فقط" onClick={shareStudentReadOnly} />
-        {shareStudentError && <p className="text-xs w-full" style={{ color: "#C0392B" }}>{shareStudentError}</p>}
-      </div>
 
       {groups.length === 0 ? (
         <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد رصد لهذا الطالب بعد.</p>
@@ -5154,7 +5145,7 @@ function BoardTable({ cls, dateKey }) {
               <td className="p-1 text-center font-bold" style={{ border: `1px solid ${LINE}`, color: status === "absent" ? "#C0392B" : "#0F6B5C" }}>{status === "absent" ? "غائب" : "حاضر"}</td>
               {cls.columns.map((col) => {
                 const val = dateKey ? valueOnDate(cls, row.id, col.id, dateKey) : (cls.cells[`${row.id}:${col.id}`] || lastReportedValue(cls, row.id, col.id));
-                return <td key={col.id} className="p-1 text-center" style={{ border: `1px solid ${LINE}` }}>{val || "—"}</td>;
+                return <td key={col.id} className="p-1 text-center" style={{ border: `1px solid ${LINE}` }}>{val || ""}</td>;
               })}
             </tr>
           );
