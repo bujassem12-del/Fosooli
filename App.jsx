@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -1758,6 +1758,21 @@ function RowDraftForm({ draft, onChange, onRemove, removable }) {
   );
 }
 
+function parsePastedNames(text) {
+  return text
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return "";
+      if (!trimmed.includes("\t")) return trimmed;
+      // سطر متعدد الأعمدة (لصق من جدول نور مثلًا) — نلقط الخانة اللي تشبه اسمًا فعليًا
+      const parts = trimmed.split("\t").map((p) => p.trim()).filter(Boolean);
+      const nameLike = parts.find((p) => looksLikeName(p));
+      return nameLike || parts[0] || "";
+    })
+    .filter(Boolean);
+}
+
 function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNumbers, onToggleShowRowNumbers }) {
   const isEdit = !!initial;
   const [single, setSingle] = useState(() => (initial ? { ...initial } : null));
@@ -1771,10 +1786,11 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
   const [importFileName, setImportFileName] = useState("");
   const [importError, setImportError] = useState("");
   const importInputRef = useRef(null);
+  const [showNoorEmbed, setShowNoorEmbed] = useState(false);
 
   const validSingle = single && single.name.trim();
   const validDrafts = drafts.filter((d) => d.name.trim());
-  const bulkNames = bulkText.split("\n").map((s) => s.trim()).filter(Boolean);
+  const bulkNames = parsePastedNames(bulkText);
 
   const handleImportFile = (e) => {
     const file = e.target.files?.[0];
@@ -1816,7 +1832,7 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
             </button>
             <button onClick={() => setTab("bulk")} className="px-3 py-1.5 rounded-full text-xs font-semibold"
               style={{ background: tab === "bulk" ? INK : "transparent", color: tab === "bulk" ? "#fff" : MUTED, border: `1px solid ${tab === "bulk" ? INK : LINE}` }}>
-              إضافة دفعة واحدة
+              من نور
             </button>
             <button onClick={() => setTab("import")} className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1"
               style={{ background: tab === "import" ? INK : "transparent", color: tab === "import" ? "#fff" : MUTED, border: `1px solid ${tab === "import" ? INK : LINE}` }}>
@@ -1841,6 +1857,14 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
             </>
           ) : tab === "bulk" ? (
             <>
+              <button
+                onClick={() => setShowNoorEmbed(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-3 transition-all hover:brightness-110 active:scale-95 magic-shimmer"
+                style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)", backgroundSize: "220% 220%" }}
+              >
+                <Sparkles size={16} /> استيراد من نور
+              </button>
+              <p className="text-xs text-center mb-3" style={{ color: MUTED }}>أو ألصق الأسماء يدويًا بالمربع تحت</p>
               <Field label="أسماء الصفوف (كل اسم في سطر)">
                 <textarea
                   style={{ ...inputStyle, minHeight: "140px", resize: "vertical" }}
@@ -1927,6 +1951,15 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
           >تم</button>
         </div>
       </div>
+      {showNoorEmbed && (
+        <NoorEmbedModal
+          onClose={() => setShowNoorEmbed(false)}
+          onImportNames={(names) => {
+            setBulkText((prev) => (prev.trim() ? `${prev}\n${names.join("\n")}` : names.join("\n")));
+            setShowNoorEmbed(false);
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -2947,6 +2980,16 @@ function NoorGradeExportModal({ cls, onClose }) {
   const gradeColumns = cls.columns.filter((c) => c.type === "counter" || c.type === "dropdown");
   const [colId, setColId] = useState(gradeColumns[0]?.id || "");
   const col = cls.columns.find((c) => c.id === colId);
+  const [showFrame, setShowFrame] = useState(false);
+  const [loadState, setLoadState] = useState("loading");
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (!showFrame) return;
+    setLoadState("loading");
+    timerRef.current = setTimeout(() => setLoadState((s) => (s === "loading" ? "blocked" : s)), 4000);
+    return () => clearTimeout(timerRef.current);
+  }, [showFrame]);
 
   const exportForNoor = () => {
     if (!col) return;
@@ -2959,14 +3002,15 @@ function NoorGradeExportModal({ cls, onClose }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "درجات");
     XLSX.writeFile(wb, `درجات-${col.name}-${cls.subject || "الفصل"}.xlsx`);
+    setShowFrame(true);
   };
 
   return (
-    <Modal title="تصدير درجات لنور" onClose={onClose} accent="magic">
+    <Modal title="تصدير درجات لنور" onClose={onClose} accent="magic" xl={showFrame}>
       <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
         <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
         <p className="text-xs" style={{ color: "#8A4A1E" }}>
-          بصراحة: ما نقدر نرفع الدرجات لنور تلقائيًا (نور ما يوفر هذي الإمكانية بشكل آمن). هذي الأداة تجهّز لك ملف Excel مرتب (اسم الطالب + الدرجة) تقدر تنسخه أو ترفعه بسهولة من داخل نور نفسه يدويًا.
+          بصراحة: ما نقدر نرصد الدرجات بنور تلقائيًا (نور ما يوفر هذي الإمكانية بشكل آمن). الزر ينزّل لك ملف الدرجات، وبعدين يفتح لك نور تحت عشان ترفعه بنفسك بسهولة.
         </p>
       </div>
       {gradeColumns.length === 0 ? (
@@ -2979,10 +3023,100 @@ function NoorGradeExportModal({ cls, onClose }) {
             </select>
           </Field>
           <button onClick={exportForNoor} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
-            <ImageDown size={16} /> تنزيل ملف الدرجات
+            <ImageDown size={16} /> تنزيل الملف وفتح نور
           </button>
         </>
       )}
+
+      {showFrame && (
+        <div className="mt-4">
+          <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: loadState === "blocked" ? "#FBEDEA" : "#EAF3F0", border: `1px solid ${loadState === "blocked" ? "#F5DCD5" : "#C9E2DB"}` }}>
+            <Info size={15} color={loadState === "blocked" ? "#9A3B2E" : "#0F6B5C"} className="shrink-0 mt-0.5" />
+            <p className="text-xs" style={{ color: loadState === "blocked" ? "#9A3B2E" : "#0F6B5C" }}>
+              {loadState === "blocked"
+                ? "الصفحة فاضية لأن نور يمنع فتحه جوّا مواقع ثانية. اضغط \"فتح بنافذة مستقلة\" وارفع الملف اللي نزل عندك بنفسك."
+                : "جارٍ محاولة فتح نور..."}
+            </p>
+          </div>
+          <button
+            onClick={() => window.open("https://noor.moe.gov.sa/", "_blank")}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold mb-3"
+            style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+          >
+            <ExternalLink size={15} color="#0F6B5C" /> فتح نور بنافذة مستقلة
+          </button>
+          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, height: "45vh", background: "#F8F7F2" }}>
+            <iframe src="https://noor.moe.gov.sa/" title="نور" className="w-full h-full" onLoad={() => setLoadState("loaded")} referrerPolicy="no-referrer" />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function NoorEmbedModal({ onImportNames, onClose }) {
+  const [loadState, setLoadState] = useState("loading"); // loading | loaded | blocked
+  const [pasteText, setPasteText] = useState("");
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => setLoadState((s) => (s === "loading" ? "blocked" : s)), 4000);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  const pastedNames = parsePastedNames(pasteText);
+
+  return (
+    <Modal title="استيراد من نور" onClose={onClose} accent="magic" xl>
+      <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: loadState === "blocked" ? "#FBEDEA" : "#EAF3F0", border: `1px solid ${loadState === "blocked" ? "#F5DCD5" : "#C9E2DB"}` }}>
+        <Info size={15} color={loadState === "blocked" ? "#9A3B2E" : "#0F6B5C"} className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: loadState === "blocked" ? "#9A3B2E" : "#0F6B5C" }}>
+          {loadState === "blocked"
+            ? "الصفحة أدناه فاضية غالبًا لأن نور يمنع صراحة فتحه جوّا مواقع ثانية (إجراء أمني من طرفهم، مو خلل بموقعنا). جرّب \"فتح بنافذة مستقلة\"، وبعد ما تسجّل دخولك وتشوف الأسماء، انسخها وألصقها بالمربع تحت."
+            : "جارٍ محاولة فتح نور بالأسفل... لو ما ظهر خلال ثوانٍ فمعناه نور يمنعه، وبيتحول التنبيه تلقائيًا."}
+        </p>
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => window.open("https://noor.moe.gov.sa/", "_blank")}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold"
+          style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+        >
+          <ExternalLink size={15} color="#0F6B5C" /> فتح نور بنافذة مستقلة
+        </button>
+      </div>
+
+      <div className="rounded-xl overflow-hidden mb-4" style={{ border: `1px solid ${LINE}`, height: "50vh", background: "#F8F7F2" }}>
+        <iframe
+          src="https://noor.moe.gov.sa/"
+          title="نور"
+          className="w-full h-full"
+          onLoad={() => setLoadState("loaded")}
+          referrerPolicy="no-referrer"
+        />
+      </div>
+
+      <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+        <p className="text-xs font-bold mb-2" style={{ color: INK }}>الصق أسماء الطلاب هنا بعد نسخها من نور</p>
+        <textarea
+          style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }}
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          placeholder={"محمد أحمد\nسارة خالد"}
+        />
+        {pastedNames.length > 0 && (
+          <p className="text-xs mt-1.5" style={{ color: "#0F6B5C" }}>{pastedNames.length} اسم جاهز للاستيراد</p>
+        )}
+        <button
+          disabled={pastedNames.length === 0}
+          onClick={() => onImportNames(pastedNames)}
+          className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+          style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}
+        >
+          استيراد {pastedNames.length > 0 ? `(${pastedNames.length})` : ""}
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -3076,7 +3210,7 @@ function DropdownCell({ column, value, onChange }) {
 }
 
 function Cell({ column, value, onChange }) {
-  if (column.type === "counter") return <CounterCell value={value} onChange={onChange} />;
+  if (column.type === "counter") return <CounterCell value={value} onChange={onChange} color={column.color} />;
   if (column.type === "dropdown") return <DropdownCell column={column} value={value} onChange={onChange} />;
   return <TextCell value={value} onChange={onChange} />;
 }
@@ -3085,7 +3219,7 @@ function Cell({ column, value, onChange }) {
 // number, and only log ONE report entry once the value settles (debounced)
 // or when the input loses focus — so reaching "4" via four clicks (or typing
 // "5" directly) logs a single record, not one per click.
-function CounterCell({ value, onChange }) {
+function CounterCell({ value, onChange, color = "#3B4C8C" }) {
   const [n, setN] = useState(Number(value) || 0);
   useEffect(() => { setN(Number(value) || 0); }, [value]);
   const timerRef = useRef(null);
@@ -3107,17 +3241,23 @@ function CounterCell({ value, onChange }) {
 
   return (
     <div className="flex items-center justify-center gap-1.5">
-      <button onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
-      <input
-        type="number"
-        value={n}
-        onChange={(e) => { const v = Number(e.target.value) || 0; setN(v); scheduleCommit(v); }}
-        onBlur={() => commitNow(n)}
-        onKeyDown={(e) => { if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); } }}
-        className="w-9 text-center font-semibold text-sm bg-transparent"
-        style={{ outline: "none", color: INK }}
-      />
-      <button onClick={() => bump(1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5" style={{ border: `1px solid ${LINE}` }}><Plus size={12} /></button>
+      <button onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
+      <div className="relative flex items-center justify-center shrink-0" style={{ width: 34, height: 34 }}>
+        <div
+          className="absolute inset-0 rounded-full flex items-center justify-center transition-colors"
+          style={{ background: n > 0 ? color : "#EFEDE3", boxShadow: n > 0 ? `0 2px 6px ${color}55` : "none" }}
+        />
+        <input
+          type="number"
+          value={n}
+          onChange={(e) => { const v = Number(e.target.value) || 0; setN(v); scheduleCommit(v); }}
+          onBlur={() => commitNow(n)}
+          onKeyDown={(e) => { if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); } }}
+          className="relative w-full text-center font-bold text-sm bg-transparent"
+          style={{ outline: "none", color: n > 0 ? "#fff" : MUTED }}
+        />
+      </div>
+      <button onClick={() => bump(1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Plus size={12} /></button>
     </div>
   );
 }
@@ -4934,44 +5074,14 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
   return (
     <button
       onClick={onOpen}
-      className="text-right rounded-2xl p-3 mb-3 hover:opacity-90 transition-opacity block"
+      className="flex items-center gap-2.5 text-right rounded-xl px-3 py-2 mb-3 hover:opacity-90 transition-opacity"
       style={{ background: "#fff", border: `1px solid ${LINE}`, width: "100%" }}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <CalendarRange size={16} color="#0F6B5C" />
-        <span className="font-bold text-sm" style={{ color: INK }}>الجدول الدراسي</span>
-      </div>
-      {!hasData ? (
-        <p className="text-sm" style={{ color: MUTED }}>اضغط لإنشاء جدولك الدراسي الأسبوعي أو رفع صورته</p>
-      ) : image ? (
-        <img src={image} alt="الجدول الدراسي" className="w-full rounded-lg dark-mode-img-fix" style={{ maxHeight: 36, objectFit: "contain", background: "#F3F1E9" }} />
-      ) : (
-        <table className="w-full border-collapse" style={{ fontSize: 14 }}>
-          <thead>
-            <tr>
-              <th style={{ padding: 8, border: `1px solid ${LINE}`, background: "#F3F1E9" }}></th>
-              {WEEK_PERIODS.map((p) => (
-                <th key={p} style={{ padding: 8, border: `1px solid ${LINE}`, background: "#F3F1E9", color: MUTED }}>{p}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {WEEK_DAYS.map((d) => (
-              <tr key={d}>
-                <td style={{ padding: 8, border: `1px solid ${LINE}`, textAlign: "center", color: MUTED, fontWeight: 700 }}>{d.slice(2, 4)}</td>
-                {WEEK_PERIODS.map((p) => {
-                  const val = schedule?.[scheduleKey(p, d)] || "";
-                  return (
-                    <td key={p} style={{ padding: 8, border: `1px solid ${LINE}`, textAlign: "center", color: INK, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {val}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <CalendarRange size={15} color="#0F6B5C" className="shrink-0" />
+      {image && <img src={image} alt="" className="w-6 h-6 rounded object-cover shrink-0 dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />}
+      <span className="font-bold text-xs flex-1" style={{ color: INK }}>الجدول الدراسي</span>
+      <span className="text-xs" style={{ color: MUTED }}>{hasData ? "عرض" : "إضافة"}</span>
+      <ChevronLeft size={14} color={MUTED} className="shrink-0" />
     </button>
   );
 }
