@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -1052,6 +1052,22 @@ function PrintStyles() {
         100% { opacity: 1; transform: scale(1) translateY(0); }
       }
       .celebrate-in { animation: celebrateIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+      .magic-shimmer { background-size: 220% 220% !important; animation: magicShimmer 3.5s ease infinite; }
+      @keyframes magicShimmer {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      .data-row > td { transition: background-color 0.12s; }
+      .data-row:hover > td { background-color: #F3F1EA !important; }
+      @keyframes drift1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-3%, 4%) scale(1.06); } }
+      @keyframes drift2 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(4%, -3%) scale(1.05); } }
+      @keyframes drift3 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-4%, -4%) scale(0.94); } }
+      @keyframes drift4 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(3%, 3%) scale(1.08); } }
+      .bg-blob-1 { animation: drift1 22s ease-in-out infinite; }
+      .bg-blob-2 { animation: drift2 26s ease-in-out infinite; }
+      .bg-blob-3 { animation: drift3 19s ease-in-out infinite; }
+      .bg-blob-4 { animation: drift4 24s ease-in-out infinite; }
       input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
       input[type="number"]:focus, input[type="date"]:focus, input[type="time"]:focus,
       input[type="search"]:not([type="color"]):focus, textarea:focus, select:focus {
@@ -1092,19 +1108,21 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
   );
 }
 
-function IconBtn({ icon: Icon, label, onClick, tone = "default" }) {
+function IconBtn({ icon: Icon, label, onClick, tone = "default", magic = false }) {
   const tones = {
     default: { bg: "#fff", fg: INK, border: LINE, shadow: "0 1px 2px rgba(35,38,34,0.05)" },
     danger: { bg: "#FBEDEA", fg: "#9A3B2E", border: "#F5DCD5", shadow: "0 1px 2px rgba(154,59,46,0.06)" },
     primary: { bg: "linear-gradient(135deg, #12806E, #0F6B5C)", fg: "#fff", border: "transparent", shadow: "0 2px 8px rgba(15,107,92,0.28)" },
+    magic: { bg: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)", fg: "#fff", border: "transparent", shadow: "0 3px 12px rgba(124,92,224,0.38)" },
   };
-  const t = tones[tone];
+  const t = tones[magic ? "magic" : tone];
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all hover:brightness-105 hover:-translate-y-px active:scale-95 active:translate-y-0 whitespace-nowrap"
+      className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all hover:brightness-110 hover:-translate-y-px active:scale-95 active:translate-y-0 whitespace-nowrap ${magic ? "magic-shimmer" : ""}`}
       style={{ background: t.bg, color: t.fg, border: `1px solid ${t.border}`, boxShadow: t.shadow }}
     >
+      {magic && <Sparkles size={12} strokeWidth={2.5} className="shrink-0" />}
       <Icon size={14} strokeWidth={2.25} />
       <span>{label}</span>
     </button>
@@ -6384,7 +6402,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
-          <IconBtn icon={FileText} label="تقرير" onClick={() => setShowReportPicker(true)} />
+          <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
@@ -6464,6 +6482,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                     style={{
                       background: colorLight(col.color),
                       border: `1px solid ${LINE}`,
+                      borderBottom: `3px solid ${col.color}`,
                       color: INK,
                       minWidth: col.pinned ? PIN_W : "150px",
                       width: col.pinned ? PIN_W : undefined,
@@ -6473,7 +6492,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                       zIndex: col.pinned ? 9 : 7,
                     }}
                   >
-                    <div className="flex items-center justify-center gap-1 mb-1">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col.color }} />
                       <span className="font-semibold">{col.name}</span>
                       {col.autoRenew && <RefreshCw size={11} color="#0F6B5C" title="تفريغ تلقائي مفعّل" />}
                     </div>
@@ -6496,7 +6516,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
               {visibleRows.map((row) => {
                 const i = cls.rows.findIndex((r) => r.id === row.id);
                 return (
-                  <tr key={row.id} className={row.id === animatingRowId ? "trash-toss" : ""}>
+                  <tr key={row.id} className={`data-row ${row.id === animatingRowId ? "trash-toss" : ""}`}>
                     {cls.showRowNumbers && (
                       <td
                         className="p-2 text-center text-xs font-semibold"
@@ -7056,12 +7076,13 @@ export default function App() {
     <div
       dir="rtl"
       className="min-h-screen relative"
-      style={{ background: "linear-gradient(160deg, #FDFCF8 0%, #FAF8F3 45%, #F6F3EB 100%)", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
+      style={{ background: "linear-gradient(160deg, #FDFCF7 0%, #F9F6ED 40%, #F1ECDD 75%, #ECE6D3 100%)", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
     >
       <div className="fixed inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
-        <div style={{ position: "absolute", top: "-12%", insetInlineEnd: "-8%", width: "42vw", height: "42vw", maxWidth: 560, maxHeight: 560, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.10) 0%, rgba(15,107,92,0) 70%)", filter: "blur(10px)" }} />
-        <div style={{ position: "absolute", bottom: "-15%", insetInlineStart: "-10%", width: "48vw", height: "48vw", maxWidth: 620, maxHeight: 620, borderRadius: "9999px", background: "radial-gradient(circle, rgba(201,122,43,0.08) 0%, rgba(201,122,43,0) 70%)", filter: "blur(10px)" }} />
-        <div style={{ position: "absolute", top: "35%", insetInlineStart: "38%", width: "30vw", height: "30vw", maxWidth: 420, maxHeight: 420, borderRadius: "9999px", background: "radial-gradient(circle, rgba(59,76,140,0.05) 0%, rgba(59,76,140,0) 70%)", filter: "blur(10px)" }} />
+        <div className="bg-blob-1" style={{ position: "absolute", top: "-18%", insetInlineEnd: "-12%", width: "55vw", height: "55vw", maxWidth: 720, maxHeight: 720, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.20) 0%, rgba(15,107,92,0) 70%)", filter: "blur(6px)" }} />
+        <div className="bg-blob-2" style={{ position: "absolute", bottom: "-20%", insetInlineStart: "-15%", width: "60vw", height: "60vw", maxWidth: 780, maxHeight: 780, borderRadius: "9999px", background: "radial-gradient(circle, rgba(201,122,43,0.16) 0%, rgba(201,122,43,0) 70%)", filter: "blur(6px)" }} />
+        <div className="bg-blob-3" style={{ position: "absolute", top: "30%", insetInlineStart: "32%", width: "38vw", height: "38vw", maxWidth: 520, maxHeight: 520, borderRadius: "9999px", background: "radial-gradient(circle, rgba(59,76,140,0.13) 0%, rgba(59,76,140,0) 70%)", filter: "blur(6px)" }} />
+        <div className="bg-blob-4" style={{ position: "absolute", top: "5%", insetInlineStart: "5%", width: "26vw", height: "26vw", maxWidth: 360, maxHeight: 360, borderRadius: "9999px", background: "radial-gradient(circle, rgba(180,82,106,0.11) 0%, rgba(180,82,106,0) 70%)", filter: "blur(6px)" }} />
       </div>
       <div className="relative" style={{ zIndex: 1 }}>
         {appContent}
