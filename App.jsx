@@ -712,6 +712,28 @@ function downloadBlob(blob, filename) {
 // file directly, e.g. to WhatsApp or a parent's number); falls back to a
 // normal download if the Web Share API / file sharing isn't available. HTML
 // content specifically falls back to opening in a new tab instead of forcing
+// نستخدمه عشان نتجنب navigator.share() بالكمبيوتر — نافذة المشاركة الأصلية
+// بالكمبيوتر (خصوصًا ويندوز) غالبًا ما تلقى تطبيقات تقدر تشارك معها، فترجّع
+// خطأ نظام ("تعذّر إظهار جميع الطرق...") قبل ما يوصل الكود لنا أصلًا.
+// يطبع الشاشة كما هي بالضبط (تشمل الأزرار والأدوات) عبر طباعة المتصفح
+// الحقيقية، بدل تصدير جدول منسّق — يُفعَّل فقط لحظة الطباعة عبر كلاس مؤقت
+// على body حتى لا يؤثر على أي مكان ثاني بالموقع.
+function printCurrentScreen() {
+  document.body.classList.add("print-class-only");
+  const cleanup = () => document.body.classList.remove("print-class-only");
+  window.addEventListener("afterprint", cleanup, { once: true });
+  setTimeout(cleanup, 5000); // شبكة أمان لو ما أطلق المتصفح afterprint لأي سبب
+  window.print();
+}
+
+function isTouchPrimary() {
+  try {
+    return window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  } catch (e) {
+    return false;
+  }
+}
+
 // a download, since a forced-download of HTML is unreliable on iOS Safari
 // (it's a "displayable" type, so Safari often just tries to show it and the
 // download silently does nothing) — opening it always works everywhere, and
@@ -719,7 +741,7 @@ function downloadBlob(blob, filename) {
 async function shareOrDownloadFile(blob, filename, mime) {
   try {
     const file = new File([blob], filename, { type: mime });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    if (isTouchPrimary() && navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({ files: [file], title: filename });
       return;
     }
@@ -1041,6 +1063,10 @@ function PrintStyles() {
         body * { visibility: hidden !important; }
         .app-print-root, .app-print-root * { visibility: visible !important; }
         .app-print-root { display: block !important; position: absolute; inset: 0; padding: 24px; direction: rtl; }
+        body.print-class-only * { visibility: hidden !important; }
+        body.print-class-only .class-print-area, body.print-class-only .class-print-area * { visibility: visible !important; }
+        body.print-class-only .class-print-area { position: absolute; inset: 0; padding: 16px; }
+        body.print-class-only * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       }
       @keyframes tossToTrash {
         0% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
@@ -1305,6 +1331,58 @@ function PrintFormatModal({ onClose, onChoose }) {
   );
 }
 
+function PrintPreviewModal({ job, format, onClose, onExport }) {
+  const [imgUrl, setImgUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const formatLabels = { pdf: "PDF", png: "PNG", excel: "Excel" };
+  const formatIcons = { pdf: FileText, png: FileImage, excel: FileSpreadsheet };
+  const PrimaryIcon = formatIcons[format] || FileText;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { canvas } = await jobToCanvas(job);
+        if (!cancelled) setImgUrl(canvas.toDataURL("image/png"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [job]);
+
+  return (
+    <Modal title="معاينة قبل التصدير" onClose={onClose} lg>
+      <div className="rounded-xl overflow-auto mb-4" style={{ border: `1px solid ${LINE}`, background: "#F3F1E9", maxHeight: "60vh" }}>
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <RefreshCw size={22} color={MUTED} className="animate-spin" />
+          </div>
+        ) : (
+          <img src={imgUrl} alt="معاينة" className="w-full h-auto" />
+        )}
+      </div>
+      <button
+        onClick={() => onExport(format)}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-2 transition-all hover:brightness-110 active:scale-95"
+        style={{ background: "linear-gradient(135deg, #12806E, #0F6B5C)", boxShadow: "0 2px 8px rgba(15,107,92,0.28)" }}
+      >
+        <PrimaryIcon size={16} /> تصدير كـ {formatLabels[format]}
+      </button>
+      <div className="grid grid-cols-2 gap-2">
+        {Object.keys(formatLabels).filter((k) => k !== format).map((k) => {
+          const Icon = formatIcons[k];
+          return (
+            <button key={k} onClick={() => onExport(k)} className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold" style={{ border: `1px solid ${LINE}`, color: MUTED, background: "#fff" }}>
+              <Icon size={13} /> تصدير كـ {formatLabels[k]}
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
 function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50, accent = null }) {
   const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md md:max-w-lg";
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -1343,12 +1421,12 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
   return (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 modal-backdrop-in"
-      style={{ background: "rgba(25,28,25,0.5)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex }}
+      style={{ background: "rgba(25,28,25,0.55)", zIndex }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         className={`rounded-2xl w-full ${widthClass} modal-max-height overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
-        style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)`, boxShadow: isMagic ? "0 24px 60px rgba(78,111,224,0.28)" : "0 24px 60px rgba(20,22,20,0.28)" }}
+        style={{ background: PAPER, border: `1px solid ${LINE}`, ...(pos.x || pos.y ? { transform: `translate(${pos.x}px, ${pos.y}px)` } : {}), boxShadow: isMagic ? "0 24px 60px rgba(78,111,224,0.28)" : "0 24px 60px rgba(20,22,20,0.28)" }}
       >
         <div
           className={`flex items-center justify-between px-5 py-4 sticky top-0 ${isMagic ? "magic-shimmer" : ""}`}
@@ -2976,84 +3054,6 @@ function rowMatchesFilter(cls, row, filter) {
   }
 }
 
-function NoorGradeExportModal({ cls, onClose }) {
-  const gradeColumns = cls.columns.filter((c) => c.type === "counter" || c.type === "dropdown");
-  const [colId, setColId] = useState(gradeColumns[0]?.id || "");
-  const col = cls.columns.find((c) => c.id === colId);
-  const [showFrame, setShowFrame] = useState(false);
-  const [loadState, setLoadState] = useState("loading");
-  const timerRef = useRef(null);
-
-  useEffect(() => {
-    if (!showFrame) return;
-    setLoadState("loading");
-    timerRef.current = setTimeout(() => setLoadState((s) => (s === "loading" ? "blocked" : s)), 4000);
-    return () => clearTimeout(timerRef.current);
-  }, [showFrame]);
-
-  const exportForNoor = () => {
-    if (!col) return;
-    const rows = cls.rows.map((row) => ({
-      "اسم الطالب": row.name,
-      [col.name]: cls.cells[`${row.id}:${col.id}`] || "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 30 }, { wch: 15 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "درجات");
-    XLSX.writeFile(wb, `درجات-${col.name}-${cls.subject || "الفصل"}.xlsx`);
-    setShowFrame(true);
-  };
-
-  return (
-    <Modal title="تصدير درجات لنور" onClose={onClose} accent="magic" xl={showFrame}>
-      <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
-        <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
-        <p className="text-xs" style={{ color: "#8A4A1E" }}>
-          بصراحة: ما نقدر نرصد الدرجات بنور تلقائيًا (نور ما يوفر هذي الإمكانية بشكل آمن). الزر ينزّل لك ملف الدرجات، وبعدين يفتح لك نور تحت عشان ترفعه بنفسك بسهولة.
-        </p>
-      </div>
-      {gradeColumns.length === 0 ? (
-        <p className="text-sm text-center py-6" style={{ color: MUTED }}>لا يوجد أعمدة درجات (عداد أو قائمة منسدلة) بهذا الفصل بعد.</p>
-      ) : (
-        <>
-          <Field label="اختر عمود الدرجة">
-            <select value={colId} onChange={(e) => setColId(e.target.value)} style={inputStyle}>
-              {gradeColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </Field>
-          <button onClick={exportForNoor} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
-            <ImageDown size={16} /> تنزيل الملف وفتح نور
-          </button>
-        </>
-      )}
-
-      {showFrame && (
-        <div className="mt-4">
-          <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: loadState === "blocked" ? "#FBEDEA" : "#EAF3F0", border: `1px solid ${loadState === "blocked" ? "#F5DCD5" : "#C9E2DB"}` }}>
-            <Info size={15} color={loadState === "blocked" ? "#9A3B2E" : "#0F6B5C"} className="shrink-0 mt-0.5" />
-            <p className="text-xs" style={{ color: loadState === "blocked" ? "#9A3B2E" : "#0F6B5C" }}>
-              {loadState === "blocked"
-                ? "الصفحة فاضية لأن نور يمنع فتحه جوّا مواقع ثانية. اضغط \"فتح بنافذة مستقلة\" وارفع الملف اللي نزل عندك بنفسك."
-                : "جارٍ محاولة فتح نور..."}
-            </p>
-          </div>
-          <button
-            onClick={() => window.open("https://noor.moe.gov.sa/", "_blank")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold mb-3"
-            style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
-          >
-            <ExternalLink size={15} color="#0F6B5C" /> فتح نور بنافذة مستقلة
-          </button>
-          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, height: "45vh", background: "#F8F7F2" }}>
-            <iframe src="https://noor.moe.gov.sa/" title="نور" className="w-full h-full" onLoad={() => setLoadState("loaded")} referrerPolicy="no-referrer" />
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
 function NoorEmbedModal({ onImportNames, onClose }) {
   const [loadState, setLoadState] = useState("loading"); // loading | loaded | blocked
   const [pasteText, setPasteText] = useState("");
@@ -3210,7 +3210,7 @@ function DropdownCell({ column, value, onChange }) {
 }
 
 function Cell({ column, value, onChange }) {
-  if (column.type === "counter") return <CounterCell value={value} onChange={onChange} color={column.color} />;
+  if (column.type === "counter") return <CounterCell value={value} onChange={onChange} />;
   if (column.type === "dropdown") return <DropdownCell column={column} value={value} onChange={onChange} />;
   return <TextCell value={value} onChange={onChange} />;
 }
@@ -3219,7 +3219,7 @@ function Cell({ column, value, onChange }) {
 // number, and only log ONE report entry once the value settles (debounced)
 // or when the input loses focus — so reaching "4" via four clicks (or typing
 // "5" directly) logs a single record, not one per click.
-function CounterCell({ value, onChange, color = "#3B4C8C" }) {
+function CounterCell({ value, onChange }) {
   const [n, setN] = useState(Number(value) || 0);
   useEffect(() => { setN(Number(value) || 0); }, [value]);
   const timerRef = useRef(null);
@@ -3242,21 +3242,15 @@ function CounterCell({ value, onChange, color = "#3B4C8C" }) {
   return (
     <div className="flex items-center justify-center gap-1.5">
       <button onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
-      <div className="relative flex items-center justify-center shrink-0" style={{ width: 34, height: 34 }}>
-        <div
-          className="absolute inset-0 rounded-full flex items-center justify-center transition-colors"
-          style={{ background: n > 0 ? color : "#EFEDE3", boxShadow: n > 0 ? `0 2px 6px ${color}55` : "none" }}
-        />
-        <input
-          type="number"
-          value={n}
-          onChange={(e) => { const v = Number(e.target.value) || 0; setN(v); scheduleCommit(v); }}
-          onBlur={() => commitNow(n)}
-          onKeyDown={(e) => { if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); } }}
-          className="relative w-full text-center font-bold text-sm bg-transparent"
-          style={{ outline: "none", color: n > 0 ? "#fff" : MUTED }}
-        />
-      </div>
+      <input
+        type="number"
+        value={n}
+        onChange={(e) => { const v = Number(e.target.value) || 0; setN(v); scheduleCommit(v); }}
+        onBlur={() => commitNow(n)}
+        onKeyDown={(e) => { if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); } }}
+        className="w-9 text-center font-semibold text-sm bg-transparent"
+        style={{ outline: "none", color: INK }}
+      />
       <button onClick={() => bump(1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Plus size={12} /></button>
     </div>
   );
@@ -5113,7 +5107,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
     const blob = new Blob([html], { type: "text/html" });
     try {
       const file = new File([blob], filename, { type: "text/html" });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      if (isTouchPrimary() && navigator.canShare && navigator.canShare({ files: [file] })) {
         navigator.share({ files: [file], title: filename }).catch(() => {});
         return;
       }
@@ -5393,7 +5387,7 @@ function DisplayBoard({ cls, onClose, onPrint }) {
     // ليعتبرها المتصفح ناتجة عن ضغطة المستخدم مباشرة.
     try {
       const file = new File([blob], filename, { type: "text/html" });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      if (isTouchPrimary() && navigator.canShare && navigator.canShare({ files: [file] })) {
         navigator.share({ files: [file], title: filename }).catch(() => {});
         return;
       }
@@ -6079,7 +6073,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
-  const [showNoorExport, setShowNoorExport] = useState(false);
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -6491,11 +6484,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
     });
   };
 
+  const [previewJob, setPreviewJob] = useState(null);
   const handleChooseFormat = (key) => {
     if (!printChoice) return;
-    if (key === "pdf") exportPdfShare(printChoice);
-    else if (key === "png") exportPng(printChoice);
-    else if (key === "excel") exportExcel(printChoice);
+    setPreviewJob({ job: printChoice, format: key });
     setPrintChoice(null);
   };
 
@@ -6544,7 +6536,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   });
 
   return (
-    <div className="max-w-[1800px] mx-auto px-4 py-6 page-fade-in">
+    <div className="max-w-[1800px] mx-auto px-4 py-6 page-fade-in class-print-area">
       {toast && (
         <div className="fixed top-4 inset-x-0 z-[60] flex justify-center pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg toast-pop" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
@@ -6572,7 +6564,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         <div className="rounded-2xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
           <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
-          <IconBtn icon={Printer} label="طباعة" onClick={() => setPrintChoice({ type: "class", cls })} />
+          <IconBtn icon={Printer} label="طباعة" onClick={printCurrentScreen} />
           <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
         </div>
 
@@ -6590,7 +6582,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
-          <IconBtn icon={ImageDown} label="تصدير درجات لنور" magic onClick={() => setShowNoorExport(true)} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
@@ -6831,6 +6822,19 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       {printChoice && (
         <PrintFormatModal onClose={() => setPrintChoice(null)} onChoose={handleChooseFormat} />
       )}
+      {previewJob && (
+        <PrintPreviewModal
+          job={previewJob.job}
+          format={previewJob.format}
+          onClose={() => setPreviewJob(null)}
+          onExport={(key) => {
+            if (key === "pdf") exportPdfShare(previewJob.job);
+            else if (key === "png") exportPng(previewJob.job);
+            else if (key === "excel") exportExcel(previewJob.job);
+            setPreviewJob(null);
+          }}
+        />
+      )}
       {showAttendance && (
         <AttendanceModal
           cls={cls}
@@ -6911,7 +6915,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onClose={() => setShowReportPicker(false)}
         />
       )}
-      {showNoorExport && <NoorGradeExportModal cls={cls} onClose={() => setShowNoorExport(false)} />}
       {confirmBulkDelete && (
         <ConfirmDialog
           title="حذف الطلاب المحددين"
