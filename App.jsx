@@ -5544,6 +5544,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
 function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState("active");
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTodayActivity, setShowTodayActivity] = useState(false);
   const [showTestsList, setShowTestsList] = useState(false);
@@ -5781,7 +5782,17 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           </button>
         </div>
 
-        <div className="rounded-2xl p-2.5 flex flex-wrap items-center gap-2" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
+        <button
+          onClick={() => setToolsExpanded((s) => !s)}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 mb-2.5 rounded-xl text-xs font-bold hover:opacity-80"
+          style={{ background: "#fff", border: `1px solid ${LINE}`, color: MUTED }}
+        >
+          {toolsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {toolsExpanded ? "إخفاء الأدوات" : "إظهار الأدوات"}
+        </button>
+
+        {toolsExpanded && (
+        <div className="rounded-2xl p-2.5 flex flex-wrap items-center gap-2 mb-2.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات</span>
           <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 8 }}>
             <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
@@ -5799,6 +5810,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             </div>
           )}
         </div>
+        )}
       </div>
 
       <div className="mt-5">
@@ -6039,32 +6051,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [search, setSearch] = useState("");
-  const [toolsPinned, setToolsPinned] = useState(() => {
-    try { return localStorage.getItem("fosooli-tools-pinned") === "1"; } catch (e) { return false; }
-  });
-  const [toolsExpanded, setToolsExpanded] = useState(() => {
-    try {
-      if (localStorage.getItem("fosooli-tools-pinned") === "1") {
-        return localStorage.getItem("fosooli-tools-expanded") === "1";
-      }
-    } catch (e) { /* ignore */ }
-    return false;
-  });
-  const toggleToolsExpanded = () => {
-    const next = !toolsExpanded;
-    setToolsExpanded(next);
-    if (toolsPinned) {
-      try { localStorage.setItem("fosooli-tools-expanded", next ? "1" : "0"); } catch (e) { /* ignore */ }
-    }
-  };
-  const toggleToolsPin = () => {
-    const next = !toolsPinned;
-    setToolsPinned(next);
-    try {
-      localStorage.setItem("fosooli-tools-pinned", next ? "1" : "0");
-      if (next) localStorage.setItem("fosooli-tools-expanded", toolsExpanded ? "1" : "0");
-    } catch (e) { /* ignore */ }
-  };
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [showBoard, setShowBoard] = useState(false);
   const [reportRowId, setReportRowId] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { type: 'deleteRow'|'deleteAll', row? }
@@ -6568,24 +6555,14 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
 
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <button
-            onClick={toggleToolsExpanded}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-bold hover:opacity-80"
-            style={{ background: "#fff", border: `1px solid ${LINE}`, color: MUTED }}
-          >
-            {toolsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            {toolsExpanded ? "إخفاء الأدوات" : "إظهار الأدوات"}
-          </button>
-          <button
-            onClick={toggleToolsPin}
-            title={toolsPinned ? "إلغاء تثبيت الحالة" : "تثبيت الحالة الحالية دائمًا"}
-            className="p-1.5 rounded-xl hover:opacity-80 shrink-0"
-            style={{ background: toolsPinned ? "#EAF3F0" : "#fff", border: `1px solid ${toolsPinned ? "#C9E2DB" : LINE}` }}
-          >
-            <Pin size={14} color={toolsPinned ? "#0F6B5C" : MUTED} fill={toolsPinned ? "#0F6B5C" : "none"} />
-          </button>
-        </div>
+        <button
+          onClick={() => setToolsExpanded((s) => !s)}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 mb-1.5 rounded-xl text-xs font-bold hover:opacity-80"
+          style={{ background: "#fff", border: `1px solid ${LINE}`, color: MUTED }}
+        >
+          {toolsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {toolsExpanded ? "إخفاء الأدوات" : "إظهار الأدوات"}
+        </button>
 
         {toolsExpanded && (<>
         <div className="rounded-2xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
