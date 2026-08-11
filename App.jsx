@@ -7053,8 +7053,19 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen" style={{ background: PAPER, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
-      {appContent}
+    <div
+      dir="rtl"
+      className="min-h-screen relative"
+      style={{ background: "linear-gradient(160deg, #FDFCF8 0%, #FAF8F3 45%, #F6F3EB 100%)", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
+    >
+      <div className="fixed inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
+        <div style={{ position: "absolute", top: "-12%", insetInlineEnd: "-8%", width: "42vw", height: "42vw", maxWidth: 560, maxHeight: 560, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.10) 0%, rgba(15,107,92,0) 70%)", filter: "blur(10px)" }} />
+        <div style={{ position: "absolute", bottom: "-15%", insetInlineStart: "-10%", width: "48vw", height: "48vw", maxWidth: 620, maxHeight: 620, borderRadius: "9999px", background: "radial-gradient(circle, rgba(201,122,43,0.08) 0%, rgba(201,122,43,0) 70%)", filter: "blur(10px)" }} />
+        <div style={{ position: "absolute", top: "35%", insetInlineStart: "38%", width: "30vw", height: "30vw", maxWidth: 420, maxHeight: 420, borderRadius: "9999px", background: "radial-gradient(circle, rgba(59,76,140,0.05) 0%, rgba(59,76,140,0) 70%)", filter: "blur(10px)" }} />
+      </div>
+      <div className="relative" style={{ zIndex: 1 }}>
+        {appContent}
+      </div>
     </div>
   );
 }
