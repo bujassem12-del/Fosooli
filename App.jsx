@@ -1046,6 +1046,12 @@ function PrintStyles() {
         to { opacity: 1; transform: translateY(0) scale(1); }
       }
       .toast-pop { animation: toastPop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      @keyframes celebrateIn {
+        0% { opacity: 0; transform: scale(0.7) translateY(10px); }
+        60% { opacity: 1; transform: scale(1.05) translateY(-2px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      .celebrate-in { animation: celebrateIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
     `}</style>
   );
 }
@@ -1082,18 +1088,18 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
 
 function IconBtn({ icon: Icon, label, onClick, tone = "default" }) {
   const tones = {
-    default: { bg: "transparent", fg: INK, border: LINE },
-    danger: { bg: "#FBEDEA", fg: "#9A3B2E", border: "#F0D2CB" },
-    primary: { bg: "#0F6B5C", fg: "#fff", border: "#0F6B5C" },
+    default: { bg: "#fff", fg: INK, border: LINE, shadow: "0 1px 2px rgba(35,38,34,0.05)" },
+    danger: { bg: "#FBEDEA", fg: "#9A3B2E", border: "#F5DCD5", shadow: "0 1px 2px rgba(154,59,46,0.06)" },
+    primary: { bg: "linear-gradient(135deg, #12806E, #0F6B5C)", fg: "#fff", border: "transparent", shadow: "0 2px 8px rgba(15,107,92,0.28)" },
   };
   const t = tones[tone];
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80 active:scale-95 whitespace-nowrap"
-      style={{ background: t.bg, color: t.fg, border: `1px solid ${t.border}` }}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all hover:brightness-105 hover:-translate-y-px active:scale-95 active:translate-y-0 whitespace-nowrap"
+      style={{ background: t.bg, color: t.fg, border: `1px solid ${t.border}`, boxShadow: t.shadow }}
     >
-      <Icon size={14} strokeWidth={2} />
+      <Icon size={14} strokeWidth={2.25} />
       <span>{label}</span>
     </button>
   );
@@ -3892,7 +3898,15 @@ function RandomPickerModal({ rows, onClose }) {
       </div>
 
       {picked && !spinning && (
-        <div className="rounded-2xl p-4 mb-4 text-center" style={{ background: `${wheelColors[rows.findIndex((r) => r.id === picked.id)]}18`, border: `2px solid ${wheelColors[rows.findIndex((r) => r.id === picked.id)]}` }}>
+        <div className="rounded-2xl p-5 mb-4 text-center celebrate-in" style={{ background: `${wheelColors[rows.findIndex((r) => r.id === picked.id)]}14`, border: `2px solid ${wheelColors[rows.findIndex((r) => r.id === picked.id)]}` }}>
+          <p className="text-xs font-bold mb-2" style={{ color: wheelColors[rows.findIndex((r) => r.id === picked.id)] }}>🎉 الطالب المختار</p>
+          {picked.photo ? (
+            <img src={picked.photo} alt={picked.name} className="w-16 h-16 rounded-full object-cover mx-auto mb-2 dark-mode-img-fix" style={{ border: `3px solid ${wheelColors[rows.findIndex((r) => r.id === picked.id)]}` }} />
+          ) : (
+            <div className="w-16 h-16 rounded-full mx-auto mb-2 flex items-center justify-center font-extrabold text-2xl text-white" style={{ background: wheelColors[rows.findIndex((r) => r.id === picked.id)] }}>
+              {(picked.name || "؟").trim().charAt(0)}
+            </div>
+          )}
           <p className="text-xl font-extrabold" style={{ color: INK }}>{picked.name}</p>
         </div>
       )}
@@ -5270,8 +5284,10 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
   const locked = !!cls.locked;
   return (
     <div
-      className={`rounded-2xl shadow-sm overflow-hidden relative card-in transition-shadow hover:shadow-md ${animating ? "trash-toss" : ""}`}
-      style={{ background: "#fff", border: cls.pinned ? `2px solid #0F6B5C` : `1px solid ${LINE}` }}
+      className={`rounded-2xl overflow-hidden relative card-in transition-all duration-200 hover:-translate-y-0.5 ${animating ? "trash-toss" : ""}`}
+      style={{ background: "#fff", border: cls.pinned ? `2px solid #0F6B5C` : `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(35,38,34,0.06)" }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 10px 24px rgba(35,38,34,0.10)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(35,38,34,0.06)"; }}
     >
       <div className="h-2" style={{ background: cls.color }} />
       <button
@@ -5569,7 +5585,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             style={{ background: tab === "archived" ? INK : "transparent", color: tab === "archived" ? "#fff" : MUTED, border: `1px solid ${tab === "archived" ? INK : LINE}` }}>
             <FolderClock size={14} />المؤرشفة ({data.classes.filter((c) => c.archived).length})
           </button>
-          <button onClick={() => setModal({ mode: "add" })} className="mr-auto flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition-all" style={{ background: "#0F6B5C" }}>
+          <button onClick={() => setModal({ mode: "add" })} className="mr-auto flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold text-white transition-all hover:brightness-105 hover:-translate-y-px active:scale-95 active:translate-y-0" style={{ background: "linear-gradient(135deg, #12806E, #0F6B5C)", boxShadow: "0 3px 10px rgba(15,107,92,0.32)" }}>
             <Plus size={18} strokeWidth={2.5} /> إضافة فصل جديد
           </button>
         </div>
