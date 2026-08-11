@@ -51,6 +51,39 @@ const PAPER = "#FAF8F3";
 const LINE = "#E4DFD2";
 const MUTED = "#7A7768";
 
+// يكتشف عمود الأسماء تلقائيًا من ملف Excel بغض النظر عن ترتيب الأعمدة —
+// يهم خصوصًا لملفات نظام نور التي عادةً تضع الرقم التسلسلي أو رقم الهوية
+// بالعمود الأول قبل عمود الاسم، بدل الافتراض إن الاسم دائمًا بالعمود الأول.
+const NAME_HEADER_WORDS = ["اسم", "الاسم", "اسم الطالب", "الطالب", "name", "student", "students"];
+const NON_NAME_HEADER_WORDS = ["م", "الرقم", "رقم", "الرقم التسلسلي", "رقم الهوية", "الهوية", "تاريخ الميلاد", "الصف", "الفصل", "الجنس", "رقم الجلوس", "الحالة", "no", "id", "number", "class", "grade", "gender", "date"];
+function looksLikeName(val) {
+  const s = String(val ?? "").trim();
+  if (!s || s.length < 2 || s.length > 60) return false;
+  if (/^[\d\s\-\/.:]+$/.test(s)) return false; // أرقام/تواريخ/هويات بحتة
+  if (NON_NAME_HEADER_WORDS.includes(s.toLowerCase())) return false;
+  return /[\u0600-\u06FFa-zA-Z]/.test(s); // يحتوي حروفًا عربية أو إنجليزية فعلية
+}
+function extractNamesSmart(rows) {
+  if (!rows || rows.length === 0) return [];
+  const colCount = Math.max(...rows.map((r) => r.length), 0);
+  let bestCol = 0, bestScore = -1;
+  for (let c = 0; c < Math.min(colCount, 10); c++) {
+    let score = 0;
+    rows.forEach((r) => { if (looksLikeName(r[c])) score++; });
+    if (score > bestScore) { bestScore = score; bestCol = c; }
+  }
+  if (bestScore <= 0) return [];
+  const names = [];
+  rows.forEach((r) => {
+    const val = String(r[bestCol] ?? "").trim();
+    if (!val) return;
+    if (NAME_HEADER_WORDS.includes(val.toLowerCase())) return;
+    if (!looksLikeName(val)) return;
+    names.push(val);
+  });
+  return names;
+}
+
 function uid() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
@@ -1062,12 +1095,8 @@ function PrintStyles() {
       .data-row:hover > td { background-color: #F3F1EA !important; }
       @keyframes drift1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-3%, 4%) scale(1.06); } }
       @keyframes drift2 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(4%, -3%) scale(1.05); } }
-      @keyframes drift3 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-4%, -4%) scale(0.94); } }
-      @keyframes drift4 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(3%, 3%) scale(1.08); } }
       .bg-blob-1 { animation: drift1 22s ease-in-out infinite; }
       .bg-blob-2 { animation: drift2 26s ease-in-out infinite; }
-      .bg-blob-3 { animation: drift3 19s ease-in-out infinite; }
-      .bg-blob-4 { animation: drift4 24s ease-in-out infinite; }
       input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
       input[type="number"]:focus, input[type="date"]:focus, input[type="time"]:focus,
       input[type="search"]:not([type="color"]):focus, textarea:focus, select:focus {
@@ -1276,11 +1305,12 @@ function PrintFormatModal({ onClose, onChoose }) {
   );
 }
 
-function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50 }) {
+function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50, accent = null }) {
   const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md md:max-w-lg";
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [entered, setEntered] = useState(false);
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, startPos: { x: 0, y: 0 } });
+  const isMagic = accent === "magic";
 
   useEffect(() => {
     const t = setTimeout(() => setEntered(true), 520);
@@ -1318,24 +1348,26 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
     >
       <div
         className={`rounded-2xl w-full ${widthClass} modal-max-height overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
-        style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)`, boxShadow: "0 24px 60px rgba(20,22,20,0.28)" }}
+        style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)`, boxShadow: isMagic ? "0 24px 60px rgba(78,111,224,0.28)" : "0 24px 60px rgba(20,22,20,0.28)" }}
       >
         <div
-          className="flex items-center justify-between px-5 py-4 sticky top-0"
-          style={{ background: PAPER, borderBottom: `1px solid ${LINE}`, cursor: "grab", touchAction: "none", userSelect: "none" }}
+          className={`flex items-center justify-between px-5 py-4 sticky top-0 ${isMagic ? "magic-shimmer" : ""}`}
+          style={isMagic
+            ? { background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)", backgroundSize: "220% 220%", cursor: "grab", touchAction: "none", userSelect: "none" }
+            : { background: PAPER, borderBottom: `1px solid ${LINE}`, cursor: "grab", touchAction: "none", userSelect: "none" }}
           onPointerDown={onHeaderPointerDown}
         >
-          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: INK }}>
-            <Move size={14} color={MUTED} />
+          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: isMagic ? "#fff" : INK }}>
+            {isMagic ? <Sparkles size={16} strokeWidth={2.5} /> : <Move size={14} color={MUTED} />}
             {title}
           </h3>
           <button
             onClick={onClose}
             onPointerDown={(e) => e.stopPropagation()}
-            className="p-1.5 rounded-full hover:bg-[#FBEDEA] active:scale-90 transition-all shrink-0"
+            className={`p-1.5 rounded-full active:scale-90 transition-all shrink-0 ${isMagic ? "hover:bg-white/20" : "hover:bg-[#FBEDEA]"}`}
             style={{ touchAction: "auto" }}
           >
-            <X size={18} color={MUTED} />
+            <X size={18} color={isMagic ? "#fff" : MUTED} />
           </button>
         </div>
         <div className="p-5">{children}</div>
@@ -1756,15 +1788,8 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
         const wb = XLSX.read(evt.target.result, { type: "array" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-        const HEADER_WORDS = ["اسم", "الاسم", "اسم الطالب", "الطالب", "name", "student", "students"];
-        const names = [];
-        rows.forEach((r) => {
-          const val = String(r[0] ?? "").trim();
-          if (!val) return;
-          if (HEADER_WORDS.includes(val.toLowerCase())) return;
-          names.push(val);
-        });
-        if (names.length === 0) setImportError("لم يتم العثور على أي أسماء في العمود الأول من الملف.");
+        const names = extractNamesSmart(rows);
+        if (names.length === 0) setImportError("لم يتم العثور على أي أسماء بهذا الملف. تأكد إنه يحتوي عمودًا فيه أسماء الطلاب.");
         setImportNames(names);
       } catch (err) {
         setImportError("تعذّرت قراءة هذا الملف. تأكد أنه ملف Excel (.xlsx) أو CSV صالح.");
@@ -1795,7 +1820,7 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
             </button>
             <button onClick={() => setTab("import")} className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1"
               style={{ background: tab === "import" ? INK : "transparent", color: tab === "import" ? "#fff" : MUTED, border: `1px solid ${tab === "import" ? INK : LINE}` }}>
-              <FileSpreadsheet size={13} /> استيراد من Excel
+              <FileSpreadsheet size={13} /> استيراد من Excel / نور
             </button>
           </div>
 
@@ -1843,7 +1868,14 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
             </>
           ) : (
             <>
-              <Field label="ملف Excel أو CSV بأسماء الطلاب (أول عمود)">
+              <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
+                <Sparkles size={15} color="#0F6B5C" className="shrink-0 mt-0.5" />
+                <div className="text-xs" style={{ color: "#0F6B5C" }}>
+                  <p className="font-bold mb-1">تستورد من نظام نور؟</p>
+                  <p>من نور: افتح صفحة الطلاب ← اضغط "تصدير" أو "طباعة" واختر Excel ← ارفع الملف هنا مباشرة، حتى لو فيه أعمدة إضافية (الرقم، الهوية...) — نكتشف عمود الاسم تلقائيًا.</p>
+                </div>
+              </div>
+              <Field label="ملف Excel أو CSV بأسماء الطلاب">
                 <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImportFile} style={{ display: "none" }} />
                 <button type="button" onClick={() => importInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
                   <FileSpreadsheet size={15} color="#0F6B5C" /> اختر ملفًا
@@ -2911,10 +2943,54 @@ function rowMatchesFilter(cls, row, filter) {
   }
 }
 
+function NoorGradeExportModal({ cls, onClose }) {
+  const gradeColumns = cls.columns.filter((c) => c.type === "counter" || c.type === "dropdown");
+  const [colId, setColId] = useState(gradeColumns[0]?.id || "");
+  const col = cls.columns.find((c) => c.id === colId);
+
+  const exportForNoor = () => {
+    if (!col) return;
+    const rows = cls.rows.map((row) => ({
+      "اسم الطالب": row.name,
+      [col.name]: cls.cells[`${row.id}:${col.id}`] || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 30 }, { wch: 15 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "درجات");
+    XLSX.writeFile(wb, `درجات-${col.name}-${cls.subject || "الفصل"}.xlsx`);
+  };
+
+  return (
+    <Modal title="تصدير درجات لنور" onClose={onClose} accent="magic">
+      <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
+        <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: "#8A4A1E" }}>
+          بصراحة: ما نقدر نرفع الدرجات لنور تلقائيًا (نور ما يوفر هذي الإمكانية بشكل آمن). هذي الأداة تجهّز لك ملف Excel مرتب (اسم الطالب + الدرجة) تقدر تنسخه أو ترفعه بسهولة من داخل نور نفسه يدويًا.
+        </p>
+      </div>
+      {gradeColumns.length === 0 ? (
+        <p className="text-sm text-center py-6" style={{ color: MUTED }}>لا يوجد أعمدة درجات (عداد أو قائمة منسدلة) بهذا الفصل بعد.</p>
+      ) : (
+        <>
+          <Field label="اختر عمود الدرجة">
+            <select value={colId} onChange={(e) => setColId(e.target.value)} style={inputStyle}>
+              {gradeColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <button onClick={exportForNoor} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
+            <ImageDown size={16} /> تنزيل ملف الدرجات
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function StudentPickerModal({ rows, onSelect, onClose }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   return (
-    <Modal title="عرض تقرير طالب" onClose={onClose}>
+    <Modal title="عرض تقرير طالب" onClose={onClose} accent="magic">
       {rows.length === 0 ? (
         <p className="text-sm text-center py-6" style={{ color: MUTED }}>لا يوجد طلاب بهذا الفصل بعد.</p>
       ) : (
@@ -2924,7 +3000,7 @@ function StudentPickerModal({ rows, onSelect, onClose }) {
               {rows.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </Field>
-          <button onClick={() => onSelect(selected)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+          <button onClick={() => onSelect(selected)} className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
             عرض التقرير
           </button>
         </>
@@ -5893,6 +5969,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
+  const [showNoorExport, setShowNoorExport] = useState(false);
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -6403,6 +6480,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
+          <IconBtn icon={ImageDown} label="تصدير درجات لنور" magic onClick={() => setShowNoorExport(true)} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
@@ -6723,6 +6801,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onClose={() => setShowReportPicker(false)}
         />
       )}
+      {showNoorExport && <NoorGradeExportModal cls={cls} onClose={() => setShowNoorExport(false)} />}
       {confirmBulkDelete && (
         <ConfirmDialog
           title="حذف الطلاب المحددين"
@@ -7076,13 +7155,11 @@ export default function App() {
     <div
       dir="rtl"
       className="min-h-screen relative"
-      style={{ background: "linear-gradient(160deg, #FDFCF7 0%, #F9F6ED 40%, #F1ECDD 75%, #ECE6D3 100%)", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
+      style={{ background: "#FDFCF9", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
     >
       <div className="fixed inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
-        <div className="bg-blob-1" style={{ position: "absolute", top: "-18%", insetInlineEnd: "-12%", width: "55vw", height: "55vw", maxWidth: 720, maxHeight: 720, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.20) 0%, rgba(15,107,92,0) 70%)", filter: "blur(6px)" }} />
-        <div className="bg-blob-2" style={{ position: "absolute", bottom: "-20%", insetInlineStart: "-15%", width: "60vw", height: "60vw", maxWidth: 780, maxHeight: 780, borderRadius: "9999px", background: "radial-gradient(circle, rgba(201,122,43,0.16) 0%, rgba(201,122,43,0) 70%)", filter: "blur(6px)" }} />
-        <div className="bg-blob-3" style={{ position: "absolute", top: "30%", insetInlineStart: "32%", width: "38vw", height: "38vw", maxWidth: 520, maxHeight: 520, borderRadius: "9999px", background: "radial-gradient(circle, rgba(59,76,140,0.13) 0%, rgba(59,76,140,0) 70%)", filter: "blur(6px)" }} />
-        <div className="bg-blob-4" style={{ position: "absolute", top: "5%", insetInlineStart: "5%", width: "26vw", height: "26vw", maxWidth: 360, maxHeight: 360, borderRadius: "9999px", background: "radial-gradient(circle, rgba(180,82,106,0.11) 0%, rgba(180,82,106,0) 70%)", filter: "blur(6px)" }} />
+        <div className="bg-blob-1" style={{ position: "absolute", top: "-16%", insetInlineEnd: "-14%", width: "46vw", height: "46vw", maxWidth: 620, maxHeight: 620, borderRadius: "9999px", background: "radial-gradient(circle, rgba(124,92,224,0.10) 0%, rgba(78,111,224,0.06) 45%, rgba(78,111,224,0) 70%)", filter: "blur(8px)" }} />
+        <div className="bg-blob-2" style={{ position: "absolute", bottom: "-18%", insetInlineStart: "-14%", width: "44vw", height: "44vw", maxWidth: 600, maxHeight: 600, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.09) 0%, rgba(15,107,92,0) 70%)", filter: "blur(8px)" }} />
       </div>
       <div className="relative" style={{ zIndex: 1 }}>
         {appContent}
