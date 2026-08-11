@@ -1305,32 +1305,6 @@ function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = "ح
   );
 }
 
-function PrintFormatModal({ onClose, onChoose }) {
-  const options = [
-    { key: "pdf", label: "PDF", icon: FileText, desc: "مشاركة/حفظ مباشر" },
-    { key: "png", label: "PNG", icon: FileImage, desc: "صورة للمشاركة" },
-    { key: "excel", label: "Excel", icon: FileSpreadsheet, desc: "ملف بيانات" },
-  ];
-  return (
-    <Modal title="اختر صيغة التصدير" onClose={onClose} zIndex={80}>
-      <div className="grid grid-cols-3 gap-3">
-        {options.map((o) => (
-          <button
-            key={o.key}
-            onClick={() => onChoose(o.key)}
-            className="flex flex-col items-center gap-2 p-4 rounded-xl hover:opacity-80 transition-opacity"
-            style={{ border: `1px solid ${LINE}`, background: "#fff" }}
-          >
-            <o.icon size={26} color="#0F6B5C" />
-            <span className="font-bold text-sm" style={{ color: INK }}>{o.label}</span>
-            <span className="text-xs text-center" style={{ color: MUTED }}>{o.desc}</span>
-          </button>
-        ))}
-      </div>
-    </Modal>
-  );
-}
-
 function PrintPreviewModal({ job, format, onClose, onExport }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -6071,7 +6045,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [animatingRowId, setAnimatingRowId] = useState(null);
   const [animatingColId, setAnimatingColId] = useState(null);
   const [tableFading, setTableFading] = useState(false);
-  const [printChoice, setPrintChoice] = useState(null);
   const [showAttendance, setShowAttendance] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
   const [showReminders, setShowReminders] = useState(false);
@@ -6497,11 +6470,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   };
 
   const [previewJob, setPreviewJob] = useState(null);
-  const handleChooseFormat = (key) => {
-    if (!printChoice) return;
-    setPreviewJob({ job: printChoice, format: key });
-    setPrintChoice(null);
-  };
+  const openPrintPreview = (job, format = "pdf") => setPreviewJob({ job, format });
 
   const visibleRows = cls.rows.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()) && rowMatchesFilter(cls, r, activeFilter));
 
@@ -6577,7 +6546,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
           <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
           <IconBtn icon={Printer} label="طباعة" onClick={printCurrentScreen} />
-          <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
+          <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => openPrintPreview({ type: "blank", cls })} />
         </div>
 
         <div className="rounded-2xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
@@ -6781,7 +6750,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onToggleShowRowNumbers={() => updateClass((c) => ({ ...c, showRowNumbers: !c.showRowNumbers }))}
         />
       )}
-      {showBoard && <DisplayBoard cls={cls} onClose={() => setShowBoard(false)} onPrint={(dateKey) => setPrintChoice({ type: "class", cls, dateKey })} />}
+      {showBoard && <DisplayBoard cls={cls} onClose={() => setShowBoard(false)} onPrint={(dateKey) => openPrintPreview({ type: "class", cls, dateKey })} />}
       {reportRow && (
         <ReportModal
           cls={cls}
@@ -6802,7 +6771,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onRestoreLatest={() => restoreLatestReportEntry(reportRow.id)}
           onRestoreEntry={(trashId) => restoreReportEntryFromTrash(reportRow.id, trashId)}
           onClearTrash={() => clearReportTrash(reportRow.id)}
-          onPrint={() => setPrintChoice({ type: "report", cls, row: reportRow, entries: reportEntries })}
+          onPrint={() => openPrintPreview({ type: "report", cls, row: reportRow, entries: reportEntries })}
         />
       )}
       {confirmAction && (
@@ -6831,9 +6800,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onClearAll={() => updateClass((c) => ({ ...c, trash: [] }))}
         />
       )}
-      {printChoice && (
-        <PrintFormatModal onClose={() => setPrintChoice(null)} onChoose={handleChooseFormat} />
-      )}
       {previewJob && (
         <PrintPreviewModal
           job={previewJob.job}
@@ -6852,7 +6818,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           cls={cls}
           updateClass={updateClass}
           onClose={() => setShowAttendance(false)}
-          onPrint={(dateKey) => setPrintChoice({ type: "attendance", cls, dateKey })}
+          onPrint={(dateKey) => openPrintPreview({ type: "attendance", cls, dateKey })}
           onShare={(dateKey) => exportPdfShare({ type: "attendance", cls, dateKey })}
         />
       )}
