@@ -1334,16 +1334,23 @@ function PrintFormatModal({ onClose, onChoose }) {
 function PrintPreviewModal({ job, format, onClose, onExport }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const formatLabels = { pdf: "PDF", png: "PNG", excel: "Excel" };
   const formatIcons = { pdf: FileText, png: FileImage, excel: FileSpreadsheet };
   const PrimaryIcon = formatIcons[format] || FileText;
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError("");
+    setImgUrl(null);
     (async () => {
       try {
         const { canvas } = await jobToCanvas(job);
         if (!cancelled) setImgUrl(canvas.toDataURL("image/png"));
+      } catch (err) {
+        console.error("فشلت معاينة الطباعة:", err);
+        if (!cancelled) setError("تعذّرت معاينة الملف. يمكنك المتابعة والتصدير مباشرة بالأزرار تحت رغم ذلك.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1352,11 +1359,16 @@ function PrintPreviewModal({ job, format, onClose, onExport }) {
   }, [job]);
 
   return (
-    <Modal title="معاينة قبل التصدير" onClose={onClose} lg>
+    <Modal title="معاينة قبل التصدير" onClose={onClose} lg zIndex={80}>
       <div className="rounded-xl overflow-auto mb-4" style={{ border: `1px solid ${LINE}`, background: "#F3F1E9", maxHeight: "60vh" }}>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <RefreshCw size={22} color={MUTED} className="animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 px-4 text-center">
+            <AlertTriangle size={22} color="#C97A2B" />
+            <p className="text-sm" style={{ color: "#8A4A1E" }}>{error}</p>
           </div>
         ) : (
           <img src={imgUrl} alt="معاينة" className="w-full h-auto" />
