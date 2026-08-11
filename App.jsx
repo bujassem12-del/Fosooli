@@ -206,6 +206,17 @@ function playFeedback(enabled) {
     if (navigator.vibrate) navigator.vibrate(35);
   } catch (e) { /* ignore */ }
 }
+// نسبة الحضور: من بين الأيام اللي فعلاً سُجّل فيها حضور لهذا الفصل (يوم واحد
+// على الأقل انحط له تحديد غياب)، كم يوم كان الطالب حاضر فيه. الأيام اللي ما
+// انسجل فيها أي حضور أصلاً (ما ضغط المعلم "غياب" لأي طالب) ما تُحتسب، لأننا
+// ما نملك تأكيد إنها كانت يوم دراسي فعلي بالفصل.
+function attendancePercent(cls, rowId) {
+  const days = Object.keys(cls.attendance || {});
+  if (days.length === 0) return null;
+  const absentDays = days.filter((d) => cls.attendance[d]?.[rowId] === "absent").length;
+  return Math.round(((days.length - absentDays) / days.length) * 100);
+}
+
 function attendanceStatus(cls, rowId, dateKey) {
   return cls.attendance?.[dateKey]?.[rowId] === "absent" ? "absent" : "present";
 }
@@ -909,6 +920,10 @@ function jobToTable(job) {
     const rows = cls.rows.map((row) => [row.name, attendanceStatus(cls, row.id, dateKey) === "absent" ? "غائب" : "حاضر"]);
     return { title: `الحضور والغياب — ${formatDateDisplay(dateKey)}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `حضور-${cls.subject || "الفصل"}-${dateKey}` };
   }
+  if (job.type === "classFullReport") {
+    const cls = job.cls;
+    return { title: `تقرير شامل — ${cls.subject}`, subtitle: `${cls.grade} • ${cls.teacher}`, headers: [], rows: [], filename: `تقرير-شامل-${cls.subject || "الفصل"}` };
+  }
   const { cls, row, entries } = job;
   const grouped = groupEntries(entries).flatMap((g) => g.items);
   const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
@@ -925,6 +940,49 @@ async function jobToCanvas(job) {
       try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
     }
     return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement });
+  }
+  if (job.type === "classFullReport") {
+    const cls = job.cls;
+    const studentCanvases = [];
+    for (const row of cls.rows) {
+      const entries = cls.reports?.[row.id] || [];
+      const groups = groupEntries(entries);
+      let photoImageElement = null;
+      if (row.photo) {
+        try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
+      }
+      const { canvas } = buildReportCanvas({ title: row.name, subtitle: `${cls.subject} • ${cls.grade}`, groups, photoImageElement });
+      studentCanvases.push(canvas);
+    }
+    const scale = 3;
+    const pad = 24 * scale;
+    const headerH = 90 * scale;
+    const gap = 30 * scale;
+    const maxW = Math.max(headerH, ...studentCanvases.map((c) => c.width), 0) + pad * 2;
+    const totalH = headerH + studentCanvases.reduce((sum, c) => sum + c.height + gap, pad);
+    const combined = document.createElement("canvas");
+    combined.width = maxW;
+    combined.height = totalH;
+    const ctx = combined.getContext("2d");
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, maxW, totalH);
+    ctx.direction = "rtl";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = INK;
+    ctx.font = "bold 34px Tahoma, Arial";
+    ctx.fillText(`تقرير شامل — ${cls.subject}`, maxW / 2, pad / 2 + 10 * scale);
+    ctx.font = "20px Tahoma, Arial";
+    ctx.fillStyle = MUTED;
+    ctx.fillText(`${cls.grade} • ${cls.teacher} — ${cls.rows.length} طالب`, maxW / 2, pad / 2 + 44 * scale);
+
+    let y = headerH;
+    studentCanvases.forEach((c) => {
+      const x = (maxW - c.width) / 2;
+      ctx.drawImage(c, x, y);
+      y += c.height + gap;
+    });
+    return { canvas: combined, logicalWidth: maxW / scale, logicalHeight: totalH / scale };
   }
   const table = jobToTable(job);
   return buildTableCanvas(table);
@@ -947,6 +1005,23 @@ async function exportPdfShare(job) {
 }
 
 function exportExcel(job) {
+  if (job.type === "classFullReport") {
+    const cls = job.cls;
+    const wb = XLSX.utils.book_new();
+    cls.rows.forEach((row) => {
+      const entries = cls.reports?.[row.id] || [];
+      const grouped = groupEntries(entries).flatMap((g) => g.items);
+      const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
+      const rows = grouped.map((e) => [e.colName, `${e.day ? e.day + "، " : ""}${e.date || ""}`, e.time || "", e.value]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws["!cols"] = headers.map((_, i) => ({ wch: i === headers.length - 1 ? 45 : 18 }));
+      // أسماء أوراق Excel محدودة بـ٣١ حرفًا وممنوع فيها بعض الرموز
+      const safeName = (row.name || "طالب").replace(/[\\/*?:[\]]/g, " ").slice(0, 31) || "طالب";
+      XLSX.utils.book_append_sheet(wb, ws, safeName);
+    });
+    XLSX.writeFile(wb, `تقرير-شامل-${cls.subject || "الفصل"}.xlsx`);
+    return;
+  }
   const t = jobToTable(job);
   const ws = XLSX.utils.aoa_to_sheet([t.headers, ...t.rows]);
   // Give every column a generous width (especially the last one, usually free
@@ -5137,7 +5212,19 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
             </div>
           )}
           <div className="flex-1" style={{ minWidth: 160 }}>
-            <p className="font-bold text-base" style={{ color: INK }}>{row.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-bold text-base" style={{ color: INK }}>{row.name}</p>
+              {(() => {
+                const pct = attendancePercent(cls, row.id);
+                if (pct === null) return null;
+                const color = pct >= 90 ? "#0F6B5C" : pct >= 75 ? "#C97A2B" : "#C0392B";
+                return (
+                  <span title="نسبة الحضور" className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: `${color}18`, color }}>
+                    {pct}٪ حضور
+                  </span>
+                );
+              })()}
+            </div>
             <p className="text-xs" style={{ color: MUTED }}>{cls.subject} • {cls.grade} • {cls.teacher}</p>
           </div>
           <p className="text-xs font-semibold shrink-0" style={{ color: MUTED }}>{entries.length} رصد إجمالي عبر {groups.length} تصنيف</p>
@@ -6586,6 +6673,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
+          <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
@@ -6719,6 +6807,16 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                           className="shrink-0"
                         />
                         <span className="font-semibold truncate flex-1">{row.name}</span>
+                        {(() => {
+                          const pct = attendancePercent(cls, row.id);
+                          if (pct === null) return null;
+                          const color = pct >= 90 ? "#0F6B5C" : pct >= 75 ? "#C97A2B" : "#C0392B";
+                          return (
+                            <span title="نسبة الحضور" className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${color}18`, color }}>
+                              {pct}٪
+                            </span>
+                          );
+                        })()}
                         {row.medicalNote && row.medicalNote.trim() && (
                           <span title={`تنبيه: ${row.medicalNote}`} className="shrink-0"><AlertTriangle size={12} color="#C97A2B" /></span>
                         )}
