@@ -7158,8 +7158,9 @@ export default function App() {
       style={{ background: "#FDFCF9", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
     >
       <div className="fixed inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
-        <div className="bg-blob-1" style={{ position: "absolute", top: "-16%", insetInlineEnd: "-14%", width: "46vw", height: "46vw", maxWidth: 620, maxHeight: 620, borderRadius: "9999px", background: "radial-gradient(circle, rgba(124,92,224,0.10) 0%, rgba(78,111,224,0.06) 45%, rgba(78,111,224,0) 70%)", filter: "blur(8px)" }} />
-        <div className="bg-blob-2" style={{ position: "absolute", bottom: "-18%", insetInlineStart: "-14%", width: "44vw", height: "44vw", maxWidth: 600, maxHeight: 600, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.09) 0%, rgba(15,107,92,0) 70%)", filter: "blur(8px)" }} />
+        <div className="bg-blob-1" style={{ position: "absolute", top: "-8%", insetInlineEnd: "-6%", width: "50vw", height: "50vw", maxWidth: 680, maxHeight: 680, borderRadius: "9999px", background: "radial-gradient(circle, rgba(124,92,224,0.30) 0%, rgba(78,111,224,0.18) 45%, rgba(78,111,224,0) 72%)", filter: "blur(4px)" }} />
+        <div className="bg-blob-2" style={{ position: "absolute", bottom: "-10%", insetInlineStart: "-8%", width: "48vw", height: "48vw", maxWidth: 660, maxHeight: 660, borderRadius: "9999px", background: "radial-gradient(circle, rgba(15,107,92,0.26) 0%, rgba(15,107,92,0) 72%)", filter: "blur(4px)" }} />
+        <div className="bg-blob-1" style={{ position: "absolute", top: "18%", insetInlineStart: "22%", width: "22vw", height: "22vw", maxWidth: 300, maxHeight: 300, borderRadius: "9999px", background: "radial-gradient(circle, rgba(201,122,43,0.16) 0%, rgba(201,122,43,0) 72%)", filter: "blur(4px)" }} />
       </div>
       <div className="relative" style={{ zIndex: 1 }}>
         {appContent}
