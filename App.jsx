@@ -1052,6 +1052,12 @@ function PrintStyles() {
         100% { opacity: 1; transform: scale(1) translateY(0); }
       }
       .celebrate-in { animation: celebrateIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+      input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
+      input[type="number"]:focus, input[type="date"]:focus, input[type="time"]:focus,
+      input[type="search"]:not([type="color"]):focus, textarea:focus, select:focus {
+        border-color: #0F6B5C !important;
+        box-shadow: 0 0 0 3px rgba(15,107,92,0.14);
+      }
     `}</style>
   );
 }
@@ -1289,12 +1295,12 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
   return (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 modal-backdrop-in"
-      style={{ background: "rgba(35,38,34,0.45)", zIndex }}
+      style={{ background: "rgba(25,28,25,0.5)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className={`rounded-2xl shadow-2xl w-full ${widthClass} modal-max-height overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
-        style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)` }}
+        className={`rounded-2xl w-full ${widthClass} modal-max-height overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
+        style={{ background: PAPER, border: `1px solid ${LINE}`, transform: `translate(${pos.x}px, ${pos.y}px)`, boxShadow: "0 24px 60px rgba(20,22,20,0.28)" }}
       >
         <div
           className="flex items-center justify-between px-5 py-4 sticky top-0"
@@ -1308,7 +1314,7 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
           <button
             onClick={onClose}
             onPointerDown={(e) => e.stopPropagation()}
-            className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform shrink-0"
+            className="p-1.5 rounded-full hover:bg-[#FBEDEA] active:scale-90 transition-all shrink-0"
             style={{ touchAction: "auto" }}
           >
             <X size={18} color={MUTED} />
@@ -1333,13 +1339,14 @@ function Field({ label, children, hint }) {
 const inputStyle = {
   width: "100%",
   padding: "9px 12px",
-  borderRadius: "10px",
+  borderRadius: "12px",
   border: `1px solid ${LINE}`,
   background: "#fff",
   fontFamily: "'IBM Plex Sans Arabic', sans-serif",
   fontSize: "14px",
   color: INK,
   outline: "none",
+  transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
 function ColorSwatches({ value, onChange, size = 8 }) {
@@ -5590,7 +5597,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           </button>
         </div>
 
-        <div className="rounded-xl p-2.5 flex flex-wrap items-center gap-2" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+        <div className="rounded-2xl p-2.5 flex flex-wrap items-center gap-2" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات</span>
           <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 8 }}>
             <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
@@ -6357,14 +6364,14 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
 
-        <div className="rounded-xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+        <div className="rounded-2xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>العرض والطباعة</span>
           <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
           <IconBtn icon={Printer} label="طباعة" onClick={() => setPrintChoice({ type: "class", cls })} />
           <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => setPrintChoice({ type: "blank", cls })} />
         </div>
 
-        <div className="rounded-xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+        <div className="rounded-2xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>أدوات الحصة</span>
           <IconBtn icon={CalendarCheck} label="متابعة الحضور" onClick={() => setShowAttendance(true)} />
           <IconBtn icon={Newspaper} label="الأحداث" onClick={() => setShowEvents(true)} />
@@ -6373,7 +6380,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Users} label="مجموعات عشوائية" onClick={() => setShowRandomGroups(true)} />
         </div>
 
-        <div className="rounded-xl p-1.5 mb-2 flex flex-wrap items-center gap-1.5" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+        <div className="rounded-2xl p-1.5 mb-2 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
