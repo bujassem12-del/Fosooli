@@ -10,7 +10,7 @@ import {
   Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange,
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
-  Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
+  Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download,
   CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
@@ -2378,6 +2378,56 @@ function parsePastedNames(text) {
     .filter(Boolean);
 }
 
+// يكتشف خانة "الاسم الرباعي" الفعلية داخل صف ملصوق من جدول نور — يشترط
+// وجود أكثر من كلمة (الاسم الرباعي دائمًا عدة كلمات) وعدم احتوائه أرقامًا،
+// ويتجاهل نصوص الأزرار/الروابط المتكررة بكل صف مثل "عرض"/"إضافة" وعناوين
+// الأعمدة نفسها مثل "الاسم الرباعي"/"رقم الهوية".
+const NOOR_TABLE_JUNK = ["الاسم الرباعي", "رقم الهوية", "خيارات", "ملاحظات", "عرض", "إضافة", "الطلاب", "تحديد الكل"];
+function looksLikeFullName(s) {
+  const t = String(s ?? "").trim();
+  if (t.length < 4 || t.length > 80) return false;
+  if (!/\s/.test(t)) return false; // اسم رباعي = عدة كلمات دائمًا
+  if (/\d/.test(t)) return false;
+  if (!/[\u0600-\u06FFa-zA-Z]/.test(t)) return false;
+  if (NOOR_TABLE_JUNK.includes(t)) return false;
+  return true;
+}
+// رقم الهوية/الإقامة السعودي: ١٠ أرقام. نتساهل بقبول ٩ أرقام احتياطًا لبعض
+// التنسيقات، ونتجاهل أي فواصل أو مسافات داخل الرقم قبل الفحص.
+function looksLikeNationalId(s) {
+  const digits = String(s ?? "").replace(/[^\d]/g, "");
+  return /^\d{9,10}$/.test(digits) ? digits : null;
+}
+// يحوّل نصًا ملصوقًا من جدول "الطلاب" بنظام نور (بعد نسخه كاملًا بالمتصفح)
+// إلى مصفوفة {name, nationalId} — يدعم كلًا من اللصق الحقيقي كجدول (خلايا
+// مفصولة بمسافة Tab) ولصق قائمة أسماء بسيطة (اسم واحد بكل سطر).
+function parseNoorStudentTable(text) {
+  const lines = String(text ?? "").split("\n");
+  const results = [];
+  const seen = new Set();
+  lines.forEach((line) => {
+    const raw = line.trim();
+    if (!raw) return;
+    const parts = raw.includes("\t") ? raw.split("\t") : raw.split(/\s{2,}/);
+    let name = null, nationalId = null;
+    parts.forEach((p) => {
+      const pt = p.trim();
+      if (!pt) return;
+      if (!nationalId) {
+        const id = looksLikeNationalId(pt);
+        if (id) { nationalId = id; return; }
+      }
+      if (!name && looksLikeFullName(pt)) name = pt;
+    });
+    if (!name && parts.length === 1 && looksLikeFullName(raw)) name = raw;
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      results.push({ name, nationalId: nationalId || "" });
+    }
+  });
+  return results;
+}
+
 function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNumbers, onToggleShowRowNumbers }) {
   const isEdit = !!initial;
   const [single, setSingle] = useState(() => (initial ? { ...initial } : null));
@@ -2435,9 +2485,9 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
               style={{ background: tab === "detailed" ? INK : "transparent", color: tab === "detailed" ? "#fff" : MUTED, border: `1px solid ${tab === "detailed" ? INK : LINE}` }}>
               إضافة تفصيلية
             </button>
-            <button onClick={() => setTab("bulk")} className="px-3 py-1.5 rounded-full text-xs font-semibold"
+            <button onClick={() => setTab("bulk")} className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1"
               style={{ background: tab === "bulk" ? INK : "transparent", color: tab === "bulk" ? "#fff" : MUTED, border: `1px solid ${tab === "bulk" ? INK : LINE}` }}>
-              من نور
+              <ExternalLink size={13} /> استيراد الأسماء من نور
             </button>
             <button onClick={() => setTab("import")} className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1"
               style={{ background: tab === "import" ? INK : "transparent", color: tab === "import" ? "#fff" : MUTED, border: `1px solid ${tab === "import" ? INK : LINE}` }}>
@@ -2465,9 +2515,9 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
               <button
                 onClick={() => setShowNoorEmbed(true)}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-3 transition-all hover:brightness-110 active:scale-95 magic-shimmer"
-                style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)", backgroundSize: "220% 220%" }}
+                style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, backgroundSize: "220% 220%" }}
               >
-                <Sparkles size={16} /> استيراد من نور
+                <ExternalLink size={16} /> استيراد الأسماء من نور تلقائيًا
               </button>
               <p className="text-xs text-center mb-3" style={{ color: MUTED }}>أو ألصق الأسماء يدويًا بالمربع تحت</p>
               <Field label="أسماء الصفوف (كل اسم في سطر)">
@@ -2559,9 +2609,17 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
       {showNoorEmbed && (
         <NoorEmbedModal
           onClose={() => setShowNoorEmbed(false)}
-          onImportNames={(names) => {
-            setBulkText((prev) => (prev.trim() ? `${prev}\n${names.join("\n")}` : names.join("\n")));
+          onImportNames={(rows) => {
             setShowNoorEmbed(false);
+            onSaveMany(rows.map((r) => ({
+              name: r.name,
+              type: "text",
+              options: [],
+              color: bulkColor,
+              autoRenew: bulkAutoRenew,
+              medicalNote: bulkMedicalNote.trim(),
+              nationalId: r.nationalId || "",
+            })));
           }}
         />
       )}
@@ -3670,6 +3728,90 @@ function GradeSheetModal({ cls, onClose, onGenerate }) {
   );
 }
 
+// أداة تصدير الدرجات إلى نور: نور لا يسمح بتعبئة تلقائية من مواقع خارجية
+// لأسباب أمنية (نفس السبب اللي يمنع تضمينه بإطار)، فهذه الأداة تجهّز قائمة
+// الدرجات بترتيب الطلاب الحالي (المطابق لترتيبهم لو استُوردوا من نور
+// أصلًا) جاهزة للنسخ، وتبقى خطوة اللصق داخل صفحة "رصد الدرجات" بنور يدويًا.
+function NoorGradesExportModal({ cls, onClose }) {
+  const gradeColumns = cls.columns.filter((c) => c.type === "counter" || c.type === "text");
+  const [colId, setColId] = useState(gradeColumns[0]?.id || "");
+  const [copied, setCopied] = useState(null);
+  const col = cls.columns.find((c) => c.id === colId);
+
+  const rows = cls.rows.map((row) => ({
+    name: row.name,
+    nationalId: row.nationalId || "",
+    value: col ? (cls.cells[`${row.id}:${col.id}`] || lastReportedValue(cls, row.id, col.id) || "") : "",
+  }));
+
+  const flash = (key) => { setCopied(key); setTimeout(() => setCopied(null), 2000); };
+  const copyValuesOnly = async () => {
+    const text = rows.map((r) => r.value || "").join("\n");
+    try { await navigator.clipboard.writeText(text); flash("values"); } catch (e) { /* ignore */ }
+  };
+  const copyFull = async () => {
+    const text = rows.map((r) => [r.name, r.nationalId, r.value].filter(Boolean).join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); flash("full"); } catch (e) { /* ignore */ }
+  };
+  const downloadTxt = () => {
+    const text = rows.map((r) => [r.name, r.nationalId, r.value].join("\t")).join("\n");
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    downloadBlob(blob, `درجات-${cls.subject || "الفصل"}-${col?.name || ""}.txt`);
+  };
+
+  return (
+    <Modal title="تصدير الدرجات إلى نور" onClose={onClose} accent="magic" wide>
+      <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
+        <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: "#8A4A1E" }}>
+          نور لا يسمح بالتعبئة التلقائية من مواقع خارجية لأسباب أمنية، لذلك هذه الأداة تجهّز لك قائمة الدرجات بنفس ترتيب طلابك جاهزة للنسخ — تبقى خطوة لصقها داخل صفحة «رصد الدرجات» بنظام نور يدويًا.
+        </p>
+      </div>
+
+      {gradeColumns.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد أعمدة درجات بهذا الفصل بعد.</p>
+      ) : (
+        <>
+          <Field label="العمود (الدرجة) المراد تصديره">
+            <select value={colId} onChange={(e) => setColId(e.target.value)} style={inputStyle}>
+              {gradeColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+
+          <div className="rounded-xl overflow-hidden mb-4" style={{ border: `1px solid ${LINE}`, maxHeight: 320, overflowY: "auto" }}>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th className="p-2 text-center" style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, width: 36, position: "sticky", top: 0 }}>#</th>
+                  <th className="p-2 text-right" style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>الاسم</th>
+                  <th className="p-2 text-center" style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>رقم الهوية</th>
+                  <th className="p-2 text-center" style={{ background: GOLD_LIGHT, border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>{col?.name}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} style={{ background: i % 2 ? "#FBFAF6" : "#fff" }}>
+                    <td className="p-2 text-center text-xs" style={{ border: `1px solid ${LINE}`, color: MUTED }}>{i + 1}</td>
+                    <td className="p-2" style={{ border: `1px solid ${LINE}`, color: INK }}>{r.name}</td>
+                    <td className="p-2 text-center text-xs" style={{ border: `1px solid ${LINE}`, color: MUTED }}>{r.nationalId || "—"}</td>
+                    <td className="p-2 text-center font-semibold" style={{ border: `1px solid ${LINE}`, color: DASH_GREEN }}>{r.value || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <IconBtn icon={ClipboardCopy} label={copied === "values" ? "تم النسخ ✓" : "نسخ الدرجات فقط (بالترتيب)"} onClick={copyValuesOnly} />
+            <IconBtn icon={ClipboardCopy} label={copied === "full" ? "تم النسخ ✓" : "نسخ الاسم + الهوية + الدرجة"} onClick={copyFull} />
+            <IconBtn icon={ImageDown} label="تنزيل كملف نصي" onClick={downloadTxt} />
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onClose }) {
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -4065,68 +4207,203 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare
 }
 
 function NoorEmbedModal({ onImportNames, onClose }) {
-  const [loadState, setLoadState] = useState("loading"); // loading | loaded | blocked
+  const [mode, setMode] = useState("paste"); // "paste" | "auto"
   const [pasteText, setPasteText] = useState("");
-  const timerRef = useRef(null);
+  const [selectedIdx, setSelectedIdx] = useState(null); // Set of selected indices, null = not yet computed
 
+  // إعدادات "الوضع الآلي" (خادم وسيط منشور من طرفك) — تُحفظ محليًا بجهازك
+  // فقط (localStorage)، ما تُرفَع لقاعدة البيانات، لأن الكوكي بيانات حساسة.
+  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("fosooli-noor-server-url") || "");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("fosooli-noor-api-key") || "");
+  const [cookie, setCookie] = useState(() => localStorage.getItem("fosooli-noor-cookie") || "");
+  const [stage, setStage] = useState("");
+  const [classCode, setClassCode] = useState("");
+  const [sectionCode, setSectionCode] = useState("");
+  const [semester, setSemester] = useState("");
+  const [autoResults, setAutoResults] = useState([]);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoError, setAutoError] = useState("");
+
+  useEffect(() => { localStorage.setItem("fosooli-noor-server-url", serverUrl); }, [serverUrl]);
+  useEffect(() => { localStorage.setItem("fosooli-noor-api-key", apiKey); }, [apiKey]);
+  useEffect(() => { localStorage.setItem("fosooli-noor-cookie", cookie); }, [cookie]);
+
+  const pastedResults = parseNoorStudentTable(pasteText);
+  const parsed = mode === "auto" ? autoResults : pastedResults;
+  const selected = selectedIdx || new Set(parsed.map((_, i) => i));
   useEffect(() => {
-    timerRef.current = setTimeout(() => setLoadState((s) => (s === "loading" ? "blocked" : s)), 4000);
-    return () => clearTimeout(timerRef.current);
-  }, []);
+    // كل مرة يتغيّر الاستخراج (نص جديد لُصق أو نتيجة آلية جديدة) نُعيد تحديد الجميع افتراضيًا
+    setSelectedIdx(new Set(parsed.map((_, i) => i)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasteText, autoResults]);
 
-  const pastedNames = parsePastedNames(pasteText);
+  const toggleOne = (i) => {
+    setSelectedIdx((prev) => {
+      const s = new Set(prev || parsed.map((_, idx) => idx));
+      if (s.has(i)) s.delete(i); else s.add(i);
+      return s;
+    });
+  };
+
+  const confirmedCount = parsed.filter((_, i) => selected.has(i)).length;
+
+  const fetchAutomatically = async () => {
+    setAutoError("");
+    setAutoResults([]);
+    if (!serverUrl.trim() || !apiKey.trim() || !cookie.trim()) {
+      setAutoError("عبّي رابط الخادم ومفتاح API والكوكي أولًا.");
+      return;
+    }
+    setAutoLoading(true);
+    try {
+      const res = await fetch(`${serverUrl.replace(/\/$/, "")}/api/noor/students`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({ cookie, stage, classCode, sectionCode, semester }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "فشل الجلب");
+      setAutoResults(data.students || []);
+    } catch (err) {
+      setAutoError(err.message === "Failed to fetch" ? "تعذّر الوصول للخادم — تأكد من الرابط ومن أن الخادم يعمل." : err.message);
+    } finally {
+      setAutoLoading(false);
+    }
+  };
+
+  const STEPS = [
+    "افتح نور بنافذة مستقلة من الزر تحت، وسجّل دخولك بحسابك (عبر نفاذ أو بوابة الدخول الموحد).",
+    "من القائمة الجانبية اختر «الطلاب» ← «الطلاب حسب العلاقات التدريسية».",
+    "اختر نظام الدراسة / الصف / القسم / الفصل، ثم اضغط «عرض».",
+    "اضغط كلمة «الطلاب» أمام المادة المطلوبة لعرض قائمة الطلاب الكاملة.",
+    "حدّد جدول الطلاب بالكامل (اسحب فوقه بالماوس، أو Ctrl+A) وانسخه (Ctrl+C).",
+    "ارجع لهذه النافذة، والصق الجدول بالمربع تحت — سيُستخرَج الاسم ورقم الهوية تلقائيًا.",
+  ];
 
   return (
-    <Modal title="استيراد من نور" onClose={onClose} accent="magic" xl>
-      <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: loadState === "blocked" ? "#FBEDEA" : "#EAF3F0", border: `1px solid ${loadState === "blocked" ? "#F5DCD5" : "#C9E2DB"}` }}>
-        <Info size={15} color={loadState === "blocked" ? "#9A3B2E" : "#26423B"} className="shrink-0 mt-0.5" />
-        <p className="text-xs" style={{ color: loadState === "blocked" ? "#9A3B2E" : "#26423B" }}>
-          {loadState === "blocked"
-            ? "الصفحة أدناه فاضية غالبًا لأن نور يمنع صراحة فتحه جوّا مواقع ثانية (إجراء أمني من طرفهم، مو خلل بموقعنا). جرّب \"فتح بنافذة مستقلة\"، وبعد ما تسجّل دخولك وتشوف الأسماء، انسخها وألصقها بالمربع تحت."
-            : "جارٍ محاولة فتح نور بالأسفل... لو ما ظهر خلال ثوانٍ فمعناه نور يمنعه، وبيتحول التنبيه تلقائيًا."}
-        </p>
-      </div>
-
-      <div className="flex gap-2 mb-3">
-        <button
-          onClick={() => window.open("https://noor.moe.gov.sa/", "_blank")}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold"
-          style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
-        >
-          <ExternalLink size={15} color="#26423B" /> فتح نور بنافذة مستقلة
+    <Modal title="استيراد الأسماء من نور" onClose={onClose} accent="magic" xl>
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setMode("paste")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "paste" ? INK : "transparent", color: mode === "paste" ? "#fff" : MUTED, border: `1px solid ${mode === "paste" ? INK : LINE}` }}>
+          لصق يدوي (يعمل فورًا)
+        </button>
+        <button onClick={() => setMode("auto")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "auto" ? INK : "transparent", color: mode === "auto" ? "#fff" : MUTED, border: `1px solid ${mode === "auto" ? INK : LINE}` }}>
+          الوضع الآلي (يحتاج خادم متصل)
         </button>
       </div>
 
-      <div className="rounded-xl overflow-hidden mb-4" style={{ border: `1px solid ${LINE}`, height: "50vh", background: "#F8F7F2" }}>
-        <iframe
-          src="https://noor.moe.gov.sa/"
-          title="نور"
-          className="w-full h-full"
-          onLoad={() => setLoadState("loaded")}
-          referrerPolicy="no-referrer"
-        />
-      </div>
+      {mode === "paste" ? (
+        <>
+          <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
+            <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
+            <p className="text-xs" style={{ color: "#8A4A1E" }}>
+              نور يمنع صراحة فتحه داخل تطبيقات أخرى (إجراء أمني من طرفهم)، لذلك الخطوة تُنجَز بفتح نور بنافذة مستقلة ثم نسخ الجدول ولصقه هنا — الاستخراج والإضافة بعدها تلقائي بالكامل.
+            </p>
+          </div>
 
-      <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-        <p className="text-xs font-bold mb-2" style={{ color: INK }}>الصق أسماء الطلاب هنا بعد نسخها من نور</p>
-        <textarea
-          style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }}
-          value={pasteText}
-          onChange={(e) => setPasteText(e.target.value)}
-          placeholder={"محمد أحمد\nسارة خالد"}
-        />
-        {pastedNames.length > 0 && (
-          <p className="text-xs mt-1.5" style={{ color: "#26423B" }}>{pastedNames.length} اسم جاهز للاستيراد</p>
-        )}
-        <button
-          disabled={pastedNames.length === 0}
-          onClick={() => onImportNames(pastedNames)}
-          className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
-          style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}
-        >
-          استيراد {pastedNames.length > 0 ? `(${pastedNames.length})` : ""}
-        </button>
-      </div>
+          <button
+            onClick={() => window.open("https://noor.moe.gov.sa/", "_blank")}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-4 transition-all hover:brightness-110 active:scale-95"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+          >
+            <ExternalLink size={16} /> فتح نظام نور
+          </button>
+
+          <div className="rounded-xl p-3 mb-4" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+            <p className="text-xs font-bold mb-2" style={{ color: INK }}>خطوات الاستيراد</p>
+            <ol className="space-y-1.5">
+              {STEPS.map((s, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs" style={{ color: MUTED }}>
+                  <span className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 font-bold text-white" style={{ background: DASH_GREEN, fontSize: 9 }}>{i + 1}</span>
+                  {s}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-xs font-bold mb-2" style={{ color: INK }}>الصق جدول الطلاب من نور هنا</p>
+            <textarea
+              style={{ ...inputStyle, minHeight: "110px", resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={"الصق الجدول كاملًا هنا بعد نسخه من نور..."}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
+            <Info size={15} color={DASH_GREEN} className="shrink-0 mt-0.5" />
+            <p className="text-xs" style={{ color: DASH_GREEN }}>
+              هذا الوضع يحتاج خادمًا وسيطًا منشورًا (راجع ملف <b>noor-proxy-server/README.md</b> اللي أرسلته لك لخطوات الإعداد الكاملة — مرة وحدة فقط). بعد التجهيز، عبّي الحقول تحت وستُحفَظ بجهازك.
+            </p>
+          </div>
+          <Field label="رابط الخادم"><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} style={inputStyle} placeholder="https://noor-proxy-xxxx.onrender.com" /></Field>
+          <Field label="مفتاح API"><input value={apiKey} onChange={(e) => setApiKey(e.target.value)} style={inputStyle} placeholder="نفس SERVER_API_KEY" /></Field>
+          <Field label="الكوكي (من تبويب Network بنور)"><textarea value={cookie} onChange={(e) => setCookie(e.target.value)} style={{ ...inputStyle, minHeight: 70, fontFamily: "monospace", fontSize: 11 }} placeholder="الصق قيمة هيدر Cookie كاملة" /></Field>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <input value={stage} onChange={(e) => setStage(e.target.value)} style={inputStyle} placeholder="الصف (اختياري)" />
+            <input value={classCode} onChange={(e) => setClassCode(e.target.value)} style={inputStyle} placeholder="القسم (اختياري)" />
+            <input value={sectionCode} onChange={(e) => setSectionCode(e.target.value)} style={inputStyle} placeholder="الفصل الدراسي (اختياري)" />
+            <input value={semester} onChange={(e) => setSemester(e.target.value)} style={inputStyle} placeholder="فصل آخر (اختياري)" />
+          </div>
+          <button
+            onClick={fetchAutomatically}
+            disabled={autoLoading}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-2 disabled:opacity-60 transition-all hover:brightness-110"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+          >
+            {autoLoading ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+            {autoLoading ? "جاري الجلب..." : "جلب الطلاب تلقائيًا"}
+          </button>
+          {autoError && <p className="text-xs text-center mb-2" style={{ color: "#C0392B" }}>{autoError}</p>}
+        </>
+      )}
+
+      {parsed.length > 0 && (
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ border: `1px solid ${LINE}` }}>
+          <div className="p-4" style={{ background: `linear-gradient(135deg, ${DASH_GREEN}, ${DASH_GREEN_DARK})`, color: "#fff" }}>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.18)" }}>
+                <Users size={20} color="#fff" />
+              </div>
+              <div>
+                <p className="font-bold text-base">بيانات الطلاب</p>
+                <p className="text-xs opacity-85">تم استخراج {parsed.length} طالب</p>
+              </div>
+            </div>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {parsed.map((r, i) => (
+              <label
+                key={i}
+                className="flex items-center gap-3 px-4 py-2.5"
+                style={{ borderTop: i > 0 ? `1px solid ${LINE}` : "none", background: selected.has(i) ? "#fff" : "#FAF8F3" }}
+              >
+                <input type="checkbox" checked={selected.has(i)} onChange={() => toggleOne(i)} />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold truncate" style={{ color: INK }}>{r.name}</span>
+                  {r.nationalId && <span className="block text-xs" style={{ color: MUTED }}>رقم الهوية: {r.nationalId}</span>}
+                </span>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: GOLD_LIGHT, color: DASH_GREEN }}>{i + 1}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2 p-3" style={{ borderTop: `1px solid ${LINE}` }}>
+            <button
+              disabled={confirmedCount === 0}
+              onClick={() => onImportNames(parsed.filter((_, i) => selected.has(i)))}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+              style={{ background: "#0F9D58" }}
+            >
+              <Download size={15} /> استيراد البيانات {confirmedCount > 0 ? `(${confirmedCount})` : ""}
+            </button>
+            <button onClick={() => { setPasteText(""); setAutoResults([]); }} className="px-5 py-2.5 rounded-xl text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: MUTED }}>
+              <X size={14} className="inline" /> إلغاء
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -7228,6 +7505,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
   const [showGradeSheet, setShowGradeSheet] = useState(false);
+  const [showNoorGradesExport, setShowNoorGradesExport] = useState(false);
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -7378,7 +7656,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   };
 
   const saveRowsMany = (drafts) => {
-    updateClass((c) => ({ ...c, rows: [...c.rows, ...drafts.map((d) => ({ id: uid(), name: d.name.trim(), type: d.type, options: d.options, color: d.color, autoRenew: !!d.autoRenew, medicalNote: d.medicalNote || "" }))] }));
+    updateClass((c) => ({ ...c, rows: [...c.rows, ...drafts.map((d) => ({ id: uid(), name: d.name.trim(), type: d.type, options: d.options, color: d.color, autoRenew: !!d.autoRenew, medicalNote: d.medicalNote || "", nationalId: d.nationalId || "" }))] }));
     setRowModal(null);
   };
   const saveRowOne = (payload) => {
@@ -7748,6 +8026,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
           <IconBtn icon={FileSpreadsheet} label="كشف رصد درجات" magic onClick={() => setShowGradeSheet(true)} />
+          <IconBtn icon={ExternalLink} label="تصدير الدرجات لنور" onClick={() => setShowNoorGradesExport(true)} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
@@ -8123,6 +8402,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
             openPrintPreview({ type: "gradeSheet", cls, shortTestIds, finalExamId, reviewerName }, "pdf");
           }}
         />
+      )}
+      {showNoorGradesExport && (
+        <NoorGradesExportModal cls={cls} onClose={() => setShowNoorGradesExport(false)} />
       )}
       {confirmBulkDelete && (
         <ConfirmDialog
