@@ -229,7 +229,7 @@ function totalGrade(cls, rowId) {
   });
   const pct = max > 0 ? (score / max) * 100 : 0;
   let band, bandColor, bandBg;
-  if (pct >= 90) { band = "ممتاز"; bandColor = "#0F6B5C"; bandBg = "#E3F1EC"; }
+  if (pct >= 90) { band = "ممتاز"; bandColor = "#26423B"; bandBg = "#E3F1EC"; }
   else if (pct >= 80) { band = "جيد جدًا"; bandColor = "#2E7DA6"; bandBg = "#E3EEF5"; }
   else if (pct >= 65) { band = "جيد"; bandColor = "#C97A2B"; bandBg = "#FBEEE0"; }
   else { band = "ضعيف"; bandColor = "#C0392B"; bandBg = "#FBEAE7"; }
@@ -431,7 +431,7 @@ function buildReportCanvas({ title, subtitle, groups, photoImageElement }) {
     y += summaryH;
   }
   groups.forEach((g, gi) => {
-    ctx.fillStyle = g.colColor || "#0F6B5C";
+    ctx.fillStyle = g.colColor || "#26423B";
     ctx.fillRect(pad, y, tableW, sectionH);
     ctx.fillStyle = "#fff";
     ctx.font = "bold 14px Tahoma, Arial";
@@ -484,7 +484,7 @@ function buildCertificateCanvas({ countryName, ministryName, schoolName, logoIma
   canvas.height = height * scale;
   const ctx = canvas.getContext("2d");
   ctx.scale(scale, scale);
-  const accent = accentColor || "#0F6B5C";
+  const accent = accentColor || "#26423B";
 
   // Warm gradient background instead of a flat fill
   const grad = ctx.createRadialGradient(width / 2, height / 2, 40, width / 2, height / 2, width * 0.72);
@@ -1052,7 +1052,7 @@ async function buildShawahedReportCanvas(shawahed, meta = {}) {
 
   hy += 12;
   ctx.font = "bold 22px Tahoma, Arial";
-  ctx.fillStyle = "#0F6B5C";
+  ctx.fillStyle = "#26423B";
   ctx.fillText("سجل توثيق شواهد الأداء الوظيفي", width / 2, hy);
   hy += 40;
 
@@ -1498,7 +1498,7 @@ function buildReadOnlyBoardHtml(cls, dateKey) {
     const cells = [
       ...(cls.showRowNumbers ? [`<td style="padding:8px;text-align:center;border:1px solid ${LINE};color:${MUTED};font-size:12px;">${i + 1}</td>`] : []),
       `<td style="padding:8px;font-weight:600;border:1px solid ${LINE};border-inline-start:4px solid ${row.color};">${escapeHtml(row.name)}</td>`,
-      `<td style="padding:6px;text-align:center;border:1px solid ${LINE};font-weight:700;color:${status === "absent" ? "#C0392B" : "#0F6B5C"};">${status === "absent" ? "غائب" : "حاضر"}</td>`,
+      `<td style="padding:6px;text-align:center;border:1px solid ${LINE};font-weight:700;color:${status === "absent" ? "#C0392B" : "#26423B"};">${status === "absent" ? "غائب" : "حاضر"}</td>`,
       ...cls.columns.map((col) => {
         const val = (dateKey ? valueOnDate(cls, row.id, col.id, dateKey) : (cls.cells[`${row.id}:${col.id}`] || lastReportedValue(cls, row.id, col.id))) || "";
         return `<td style="padding:6px;text-align:center;border:1px solid ${LINE};">${escapeHtml(String(val))}</td>`;
@@ -1646,7 +1646,7 @@ function PrintStyles() {
       input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
       input[type="number"]:focus, input[type="date"]:focus, input[type="time"]:focus,
       input[type="search"]:not([type="color"]):focus, textarea:focus, select:focus {
-        border-color: #0F6B5C !important;
+        border-color: #26423B !important;
         box-shadow: 0 0 0 3px rgba(15,107,92,0.14);
       }
     `}</style>
@@ -1687,7 +1687,7 @@ function IconBtn({ icon: Icon, label, onClick, tone = "default", magic = false }
   const tones = {
     default: { bg: "#fff", fg: INK, border: LINE, shadow: "0 1px 2px rgba(35,38,34,0.05)" },
     danger: { bg: "#FBEDEA", fg: "#9A3B2E", border: "#F5DCD5", shadow: "0 1px 2px rgba(154,59,46,0.06)" },
-    primary: { bg: "linear-gradient(135deg, #12806E, #0F6B5C)", fg: "#fff", border: "transparent", shadow: "0 2px 8px rgba(15,107,92,0.28)" },
+    primary: { bg: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, fg: "#fff", border: "transparent", shadow: "0 2px 8px rgba(38,66,59,0.28)" },
     magic: { bg: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)", fg: "#fff", border: "transparent", shadow: "0 3px 12px rgba(124,92,224,0.38)" },
   };
   const t = tones[magic ? "magic" : tone];
@@ -1773,7 +1773,7 @@ function DateField({ value, onChange }) {
                   const iso = d ? `${String(viewY).padStart(4, "0")}-${String(viewM).padStart(2, "0")}-${String(d).padStart(2, "0")}` : null;
                   const isSel = iso && iso === value;
                   return d ? (
-                    <button key={i} onClick={() => gSelect(d)} className="text-xs py-1.5 rounded-md hover:bg-black/5" style={{ background: isSel ? "#0F6B5C" : "transparent", color: isSel ? "#fff" : INK, fontWeight: isSel ? 700 : 400 }}>{d}</button>
+                    <button key={i} onClick={() => gSelect(d)} className="text-xs py-1.5 rounded-md hover:bg-black/5" style={{ background: isSel ? "#26423B" : "transparent", color: isSel ? "#fff" : INK, fontWeight: isSel ? 700 : 400 }}>{d}</button>
                   ) : <div key={i} />;
                 })}
               </div>
@@ -1793,13 +1793,13 @@ function DateField({ value, onChange }) {
                   const iso = d ? hijriToIso(hViewY, hViewM, d) : null;
                   const isSel = iso && iso === value;
                   return d ? (
-                    <button key={i} onClick={() => hSelect(d)} className="text-xs py-1.5 rounded-md hover:bg-black/5" style={{ background: isSel ? "#0F6B5C" : "transparent", color: isSel ? "#fff" : INK, fontWeight: isSel ? 700 : 400 }}>{d}</button>
+                    <button key={i} onClick={() => hSelect(d)} className="text-xs py-1.5 rounded-md hover:bg-black/5" style={{ background: isSel ? "#26423B" : "transparent", color: isSel ? "#fff" : INK, fontWeight: isSel ? 700 : 400 }}>{d}</button>
                   ) : <div key={i} />;
                 })}
               </div>
             </>
           )}
-          <button onClick={() => selectIso(todayKey())} className="w-full mt-3 text-xs font-bold py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>اليوم</button>
+          <button onClick={() => selectIso(todayKey())} className="w-full mt-3 text-xs font-bold py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: "#26423B" }}>اليوم</button>
         </div>
       )}
     </div>
@@ -1871,7 +1871,7 @@ function PrintPreviewModal({ job, format, onClose, onExport }) {
       <button
         onClick={() => onExport(format)}
         className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-2 transition-all hover:brightness-110 active:scale-95"
-        style={{ background: "linear-gradient(135deg, #12806E, #0F6B5C)", boxShadow: "0 2px 8px rgba(15,107,92,0.28)" }}
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, boxShadow: "0 2px 8px rgba(38,66,59,0.28)" }}
       >
         <PrimaryIcon size={16} /> تصدير كـ {formatLabels[format]}
       </button>
@@ -2003,19 +2003,19 @@ function ColorSwatches({ value, onChange, size = 8 }) {
           title="اختر لونًا"
           onClick={() => customInputRef.current?.click()}
           className="rounded-full flex items-center justify-center transition-transform hover:scale-110"
-          style={{ width: size * 5, height: size * 5, background: value || "#0F6B5C", boxShadow: `0 0 0 2px #fff, 0 0 0 4px ${value || "#0F6B5C"}` }}
+          style={{ width: size * 5, height: size * 5, background: value || "#26423B", boxShadow: `0 0 0 2px #fff, 0 0 0 4px ${value || "#26423B"}` }}
         >
           <Pipette size={size * 1.6} color="#fff" style={{ filter: "drop-shadow(0 0 1.5px rgba(0,0,0,0.5))" }} />
         </button>
         <input
           ref={customInputRef}
           type="color"
-          value={value || "#0F6B5C"}
+          value={value || "#26423B"}
           onChange={(e) => onChange(e.target.value)}
           style={{ position: "absolute", inset: 0, opacity: 0, width: "100%", height: "100%", cursor: "pointer" }}
         />
       </div>
-      <span className="text-xs font-mono" style={{ color: MUTED }}>{value || "#0F6B5C"}</span>
+      <span className="text-xs font-mono" style={{ color: MUTED }}>{value || "#26423B"}</span>
     </div>
   );
 }
@@ -2066,10 +2066,10 @@ function OptionsEditor({ options, onChange }) {
         ))}
       </div>
       <div className="flex items-center gap-3 mt-2">
-        <button type="button" onClick={add} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+        <button type="button" onClick={add} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}>
           <Plus size={13} /> إضافة خيار
         </button>
-        <button type="button" onClick={() => setShowBulk((s) => !s)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+        <button type="button" onClick={() => setShowBulk((s) => !s)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}>
           <ListPlus size={13} /> إضافة خيارات دفعة واحدة
         </button>
       </div>
@@ -2081,7 +2081,7 @@ function OptionsEditor({ options, onChange }) {
             placeholder={"اكتب كل خيار بسطر مستقل، مثال:\nممتاز\nجيد جدًا\nجيد\nيحتاج تحسين"}
             style={{ ...inputStyle, minHeight: 90, background: "#fff" }}
           />
-          <button type="button" disabled={!bulkText.trim()} onClick={addBulk} className="mt-2 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: "#0F6B5C" }}>
+          <button type="button" disabled={!bulkText.trim()} onClick={addBulk} className="mt-2 text-xs font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: "#26423B" }}>
             إضافة الخيارات
           </button>
         </div>
@@ -2106,9 +2106,9 @@ function TypePicker({ type, setType, labels }) {
           onClick={() => setType(opt.v)}
           className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-medium"
           style={{
-            border: `1px solid ${type === opt.v ? "#0F6B5C" : LINE}`,
+            border: `1px solid ${type === opt.v ? "#26423B" : LINE}`,
             background: type === opt.v ? "#EAF3F0" : "#fff",
-            color: type === opt.v ? "#0F6B5C" : MUTED,
+            color: type === opt.v ? "#26423B" : MUTED,
           }}
         >
           <opt.icon size={16} />
@@ -2247,7 +2247,7 @@ function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
               <button
                 onClick={() => setDrafts([...drafts, emptyColumnDraft()])}
                 className="mb-2 text-sm font-semibold flex items-center gap-1"
-                style={{ color: "#0F6B5C" }}
+                style={{ color: "#26423B" }}
               >
                 <Plus size={15} /> إضافة عمود آخر
               </button>
@@ -2289,7 +2289,7 @@ function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
               return onSaveMany(bulkNames.map((name) => ({ name, type: bulkType, options: [], color: bulkColor, autoRenew: false, pinned: false, bulkValue: "" })));
             }}
             className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: "#0F6B5C" }}
+            style={{ background: "#26423B" }}
           >تم</button>
         </div>
       </div>
@@ -2456,7 +2456,7 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
                   onChange={(nd) => setDrafts(drafts.map((x, xi) => (xi === i ? nd : x)))}
                 />
               ))}
-              <button onClick={() => setDrafts([...drafts, emptyRowDraft()])} className="mb-2 text-sm font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+              <button onClick={() => setDrafts([...drafts, emptyRowDraft()])} className="mb-2 text-sm font-semibold flex items-center gap-1" style={{ color: "#26423B" }}>
                 <Plus size={15} /> إضافة صف آخر
               </button>
             </>
@@ -2498,8 +2498,8 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
           ) : (
             <>
               <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
-                <Sparkles size={15} color="#0F6B5C" className="shrink-0 mt-0.5" />
-                <div className="text-xs" style={{ color: "#0F6B5C" }}>
+                <Sparkles size={15} color="#26423B" className="shrink-0 mt-0.5" />
+                <div className="text-xs" style={{ color: "#26423B" }}>
                   <p className="font-bold mb-1">تستورد من نظام نور؟</p>
                   <p>من نور: افتح صفحة الطلاب ← اضغط "تصدير" أو "طباعة" واختر Excel ← ارفع الملف هنا مباشرة، حتى لو فيه أعمدة إضافية (الرقم، الهوية...) — نكتشف عمود الاسم تلقائيًا.</p>
                 </div>
@@ -2507,14 +2507,14 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
               <Field label="ملف Excel أو CSV بأسماء الطلاب">
                 <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImportFile} style={{ display: "none" }} />
                 <button type="button" onClick={() => importInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
-                  <FileSpreadsheet size={15} color="#0F6B5C" /> اختر ملفًا
+                  <FileSpreadsheet size={15} color="#26423B" /> اختر ملفًا
                 </button>
                 {importFileName && <p className="text-xs mt-1.5" style={{ color: MUTED }}>{importFileName}</p>}
               </Field>
               {importError && <p className="text-xs mb-3 font-medium" style={{ color: "#C0392B" }}>{importError}</p>}
               {importNames.length > 0 && (
                 <div className="mb-3 p-2 rounded-lg" style={{ border: `1px solid ${LINE}`, maxHeight: 150, overflowY: "auto", background: "#F8F7F2" }}>
-                  <p className="text-xs font-bold mb-1" style={{ color: "#0F6B5C" }}>تم العثور على {importNames.length} اسم:</p>
+                  <p className="text-xs font-bold mb-1" style={{ color: "#26423B" }}>تم العثور على {importNames.length} اسم:</p>
                   {importNames.map((n, i) => <p key={i} className="text-xs" style={{ color: INK }}>{i + 1}. {n}</p>)}
                 </div>
               )}
@@ -2552,7 +2552,7 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
               return onSaveMany(importNames.map((name) => ({ name, type: "text", options: [], color: bulkColor, autoRenew: bulkAutoRenew, medicalNote: bulkMedicalNote.trim() })));
             }}
             className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: "#0F6B5C" }}
+            style={{ background: "#26423B" }}
           >تم</button>
         </div>
       </div>
@@ -2590,7 +2590,7 @@ function NewTermModal({ cls, onConfirm, onClose }) {
         <button
           onClick={() => onConfirm({ yearHijri: yearH.trim(), yearGregorian: yearG.trim() })}
           className="px-5 py-2 rounded-lg text-sm font-bold text-white"
-          style={{ background: "#0F6B5C" }}
+          style={{ background: "#26423B" }}
         >بدء الفصل الجديد</button>
       </div>
     </Modal>
@@ -2621,7 +2621,7 @@ function ClassModal({ initial, onClose, onSave, existingClasses = [], onDuplicat
             disabled={!dupId}
             onClick={() => onDuplicateExisting(dupId)}
             className="px-3 py-1.5 rounded-lg text-sm font-bold text-white disabled:opacity-40 shrink-0"
-            style={{ background: "#0F6B5C" }}
+            style={{ background: "#26423B" }}
           >تكرار</button>
         </div>
       )}
@@ -2644,7 +2644,7 @@ function ClassModal({ initial, onClose, onSave, existingClasses = [], onDuplicat
               type="button"
               onClick={() => setEmoji(em === emoji ? "" : em)}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
-              style={{ border: `1px solid ${em === emoji ? "#0F6B5C" : LINE}`, background: em === emoji ? "#EAF3F0" : "#fff" }}
+              style={{ border: `1px solid ${em === emoji ? "#26423B" : LINE}`, background: em === emoji ? "#EAF3F0" : "#fff" }}
             >{em}</button>
           ))}
         </div>
@@ -2653,7 +2653,7 @@ function ClassModal({ initial, onClose, onSave, existingClasses = [], onDuplicat
       <div className="flex justify-end gap-2 mt-5">
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: MUTED }}>إلغاء</button>
         <button disabled={!valid} onClick={() => onSave({ subject: subject.trim(), grade: grade.trim(), teacher: teacher.trim(), yearHijri: yearH.trim(), yearGregorian: yearG.trim(), color, emoji })}
-          className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40" style={{ background: "#0F6B5C" }}>تم</button>
+          className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40" style={{ background: "#26423B" }}>تم</button>
       </div>
     </Modal>
   );
@@ -2698,19 +2698,19 @@ function TestBuilderModal({ onSave, onClose }) {
                   {q.options.length > 2 && <button onClick={() => removeOption(q.id, o.id)} className="p-1 rounded hover:bg-black/5 shrink-0"><X size={12} color={MUTED} /></button>}
                 </div>
               ))}
-              <button onClick={() => addOption(q.id)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}><Plus size={12} /> إضافة خيار</button>
+              <button onClick={() => addOption(q.id)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}><Plus size={12} /> إضافة خيار</button>
             </div>
           </div>
         ))}
       </div>
-      <button onClick={addQuestion} className="mb-4 text-sm font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}><Plus size={15} /> إضافة سؤال</button>
+      <button onClick={addQuestion} className="mb-4 text-sm font-semibold flex items-center gap-1" style={{ color: "#26423B" }}><Plus size={15} /> إضافة سؤال</button>
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: MUTED }}>إلغاء</button>
         <button
           disabled={!valid}
           onClick={() => onSave({ id: uid(), title: title.trim(), questions, results: [], createdAt: todayKey() })}
           className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-          style={{ background: "#0F6B5C" }}
+          style={{ background: "#26423B" }}
         >حفظ الاختبار</button>
       </div>
     </Modal>
@@ -2720,7 +2720,7 @@ function TestBuilderModal({ onSave, onClose }) {
 function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, onDelete, onArchive, onClose, bare = false }) {
   const content = (
     <>
-      <button onClick={onCreateNew} className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+      <button onClick={onCreateNew} className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>
         <Plus size={16} /> إنشاء اختبار جديد
       </button>
       {(!tests || tests.length === 0) ? (
@@ -2735,7 +2735,7 @@ function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, o
               </div>
               <button onClick={() => onPrint(t.id)} title="طباعة الورقة" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Printer size={15} color={MUTED} /></button>
               <button onClick={() => onGradeCamera(t.id)} title="تصحيح بالكاميرا" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Camera size={15} color={MUTED} /></button>
-              <button onClick={() => onGrade(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: "#0F6B5C" }}>تصحيح</button>
+              <button onClick={() => onGrade(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: "#26423B" }}>تصحيح</button>
               <button onClick={() => onArchive(t.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Archive size={14} color={MUTED} /></button>
               <button onClick={() => onDelete(t.id)} className="p-1.5 rounded hover:bg-black/5 shrink-0"><Trash2 size={14} color="#C0392B" /></button>
             </div>
@@ -2753,7 +2753,7 @@ function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, o
 }
 
 function AnswerOption({ label, selected, onSelect, color }) {
-  const c = color || "#0F6B5C";
+  const c = color || "#26423B";
   return (
     <button
       type="button"
@@ -2824,7 +2824,7 @@ function buildRemedialPlanCanvas({
   if (schoolName) { ctx.font = "14px Tahoma, Arial"; ctx.fillStyle = "#232622"; ctx.fillText(schoolName, width / 2, hy); hy += 24; }
 
   ctx.font = "bold 22px Tahoma, Arial";
-  ctx.fillStyle = "#0F6B5C";
+  ctx.fillStyle = "#26423B";
   ctx.fillText(title, width / 2, hy + 12);
   hy += 40;
 
@@ -2846,7 +2846,7 @@ function buildRemedialPlanCanvas({
 
   sections.forEach((s) => {
     ctx.font = "bold 16px Tahoma, Arial";
-    ctx.fillStyle = "#0F6B5C";
+    ctx.fillStyle = "#26423B";
     ctx.fillText(s.label, width - 60, hy);
     hy += 24;
     ctx.font = "14px Tahoma, Arial";
@@ -3174,7 +3174,7 @@ function PrintTestModal({ test, classes, onClose }) {
         <button onClick={() => setMode("perStudent")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "perStudent" ? INK : "transparent", color: mode === "perStudent" ? "#fff" : MUTED, border: `1px solid ${mode === "perStudent" ? INK : LINE}` }}>نسخة لكل طالب باسمه</button>
       </div>
       {mode === "blank" ? (
-        <button onClick={downloadBlank} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+        <button onClick={downloadBlank} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>
           <ImageDown size={16} /> تنزيل نسخة فارغة
         </button>
       ) : (
@@ -3186,11 +3186,11 @@ function PrintTestModal({ test, classes, onClose }) {
           </Field>
           {generating ? (
             <div className="p-3 rounded-xl flex items-center gap-2" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
-              <div className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: "#0F6B5C transparent #0F6B5C #0F6B5C", animation: "spin 0.8s linear infinite" }} />
+              <div className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: "#26423B transparent #26423B #26423B", animation: "spin 0.8s linear infinite" }} />
               <p className="text-xs font-semibold" style={{ color: INK }}>جارٍ التجهيز... {progress}%</p>
             </div>
           ) : (
-            <button onClick={downloadPerStudent} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+            <button onClick={downloadPerStudent} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>
               <ImageDown size={16} /> تنزيل نسخة لكل طالب (ملف مضغوط)
             </button>
           )}
@@ -3303,7 +3303,7 @@ function OMRScanModal({ test, classes, onSaveResult, onApplyToClass, onClose }) 
               <button onClick={() => setValueMode("percentage")} className="flex-1 text-xs font-semibold py-1.5 rounded-lg" style={{ background: valueMode === "percentage" ? INK : "transparent", color: valueMode === "percentage" ? "#fff" : MUTED, border: `1px solid ${valueMode === "percentage" ? INK : LINE}` }}>النسبة المئوية</button>
             </div>
           </Field>
-          <button disabled={!colId} onClick={startCamera} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-40 mt-2" style={{ background: "#0F6B5C" }}>
+          <button disabled={!colId} onClick={startCamera} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-40 mt-2" style={{ background: "#26423B" }}>
             <Camera size={16} /> بدء التصحيح
           </button>
           {cameraError && <p className="text-xs mt-2 text-center" style={{ color: "#C0392B" }}>{cameraError}</p>}
@@ -3312,7 +3312,7 @@ function OMRScanModal({ test, classes, onSaveResult, onApplyToClass, onClose }) 
 
       {step === "camera" && (
         <>
-          {postedCount > 0 && <p className="text-xs text-center mb-2 font-semibold" style={{ color: "#0F6B5C" }}>تم رصد {postedCount} ورقة حتى الآن</p>}
+          {postedCount > 0 && <p className="text-xs text-center mb-2 font-semibold" style={{ color: "#26423B" }}>تم رصد {postedCount} ورقة حتى الآن</p>}
           <p className="text-sm mb-3 text-center" style={{ color: MUTED }}>
             حاذِ إطار الورقة بالكامل مع حدود المستطيل الظاهر، بإضاءة جيدة، ثم التقط.
           </p>
@@ -3322,7 +3322,7 @@ function OMRScanModal({ test, classes, onSaveResult, onApplyToClass, onClose }) 
           </div>
           <div className="flex gap-2">
             <button onClick={() => { stopCamera(); setStep("setup"); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ color: MUTED, border: `1px solid ${LINE}` }}>إنهاء</button>
-            <button onClick={capture} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+            <button onClick={capture} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>
               <Camera size={16} /> التقط
             </button>
           </div>
@@ -3332,8 +3332,8 @@ function OMRScanModal({ test, classes, onSaveResult, onApplyToClass, onClose }) 
       {step === "result" && scanResult && cls && (
         <>
           <div className="text-center p-6 rounded-2xl mb-4" style={{ background: "#EAF3F0" }}>
-            <p className="text-3xl font-extrabold" style={{ color: "#0F6B5C" }}>{scanResult.score} / {scanResult.total}</p>
-            <p className="text-sm mt-1" style={{ color: "#0F6B5C" }}>{scanResult.percentage}%</p>
+            <p className="text-3xl font-extrabold" style={{ color: "#26423B" }}>{scanResult.score} / {scanResult.total}</p>
+            <p className="text-sm mt-1" style={{ color: "#26423B" }}>{scanResult.percentage}%</p>
           </div>
           <Field label="الطالب المكتشف من الورقة" hint={scanResult.unclear ? "تعذّرت قراءة بعض الإجابات بوضوح — تأكد من الدرجة أعلاه." : "تأكد أن الاسم صحيح قبل الرصد؛ صحّحه من القائمة إن لزم."}>
             <select value={manualRowId} onChange={(e) => setManualRowId(e.target.value)} style={inputStyle}>
@@ -3343,7 +3343,7 @@ function OMRScanModal({ test, classes, onSaveResult, onApplyToClass, onClose }) 
           </Field>
           <div className="flex gap-2 mt-2">
             <button onClick={() => { setStep("camera"); startCamera(); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ color: MUTED, border: `1px solid ${LINE}` }}>إعادة التصوير</button>
-            <button disabled={!manualRowId} onClick={recordAndScanNext} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: "#0F6B5C" }}>
+            <button disabled={!manualRowId} onClick={recordAndScanNext} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: "#26423B" }}>
               رصد ✓ والانتقال للتالي
             </button>
           </div>
@@ -3401,14 +3401,14 @@ function GradeTestModal({ test, classes, onSaveResult, onApplyToClass, onClose }
             disabled={!studentName.trim() || Object.keys(answers).length < test.questions.length}
             onClick={grade}
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: "#0F6B5C" }}
+            style={{ background: "#26423B" }}
           >تصحيح الآن</button>
         </>
       ) : (
         <>
           <div className="text-center p-6 rounded-2xl mb-4" style={{ background: "#EAF3F0" }}>
-            <p className="text-3xl font-extrabold" style={{ color: "#0F6B5C" }}>{graded.score} / {graded.total}</p>
-            <p className="text-sm mt-1" style={{ color: "#0F6B5C" }}>{graded.percentage}% — {graded.studentName}</p>
+            <p className="text-3xl font-extrabold" style={{ color: "#26423B" }}>{graded.score} / {graded.total}</p>
+            <p className="text-sm mt-1" style={{ color: "#26423B" }}>{graded.percentage}% — {graded.studentName}</p>
           </div>
           <p className="text-sm font-semibold mb-2" style={{ color: INK }}>إضافة النتيجة إلى فصل (اختياري)</p>
           <Field label="الفصل">
@@ -3435,7 +3435,7 @@ function GradeTestModal({ test, classes, onSaveResult, onApplyToClass, onClose }
                 disabled={!applyColId}
                 onClick={() => { onApplyToClass(applyClassId, applyColId, graded.studentName, valueMode === "score" ? String(graded.score) : `${graded.percentage}%`); onClose(); }}
                 className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 mt-2"
-                style={{ background: "#0F6B5C" }}
+                style={{ background: "#26423B" }}
               >إضافة إلى الفصل</button>
             </>
           )}
@@ -3479,7 +3479,7 @@ function MoveStudentsModal({ currentClassId, allClasses, count, onMove, onClose 
         <button
           onClick={() => { onMove(destId, includeGrades); onClose(); }}
           className="px-5 py-2 rounded-lg text-sm font-bold text-white"
-          style={{ background: "#0F6B5C" }}
+          style={{ background: "#26423B" }}
         >نقل</button>
       </div>
     </Modal>
@@ -3513,7 +3513,7 @@ function BulkRecordModal({ columns, onApply, onClose }) {
           disabled={!val.trim() || !col}
           onClick={() => { onApply(col, val); onClose(); }}
           className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-          style={{ background: "#0F6B5C" }}
+          style={{ background: "#26423B" }}
         >تطبيق</button>
       </div>
     </Modal>
@@ -3565,7 +3565,7 @@ function FilterModal({ columns, initial, onApply, onClear, onClose }) {
             disabled={!colId || (needsValue && !value.trim())}
             onClick={() => { onApply({ colId, operator, value }); onClose(); }}
             className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: "#0F6B5C" }}
+            style={{ background: "#26423B" }}
           >تطبيق</button>
         </div>
       </div>
@@ -3809,7 +3809,7 @@ function UnifiedArchiveModal({ archivedClasses, shawahed, archivedTests, onResto
                   <p className="text-sm font-semibold truncate" style={{ color: INK }}>{c.subject}</p>
                   <p className="text-xs" style={{ color: MUTED }}>{c.grade} • {c.teacher}</p>
                 </div>
-                <button onClick={() => onRestoreClass(c.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                <button onClick={() => onRestoreClass(c.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#26423B" }}>
                   <RotateCcw size={12} /> استعادة
                 </button>
               </div>
@@ -3831,7 +3831,7 @@ function UnifiedArchiveModal({ archivedClasses, shawahed, archivedTests, onResto
                     <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
                     <p className="text-xs" style={{ color: MUTED }}>{e.cat.title}</p>
                   </div>
-                  <button onClick={() => onRestoreShawahed(e.cat.key, e.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                  <button onClick={() => onRestoreShawahed(e.cat.key, e.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#26423B" }}>
                     <RotateCcw size={12} /> استعادة
                   </button>
                 </div>
@@ -3852,7 +3852,7 @@ function UnifiedArchiveModal({ archivedClasses, shawahed, archivedTests, onResto
                   <p className="text-sm font-semibold truncate" style={{ color: INK }}>{t.title}</p>
                   <p className="text-xs" style={{ color: MUTED }}>{t.questions.length} سؤال</p>
                 </div>
-                <button onClick={() => onRestoreTest(t.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                <button onClick={() => onRestoreTest(t.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#26423B" }}>
                   <RotateCcw size={12} /> استعادة
                 </button>
                 <button onClick={() => onDeleteTestForever(t.id)} title="حذف نهائي" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Trash2 size={14} color="#C0392B" /></button>
@@ -3888,7 +3888,7 @@ function ShawahedArchiveModal({ archivedEntries, onRestore, onClose }) {
                 <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
                 <p className="text-xs" style={{ color: MUTED }}>{e.cat.title}</p>
               </div>
-              <button onClick={() => onRestore(e.cat.key, e.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+              <button onClick={() => onRestore(e.cat.key, e.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#26423B" }}>
                 <RotateCcw size={12} /> استعادة
               </button>
             </div>
@@ -4079,8 +4079,8 @@ function NoorEmbedModal({ onImportNames, onClose }) {
   return (
     <Modal title="استيراد من نور" onClose={onClose} accent="magic" xl>
       <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: loadState === "blocked" ? "#FBEDEA" : "#EAF3F0", border: `1px solid ${loadState === "blocked" ? "#F5DCD5" : "#C9E2DB"}` }}>
-        <Info size={15} color={loadState === "blocked" ? "#9A3B2E" : "#0F6B5C"} className="shrink-0 mt-0.5" />
-        <p className="text-xs" style={{ color: loadState === "blocked" ? "#9A3B2E" : "#0F6B5C" }}>
+        <Info size={15} color={loadState === "blocked" ? "#9A3B2E" : "#26423B"} className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: loadState === "blocked" ? "#9A3B2E" : "#26423B" }}>
           {loadState === "blocked"
             ? "الصفحة أدناه فاضية غالبًا لأن نور يمنع صراحة فتحه جوّا مواقع ثانية (إجراء أمني من طرفهم، مو خلل بموقعنا). جرّب \"فتح بنافذة مستقلة\"، وبعد ما تسجّل دخولك وتشوف الأسماء، انسخها وألصقها بالمربع تحت."
             : "جارٍ محاولة فتح نور بالأسفل... لو ما ظهر خلال ثوانٍ فمعناه نور يمنعه، وبيتحول التنبيه تلقائيًا."}
@@ -4093,7 +4093,7 @@ function NoorEmbedModal({ onImportNames, onClose }) {
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold"
           style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
         >
-          <ExternalLink size={15} color="#0F6B5C" /> فتح نور بنافذة مستقلة
+          <ExternalLink size={15} color="#26423B" /> فتح نور بنافذة مستقلة
         </button>
       </div>
 
@@ -4116,7 +4116,7 @@ function NoorEmbedModal({ onImportNames, onClose }) {
           placeholder={"محمد أحمد\nسارة خالد"}
         />
         {pastedNames.length > 0 && (
-          <p className="text-xs mt-1.5" style={{ color: "#0F6B5C" }}>{pastedNames.length} اسم جاهز للاستيراد</p>
+          <p className="text-xs mt-1.5" style={{ color: "#26423B" }}>{pastedNames.length} اسم جاهز للاستيراد</p>
         )}
         <button
           disabled={pastedNames.length === 0}
@@ -4182,7 +4182,7 @@ function BulkSetPopover({ column, onApply, onClose }) {
         <button
           onClick={() => { if (val.trim()) { onApply(val); onClose(); } }}
           className="flex-1 text-xs font-bold py-1.5 rounded-lg text-white"
-          style={{ background: "#0F6B5C" }}
+          style={{ background: "#26423B" }}
         >تطبيق</button>
       </div>
     </div>
@@ -4306,7 +4306,7 @@ function trashEntryLabel(entry) {
 // شواهد الأداء الوظيفي — الفئات الاثنتا عشرة الرسمية، وقائمة اقتراحات لكل
 // فئة تسهّل إضافة شاهد جديد بضغطة (يقدر المعلم يعدّل النص أو يكتب غيره تمامًا).
 const SHAWAHED_CATEGORIES = [
-  { key: "duties", title: "أداء الواجبات الوظيفية", color: "#0F6B5C", suggestions: ["سجل الحضور والانصراف", "محضر اجتماع", "خطاب شكر وتقدير"] },
+  { key: "duties", title: "أداء الواجبات الوظيفية", color: "#26423B", suggestions: ["سجل الحضور والانصراف", "محضر اجتماع", "خطاب شكر وتقدير"] },
   { key: "community", title: "التفاعل مع المجتمع المهني", color: "#3B4C8C", suggestions: ["شهادة مشاركة بدورة تدريبية", "محضر مجتمع تعلم مهني", "شهادة تقديم ورشة عمل"] },
   { key: "parents", title: "التفاعل مع أولياء الأمور", color: "#C97A2B", suggestions: ["سجل تواصل مع ولي أمر", "دعوة اجتماع أولياء أمور", "استبيان رضا أولياء الأمور"] },
   { key: "strategies", title: "التنوع في استراتيجيات التدريس", color: "#7A4E9E", suggestions: ["تحضير درس باستراتيجية التعلم التعاوني", "صورة من نشاط تعلم نشط", "خطة درس متنوعة الاستراتيجيات"] },
@@ -4423,8 +4423,8 @@ function TransferStudentsModal({ profiles, onClose }) {
       {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
       {done ? (
         <div className="text-center py-6">
-          <p className="text-sm font-bold mb-4" style={{ color: "#0F6B5C" }}>تم النقل بنجاح ✓</p>
-          <button onClick={onClose} className="px-5 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>إغلاق</button>
+          <p className="text-sm font-bold mb-4" style={{ color: "#26423B" }}>تم النقل بنجاح ✓</p>
+          <button onClick={onClose} className="px-5 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#26423B" }}>إغلاق</button>
         </div>
       ) : (
         <>
@@ -4485,7 +4485,7 @@ function TransferStudentsModal({ profiles, onClose }) {
             disabled={busy || !sourceClass || !destClass || selectedRowIds.length === 0}
             onClick={executeTransfer}
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: "#0F6B5C" }}
+            style={{ background: "#26423B" }}
           >
             {busy ? "جارٍ النقل..." : `نقل ${selectedRowIds.length} طالب`}
           </button>
@@ -4657,7 +4657,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
             key={t.id}
             onClick={() => setTab(t.id)}
             className="text-sm font-semibold px-4 py-2 rounded-xl shrink-0"
-            style={{ background: tab === t.id ? "#0F6B5C" : "transparent", color: tab === t.id ? "#fff" : MUTED, border: `1px solid ${tab === t.id ? "#0F6B5C" : LINE}` }}
+            style={{ background: tab === t.id ? "#26423B" : "transparent", color: tab === t.id ? "#fff" : MUTED, border: `1px solid ${tab === t.id ? "#26423B" : LINE}` }}
           >
             {t.label}
           </button>
@@ -4694,7 +4694,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
                   <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={4} stroke={MUTED} />
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={24} stroke={MUTED} />
                   <Tooltip contentStyle={{ fontSize: 12, direction: "rtl" }} labelFormatter={(l) => `يوم ${l}`} formatter={(v) => [v, "تسجيلات"]} />
-                  <Line type="monotone" dataKey="count" stroke="#0F6B5C" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="count" stroke="#26423B" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -4710,7 +4710,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
               {siteSettings.siteLogo ? (
                 <img src={siteSettings.siteLogo} alt="الشعار" className="w-12 h-12 rounded-xl object-cover" style={{ border: `1px solid ${LINE}` }} />
               ) : (
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#0F6B5C" }}><BookOpen size={20} color="#fff" /></div>
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#26423B" }}><BookOpen size={20} color="#fff" /></div>
               )}
               <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
               <button onClick={() => logoInputRef.current?.click()} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ border: `1px solid ${LINE}`, color: INK }}>تغيير الشعار</button>
@@ -4720,7 +4720,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
             </div>
             <input style={inputStyle} value={siteTagline} onChange={(e) => setSiteTagline(e.target.value)} placeholder="الوصف المختصر تحت اسم الموقع بالصفحة الرئيسية" />
             <div className="flex justify-end mt-2">
-              <button onClick={saveSiteIdentity} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
+              <button onClick={saveSiteIdentity} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#26423B" }}>حفظ</button>
             </div>
           </div>
 
@@ -4732,7 +4732,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
                 <input type="checkbox" checked={announcementActive} onChange={(e) => setAnnouncementActive(e.target.checked)} />
                 إظهار الإعلان الآن
               </label>
-              <button onClick={saveAnnouncement} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#0F6B5C" }}>حفظ</button>
+              <button onClick={saveAnnouncement} className="text-xs font-bold px-4 py-2 rounded-lg text-white" style={{ background: "#26423B" }}>حفظ</button>
             </div>
           </div>
         </>
@@ -4764,7 +4764,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
                     <div className="flex-1 min-w-[160px]">
                       <p className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: INK }}>
                         {p.email}
-                        {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك</span>}
+                        {p.is_owner && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#26423B" }}>مالك</span>}
                         {p.is_disabled && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>معطّل</span>}
                         {isExpired(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FBEDEA", color: "#9A3B2E" }}>اشتراك منتهي</span>}
                         {!isExpired(p) && isExpiringSoon(p) && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FCEFE2", color: "#C97A2B" }}>⏳ ينتهي قريبًا</span>}
@@ -4776,10 +4776,10 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
                     </div>
                     {!p.is_owner && p.id !== currentUserId && (
                       <div className="flex gap-2 shrink-0 flex-wrap">
-                        <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#0F6B5C" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
+                        <button disabled={busyId === p.id} onClick={() => toggleDisabled(p)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: p.is_disabled ? "#26423B" : "#9A3B2E", border: `1px solid ${p.is_disabled ? "#C9E2DB" : "#F0D2CB"}` }}>
                           {p.is_disabled ? "تفعيل" : "تعطيل"}
                         </button>
-                        <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                        <button disabled={busyId === p.id} onClick={() => setConfirmPromoteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#26423B", border: "1px solid #C9E2DB" }}>
                           ترقية لمالك
                         </button>
                         <button disabled={busyId === p.id} onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ color: "#C0392B", border: "1px solid #F0D2CB" }}>
@@ -4807,7 +4807,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
                       style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
                       title="تاريخ انتهاء الاشتراك"
                     />
-                    <button disabled={busyId === p.id} onClick={() => sendPasswordReset(p.email, p.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-auto" style={{ color: "#0F6B5C", border: "1px solid #C9E2DB" }}>
+                    <button disabled={busyId === p.id} onClick={() => sendPasswordReset(p.email, p.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-auto" style={{ color: "#26423B", border: "1px solid #C9E2DB" }}>
                       {resetSentId === p.id ? "أُرسل ✓" : "إرسال رابط إعادة تعيين كلمة المرور"}
                     </button>
                   </div>
@@ -4881,7 +4881,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
             key={t.id}
             onClick={() => setTab(t.id)}
             className="text-sm font-semibold px-4 py-2 rounded-xl shrink-0"
-            style={{ background: tab === t.id ? "#0F6B5C" : "transparent", color: tab === t.id ? "#fff" : MUTED, border: `1px solid ${tab === t.id ? "#0F6B5C" : LINE}` }}
+            style={{ background: tab === t.id ? "#26423B" : "transparent", color: tab === t.id ? "#fff" : MUTED, border: `1px solid ${tab === t.id ? "#26423B" : LINE}` }}
           >
             {t.label}
           </button>
@@ -4901,7 +4901,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
           )}
           <div className="flex items-center justify-between p-3 rounded-xl mb-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
             <div className="flex items-center gap-2">
-              {darkMode ? <Moon size={18} color="#0F6B5C" /> : <Sun size={18} color={MUTED} />}
+              {darkMode ? <Moon size={18} color="#26423B" /> : <Sun size={18} color={MUTED} />}
               <div>
                 <p className="text-sm font-semibold" style={{ color: INK }}>الوضع الليلي</p>
                 <p className="text-xs" style={{ color: MUTED }}>ألوان داكنة أريح للعين في الإضاءة الخافتة</p>
@@ -4910,14 +4910,14 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
             <button
               onClick={onToggleDarkMode}
               className="w-11 h-6 rounded-full shrink-0 relative transition-colors"
-              style={{ background: darkMode ? "#0F6B5C" : LINE }}
+              style={{ background: darkMode ? "#26423B" : LINE }}
             >
               <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [darkMode ? "right" : "left"]: "2px" }} />
             </button>
           </div>
           <div className="flex items-center justify-between p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
             <div className="flex items-center gap-2">
-              {feedback ? <Volume2 size={18} color="#0F6B5C" /> : <VolumeX size={18} color={MUTED} />}
+              {feedback ? <Volume2 size={18} color="#26423B" /> : <VolumeX size={18} color={MUTED} />}
               <div>
                 <p className="text-sm font-semibold" style={{ color: INK }}>تنبيه صوتي واهتزاز عند الرصد</p>
                 <p className="text-xs" style={{ color: MUTED }}>تأكيد سريع (صوت + اهتزاز خفيف) كل مرة تسجّل غيابًا أو قيمة</p>
@@ -4926,7 +4926,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
             <button
               onClick={onToggleFeedback}
               className="w-11 h-6 rounded-full shrink-0 relative transition-colors"
-              style={{ background: feedback ? "#0F6B5C" : LINE }}
+              style={{ background: feedback ? "#26423B" : LINE }}
             >
               <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [feedback ? "right" : "left"]: "2px" }} />
             </button>
@@ -4959,7 +4959,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
                 <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "#F3F1E9" }}><User size={16} color={MUTED} /></div>
               )}
               <button type="button" onClick={() => teacherPhotoInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
-                <Camera size={15} color="#0F6B5C" /> {teacherPhoto ? "استبدال الصورة" : "رفع صورة"}
+                <Camera size={15} color="#26423B" /> {teacherPhoto ? "استبدال الصورة" : "رفع صورة"}
               </button>
               {teacherPhoto && (
                 <button type="button" onClick={() => onChangeSchoolInfo({ teacherPhoto: null })} title="إزالة" className="p-1.5 rounded hover:bg-black/5">
@@ -4972,7 +4972,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
             <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => logoInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}>
-                <Camera size={15} color="#0F6B5C" /> {logoImage ? "استبدال الشعار" : "رفع شعار"}
+                <Camera size={15} color="#26423B" /> {logoImage ? "استبدال الشعار" : "رفع شعار"}
               </button>
               {logoImage && (
                 <>
@@ -4990,7 +4990,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
       {tab === "footer" && (
         isOwner ? (
           <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-            <p className="text-sm font-semibold mb-1" style={{ color: INK }}>تذييل الصفحة الرئيسية <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>مالك الموقع</span></p>
+            <p className="text-sm font-semibold mb-1" style={{ color: INK }}>تذييل الصفحة الرئيسية <span className="text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: "#EAF3F0", color: "#26423B" }}>مالك الموقع</span></p>
             <p className="text-xs mb-3" style={{ color: MUTED }}>بيانات التواصل وشهادات الثقة/الاعتماد التي تظهر أسفل الصفحة الرئيسية لجميع المشتركين — تتحكم فيها إضافةً وحذفًا بالكامل.</p>
 
             <p className="text-xs font-semibold mb-2" style={{ color: INK }}>بيانات التواصل</p>
@@ -5003,7 +5003,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
                 </div>
               ))}
             </div>
-            <button onClick={onAddContact} className="text-xs font-semibold flex items-center gap-1 mb-4" style={{ color: "#0F6B5C" }}>
+            <button onClick={onAddContact} className="text-xs font-semibold flex items-center gap-1 mb-4" style={{ color: "#26423B" }}>
               <Plus size={13} /> إضافة بيانات تواصل
             </button>
 
@@ -5019,7 +5019,7 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
               ))}
             </div>
             <input ref={badgeInputRef} type="file" accept="image/*" onChange={handleBadgeUpload} style={{ display: "none" }} />
-            <button onClick={() => badgeInputRef.current?.click()} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#0F6B5C" }}>
+            <button onClick={() => badgeInputRef.current?.click()} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}>
               <Plus size={13} /> إضافة شهادة/شعار ثقة
             </button>
           </div>
@@ -5209,7 +5209,7 @@ function RandomGroupsModal({ rows, onClose }) {
               <button onClick={() => setMode("size")} className="px-3 py-1.5 rounded-full text-xs font-semibold" style={{ background: mode === "size" ? INK : "transparent", color: mode === "size" ? "#fff" : MUTED, border: `1px solid ${mode === "size" ? INK : LINE}` }}>عدد الطلاب لكل مجموعة</button>
             </div>
             <input type="number" min={1} value={num} onChange={(e) => setNum(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 80 }} />
-            <button onClick={generate} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+            <button onClick={generate} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#26423B" }}>
               <Shuffle size={15} /> توليد
             </button>
           </div>
@@ -5285,11 +5285,11 @@ function BulkCertificateModal({ cls, rows, schoolName, principalName, countryNam
       </Field>
       {generating ? (
         <div className="p-3 rounded-xl flex items-center gap-2" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
-          <div className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: "#0F6B5C transparent #0F6B5C #0F6B5C", animation: "spin 0.8s linear infinite" }} />
+          <div className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: "#26423B transparent #26423B #26423B", animation: "spin 0.8s linear infinite" }} />
           <p className="text-xs font-semibold" style={{ color: INK }}>جارٍ توليد الشهادات... {progress}%</p>
         </div>
       ) : (
-        <button onClick={generateAndDownloadZip} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
+        <button onClick={generateAndDownloadZip} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>
           <ImageDown size={16} /> توليد وتنزيل الكل ({rows.length} شهادة)
         </button>
       )}
@@ -5443,7 +5443,7 @@ function RemedialPlanModal({ cls, row, schoolName, principalName, countryName, m
                   type="button"
                   onClick={() => applyTemplate(t.id)}
                   className="px-2.5 py-1.5 rounded-full text-xs font-semibold"
-                  style={{ background: templateId === t.id ? "#0F6B5C" : "transparent", color: templateId === t.id ? "#fff" : INK, border: `1px solid ${templateId === t.id ? "#0F6B5C" : LINE}` }}
+                  style={{ background: templateId === t.id ? "#26423B" : "transparent", color: templateId === t.id ? "#fff" : INK, border: `1px solid ${templateId === t.id ? "#26423B" : LINE}` }}
                 >{t.name}</button>
               ))}
             </div>
@@ -5599,7 +5599,7 @@ function TrashModal({ trash, onRestore, onClose, onClearAll }) {
                   <p className="text-sm font-semibold" style={{ color: INK }}>{trashEntryLabel(entry)}</p>
                   <p className="text-xs mt-0.5" style={{ color: MUTED }}>{entry.when?.day ? `${entry.when.day}، ` : ""}{entry.when?.date} — {entry.when?.time}</p>
                 </div>
-                <button onClick={() => onRestore(entry.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#0F6B5C" }}>
+                <button onClick={() => onRestore(entry.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#26423B" }}>
                   <RotateCcw size={14} /> استعادة
                 </button>
               </div>
@@ -5635,7 +5635,7 @@ function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <DateField value={dateKey} onChange={setDateKey} />
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: "#E3F0ED", color: "#0F6B5C" }}>حاضر: {presentCount}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: "#E3F0ED", color: "#26423B" }}>حاضر: {presentCount}</span>
           <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: "#F5DEDB", color: "#C0392B" }}>غائب: {absentCount}</span>
           <IconBtn icon={Printer} label="طباعة" onClick={() => onPrint(dateKey)} />
           <IconBtn icon={Share2} label="مشاركة" onClick={() => onShare(dateKey)} />
@@ -5654,7 +5654,7 @@ function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
                 <span className="flex-1 text-sm font-medium" style={{ color: INK }}>{row.name}</span>
                 <span
                   className="text-xs font-bold px-2.5 py-1 rounded-full"
-                  style={{ background: status === "present" ? "#E3F0ED" : "#F5DEDB", color: status === "present" ? "#0F6B5C" : "#C0392B" }}
+                  style={{ background: status === "present" ? "#E3F0ED" : "#F5DEDB", color: status === "present" ? "#26423B" : "#C0392B" }}
                 >{status === "present" ? "حاضر" : "غائب"}</span>
                 {status === "absent" ? (
                   <>
@@ -5713,7 +5713,7 @@ function RemindersModal({ reminders, onAdd, onDelete, notifPermission, onRequest
           <input type="time" style={inputStyle} value={time} onChange={(e) => setTime(e.target.value)} />
         </Field>
       </div>
-      <button disabled={!title.trim()} onClick={submit} className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 mb-4" style={{ background: "#0F6B5C" }}>
+      <button disabled={!title.trim()} onClick={submit} className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 mb-4" style={{ background: "#26423B" }}>
         إضافة تذكير
       </button>
 
@@ -5726,7 +5726,7 @@ function RemindersModal({ reminders, onAdd, onDelete, notifPermission, onRequest
             const passed = due < now;
             return (
               <div key={r.id} className="flex items-center gap-2 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: passed ? "#F8F7F2" : "#fff", opacity: passed ? 0.6 : 1 }}>
-                <Bell size={15} color={passed ? MUTED : "#0F6B5C"} className="shrink-0" />
+                <Bell size={15} color={passed ? MUTED : "#26423B"} className="shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm font-semibold" style={{ color: INK }}>{r.title}</p>
                   <p className="text-xs" style={{ color: MUTED }}>{formatDateDisplay(r.date)} — {r.time}</p>
@@ -5767,7 +5767,7 @@ function EventsModal({ events, speed, onChangeSpeed, onClose, onAdd, onUpdate, o
           placeholder="اكتب خبرًا أو حدثًا جديدًا..."
           onKeyDown={(e) => e.key === "Enter" && submitNew()}
         />
-        <button onClick={submitNew} className="px-4 py-2 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#0F6B5C" }}>إضافة</button>
+        <button onClick={submitNew} className="px-4 py-2 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#26423B" }}>إضافة</button>
       </div>
       <div className="flex items-center gap-3 mb-4 p-3 rounded-xl" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
         <span className="text-sm font-semibold shrink-0" style={{ color: INK }}>سرعة الشريط</span>
@@ -5805,7 +5805,7 @@ function EventsModal({ events, speed, onChangeSpeed, onClose, onAdd, onUpdate, o
                 <span className="flex-1 text-sm font-medium" style={{ color: INK }}>{ev.text}</span>
               )}
               {editingId === ev.id ? (
-                <button onClick={saveEdit} title="حفظ" className="p-1.5 rounded-lg hover:bg-black/5"><Check size={15} color="#0F6B5C" /></button>
+                <button onClick={saveEdit} title="حفظ" className="p-1.5 rounded-lg hover:bg-black/5"><Check size={15} color="#26423B" /></button>
               ) : (
                 <button onClick={() => startEdit(ev)} title="تعديل" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
               )}
@@ -6031,7 +6031,7 @@ function GuideModal({ onClose }) {
         {steps.map((s, i) => (
           <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
             <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: "#EAF3F0" }}>
-              <s.icon size={16} color="#0F6B5C" />
+              <s.icon size={16} color="#26423B" />
             </div>
             <div>
               <p className="text-sm font-bold mb-0.5" style={{ color: INK }}>{s.title}</p>
@@ -6040,45 +6040,8 @@ function GuideModal({ onClose }) {
           </div>
         ))}
       </div>
-      <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>فهمت، ابدأ الآن</button>
+      <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>فهمت، ابدأ الآن</button>
     </Modal>
-  );
-}
-
-function DashboardStrip({ classes }) {
-  if (!classes || classes.length === 0) return null;
-  const t = todayKey();
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  let totalStudents = 0, totalPresent = 0, notesThisWeek = 0;
-  classes.forEach((cls) => {
-    (cls.rows || []).forEach((row) => {
-      totalStudents += 1;
-      if (attendanceStatus(cls, row.id, t) === "present") totalPresent += 1;
-    });
-    Object.values(cls.reports || {}).forEach((list) => {
-      (list || []).forEach((e) => {
-        if (!e.dateKey) return;
-        const d = new Date(`${e.dateKey}T00:00:00`);
-        if (d >= weekAgo) notesThisWeek += 1;
-      });
-    });
-  });
-  const attendanceRate = totalStudents > 0 ? Math.round((totalPresent / totalStudents) * 100) : null;
-
-  const cards = [
-    { label: "الفصول النشطة", value: classes.length, icon: BookOpen, tone: "green" },
-    { label: "نسبة الحضور اليوم", value: attendanceRate === null ? "—" : `${attendanceRate}%`, icon: CalendarCheck, tone: "gold" },
-    { label: "ملاحظات هذا الأسبوع", value: notesThisWeek, icon: FileText, tone: "green" },
-  ];
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-      {cards.map((c) => (
-        <DashStatCard key={c.label} label={c.label} value={c.value} icon={c.icon} tone={c.tone} />
-      ))}
-    </div>
   );
 }
 
@@ -6090,7 +6053,7 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
       className="flex items-center gap-2.5 text-right rounded-xl px-3 py-2 mb-3 hover:opacity-90 transition-opacity"
       style={{ background: "#fff", border: `1px solid ${LINE}`, width: "100%" }}
     >
-      <CalendarRange size={15} color="#0F6B5C" className="shrink-0" />
+      <CalendarRange size={15} color="#26423B" className="shrink-0" />
       {image && <img src={image} alt="" className="w-6 h-6 rounded object-cover shrink-0 dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />}
       <span className="font-bold text-xs flex-1" style={{ color: INK }}>الجدول الدراسي</span>
       <span className="text-xs" style={{ color: MUTED }}>{hasData ? "عرض" : "إضافة"}</span>
@@ -6149,7 +6112,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
 
   const toolCards = [
     { key: "edit", icon: Pencil, label: editing ? "إنهاء التعديل" : "تعديل", color: "#3B4C8C", onClick: () => setEditing((s) => !s) },
-    { key: "restore", icon: RotateCcw, label: "استعادة آخر حذف", color: "#0F6B5C", onClick: onRestoreLatest },
+    { key: "restore", icon: RotateCcw, label: "استعادة آخر حذف", color: "#26423B", onClick: onRestoreLatest },
     { key: "trash", icon: FolderOpen, label: "سجل المحذوفات", color: "#6B7A3A", onClick: () => setShowTrash(true) },
     { key: "remedial", icon: Activity, label: "خطة علاجية", color: "#7A4E9E", onClick: () => setShowRemedialPlan(true) },
     { key: "print", icon: Printer, label: "طباعة", color: "#2E7DA6", onClick: () => onPrint() },
@@ -6175,7 +6138,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
               {(() => {
                 const pct = attendancePercent(cls, row.id);
                 if (pct === null) return null;
-                const color = pct >= 90 ? "#0F6B5C" : pct >= 75 ? "#C97A2B" : "#C0392B";
+                const color = pct >= 90 ? "#26423B" : pct >= 75 ? "#C97A2B" : "#C0392B";
                 return (
                   <span title="نسبة الحضور" className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: `${color}18`, color }}>
                     {pct}٪ حضور
@@ -6303,7 +6266,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
       {editing && (
         <div className="flex gap-2">
           <input style={inputStyle} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="أضف ملاحظة يدوية للتقرير..." />
-          <button onClick={addNote} className="px-4 py-2 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#0F6B5C" }}>إضافة</button>
+          <button onClick={addNote} className="px-4 py-2 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#26423B" }}>إضافة</button>
         </div>
       )}
 
@@ -6391,7 +6354,7 @@ function BoardTable({ cls, dateKey }) {
             <tr key={row.id} style={{ background: i % 2 ? "#FBFAF6" : "#fff" }}>
               {cls.showRowNumbers && <td className="p-2 text-center text-xs font-semibold" style={{ border: `1px solid ${LINE}`, color: MUTED }}>{i + 1}</td>}
               <td className="p-2 font-medium" style={{ border: `1px solid ${LINE}`, color: INK, borderInlineStart: `4px solid ${row.color}` }}>{row.name}</td>
-              <td className="p-1 text-center font-bold" style={{ border: `1px solid ${LINE}`, color: status === "absent" ? "#C0392B" : "#0F6B5C" }}>{status === "absent" ? "غائب" : "حاضر"}</td>
+              <td className="p-1 text-center font-bold" style={{ border: `1px solid ${LINE}`, color: status === "absent" ? "#C0392B" : "#26423B" }}>{status === "absent" ? "غائب" : "حاضر"}</td>
               {cls.columns.map((col) => {
                 const val = dateKey ? valueOnDate(cls, row.id, col.id, dateKey) : (cls.cells[`${row.id}:${col.id}`] || lastReportedValue(cls, row.id, col.id));
                 return <td key={col.id} className="p-1 text-center" style={{ border: `1px solid ${LINE}` }}>{val || ""}</td>;
@@ -6521,7 +6484,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
   return (
     <div
       className={`rounded-2xl overflow-hidden relative card-in transition-all duration-200 hover:-translate-y-0.5 ${animating ? "trash-toss" : ""}`}
-      style={{ background: "#fff", border: cls.pinned ? `2px solid #0F6B5C` : `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(35,38,34,0.06)" }}
+      style={{ background: "#fff", border: cls.pinned ? `2px solid #26423B` : `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(35,38,34,0.06)" }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 10px 24px rgba(35,38,34,0.10)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(35,38,34,0.06)"; }}
     >
@@ -6537,7 +6500,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
       <div className="p-4 cursor-pointer relative active:scale-[0.98] transition-transform" onClick={() => !locked && onOpen(cls.id)} style={{ cursor: locked ? "not-allowed" : "pointer" }}>
         {(cls.pinned || locked) && (
           <div className="absolute top-2 right-2 flex gap-1">
-            {cls.pinned && <span className="p-1 rounded-full" style={{ background: "#EAF3F0" }}><Pin size={11} color="#0F6B5C" /></span>}
+            {cls.pinned && <span className="p-1 rounded-full" style={{ background: "#EAF3F0" }}><Pin size={11} color="#26423B" /></span>}
             {locked && <span className="p-1 rounded-full" style={{ background: "#FBEDEA" }}><Lock size={11} color="#9A3B2E" /></span>}
           </div>
         )}
@@ -6553,7 +6516,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
       <div className="flex items-center gap-1 px-3 py-2 relative flex-wrap" style={{ borderTop: `1px solid ${LINE}` }}>
         <div className="flex items-center gap-1" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 4 }}>
           <button title={cls.pinned ? "إلغاء التثبيت" : "تثبيت الفصل"} onClick={() => onTogglePin(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
-            <Pin size={15} color={cls.pinned ? "#0F6B5C" : MUTED} />
+            <Pin size={15} color={cls.pinned ? "#26423B" : MUTED} />
           </button>
           <button title={locked ? "فتح القفل" : "قفل الفصل"} onClick={() => onToggleLock(cls.id)} className="p-1.5 rounded-lg hover:bg-black/5">
             {locked ? <Lock size={15} color="#9A3B2E" /> : <Unlock size={15} color={MUTED} />}
@@ -6581,98 +6544,6 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
             <ColorSwatches value={cls.color} onChange={(hex) => { onColor(cls.id, hex); setShowColors(false); }} />
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ---------- dashboard-style sidebar (desktop) ----------
-
-function AppSidebar({ userEmail, mainTab, setMainTab, onOpenGuide, onOpenSettings, isOwner, onOpenAdmin, siteSettings }) {
-  const NAV = [
-    { key: "classes", label: "الفصول", icon: BookOpen },
-    { key: "shawahed", label: "شواهد", icon: FileCheck },
-    { key: "tests", label: "الاختبارات", icon: ListChecks },
-    { key: "archive", label: "المؤرشفة", icon: Archive },
-  ];
-  const initials = (userEmail || "م").trim().charAt(0).toUpperCase();
-  return (
-    <div
-      className="hidden lg:flex flex-col shrink-0"
-      style={{
-        width: 250,
-        background: `linear-gradient(180deg, ${DASH_GREEN} 0%, ${DASH_GREEN_DARK} 100%)`,
-        minHeight: "100vh",
-        position: "sticky",
-        top: 0,
-        alignSelf: "flex-start",
-        padding: "28px 18px",
-        color: "#fff",
-      }}
-    >
-      <div className="flex flex-col items-center mb-8 text-center">
-        {siteSettings?.siteLogo ? (
-          <img src={siteSettings.siteLogo} alt="" className="max-h-14 object-contain mb-3" />
-        ) : (
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center mb-3 font-extrabold text-xl"
-            style={{ background: GOLD, color: DASH_GREEN, border: "3px solid rgba(255,255,255,0.25)" }}
-          >
-            {initials}
-          </div>
-        )}
-        <p className="text-sm font-extrabold tracking-wide">{(userEmail || "معلم/ـة").split("@")[0]}</p>
-        <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.6)" }}>{userEmail}</p>
-      </div>
-
-      <nav className="flex flex-col gap-1.5 mb-8">
-        {NAV.map((n) => {
-          const active = mainTab === n.key;
-          return (
-            <button
-              key={n.key}
-              onClick={() => setMainTab(n.key)}
-              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-              style={active
-                ? { background: "rgba(255,255,255,0.14)", color: GOLD }
-                : { background: "transparent", color: "rgba(255,255,255,0.75)" }}
-            >
-              <n.icon size={17} />
-              {n.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="flex flex-col gap-1.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
-        <button onClick={onOpenGuide} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: "rgba(255,255,255,0.72)" }}>
-          <HelpCircle size={16} /> كيف أبدأ؟
-        </button>
-        <button onClick={onOpenSettings} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: "rgba(255,255,255,0.72)" }}>
-          <Settings size={16} /> الإعدادات
-        </button>
-        {isOwner && (
-          <button onClick={onOpenAdmin} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-bold hover:bg-white/5" style={{ color: GOLD }}>
-            <ShieldCheck size={16} /> لوحة التحكم
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Small stat card styled like the dashboard reference (icon chip + big
-// number + label). Used to restyle the existing DashboardStrip cards.
-function DashStatCard({ label, value, icon: Icon, tone = "green" }) {
-  const bg = tone === "gold" ? GOLD : DASH_GREEN;
-  return (
-    <div className="rounded-2xl p-4 flex items-center justify-between" style={{ background: bg, color: "#fff", minHeight: 84 }}>
-      <div>
-        <p className="text-xs opacity-80 mb-1">{label}</p>
-        <p className="text-2xl font-extrabold">{value}</p>
-      </div>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.18)" }}>
-        <Icon size={18} color="#fff" />
       </div>
     </div>
   );
@@ -6885,22 +6756,11 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
     : [];
 
   return (
-    <div className="flex" style={{ minHeight: "100vh" }}>
-      <AppSidebar
-        userEmail={userEmail}
-        mainTab={mainTab}
-        setMainTab={setMainTab}
-        onOpenGuide={() => setShowGuide(true)}
-        onOpenSettings={() => setShowSettings(true)}
-        isOwner={isOwner}
-        onOpenAdmin={() => setShowAdminPanel(true)}
-        siteSettings={siteSettings}
-      />
-    <div className="flex-1 max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 py-6 page-fade-in">
+    <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 py-6 page-fade-in">
       {siteSettings.announcementActive && siteSettings.announcement && (
         <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
-          <Info size={16} color="#0F6B5C" className="shrink-0 mt-0.5" />
-          <p className="text-sm" style={{ color: "#0F6B5C" }}>{siteSettings.announcement}</p>
+          <Info size={16} color="#26423B" className="shrink-0 mt-0.5" />
+          <p className="text-sm" style={{ color: "#26423B" }}>{siteSettings.announcement}</p>
         </div>
       )}
       <div className="sticky top-0 z-20 pb-2" style={{ background: PAPER }}>
@@ -6913,9 +6773,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             )}
             <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
           </div>
-          <div className="flex items-center gap-2 lg:hidden">
+          <div className="flex items-center gap-2">
             {isOwner && (
-              <button onClick={() => setShowAdminPanel(true)} title="لوحة التحكم" className="w-10 h-10 rounded-full flex items-center justify-center hover:opacity-90" style={{ background: "#0F6B5C" }}>
+              <button onClick={() => setShowAdminPanel(true)} title="لوحة التحكم" className="w-10 h-10 rounded-full flex items-center justify-center hover:opacity-90" style={{ background: "#26423B" }}>
                 <ShieldCheck size={18} color="#fff" />
               </button>
             )}
@@ -6940,7 +6800,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               onClick={() => setMainTab(t.key)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold shrink-0 transition-all"
               style={mainTab === t.key
-                ? { background: "linear-gradient(135deg, #12806E, #0F6B5C)", color: "#fff", boxShadow: "0 2px 8px rgba(15,107,92,0.28)" }
+                ? { background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, color: "#fff", boxShadow: "0 2px 8px rgba(38,66,59,0.28)" }
                 : { background: "#fff", color: MUTED, border: `1px solid ${LINE}` }}
             >
               <t.icon size={15} /> {t.label}
@@ -6950,7 +6810,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
 
         {mainTab === "classes" && (<>
-        <DashboardStrip classes={data.classes.filter((c) => !c.archived)} />
         <ScheduleMiniCard schedule={data.schedule} image={data.scheduleImage} onOpen={() => setShowSchedule(true)} />
 
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
@@ -6962,7 +6821,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             style={{ background: tab === "archived" ? INK : "transparent", color: tab === "archived" ? "#fff" : MUTED, border: `1px solid ${tab === "archived" ? INK : LINE}` }}>
             <FolderClock size={14} />المؤرشفة ({data.classes.filter((c) => c.archived).length})
           </button>
-          <button onClick={() => setModal({ mode: "add" })} className="mr-auto flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold text-white transition-all hover:brightness-105 hover:-translate-y-px active:scale-95 active:translate-y-0" style={{ background: "linear-gradient(135deg, #12806E, #0F6B5C)", boxShadow: "0 3px 10px rgba(15,107,92,0.32)" }}>
+          <button onClick={() => setModal({ mode: "add" })} className="mr-auto flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold text-white transition-all hover:brightness-105 hover:-translate-y-px active:scale-95 active:translate-y-0" style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, boxShadow: "0 3px 10px rgba(38,66,59,0.32)" }}>
             <Plus size={18} strokeWidth={2.5} /> إضافة فصل جديد
           </button>
         </div>
@@ -7042,7 +6901,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
                           <span className="block text-sm font-bold" style={{ color: INK }}>{row.name}</span>
                           <span className="block text-xs" style={{ color: MUTED }}>{cls.emoji ? `${cls.emoji} ` : ""}{cls.subject} • {cls.grade}</span>
                         </span>
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: status === "absent" ? "#F5DEDB" : "#E3F0ED", color: status === "absent" ? "#C0392B" : "#0F6B5C" }}>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: status === "absent" ? "#F5DEDB" : "#E3F0ED", color: status === "absent" ? "#C0392B" : "#26423B" }}>
                           {status === "absent" ? "غائب اليوم" : "حاضر اليوم"}
                         </span>
                       </button>
@@ -7337,7 +7196,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         />
       )}
       {isOwner && <SiteFooter contacts={siteSettings.footerContacts} badges={siteSettings.footerBadges} />}
-    </div>
     </div>
   );
 }
@@ -7836,7 +7694,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       {toast && (
         <div className="fixed top-4 inset-x-0 z-[60] flex justify-center pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg toast-pop" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-            <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "#0F6B5C" }}>
+            <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: "#26423B" }}>
               <Check size={12} color="#fff" strokeWidth={3} />
             </span>
             <span className="text-sm font-semibold" style={{ color: INK }}>{toast}</span>
@@ -7912,12 +7770,12 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           {cls.columns.length > 0 && (
             activeFilter ? (
               <div className="flex items-center gap-1.5 rounded-lg overflow-hidden" style={{ border: "1px solid #C9E2DB" }}>
-                <button onClick={() => setShowFilterModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ background: "#EAF3F0", color: "#0F6B5C" }}>
+                <button onClick={() => setShowFilterModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ background: "#EAF3F0", color: "#26423B" }}>
                   <Filter size={15} />
                   {cls.columns.find((c) => c.id === activeFilter.colId)?.name}
                 </button>
                 <button onClick={() => setActiveFilter(null)} title="إزالة التصفية" className="px-2 py-2 hover:bg-black/5" style={{ background: "#EAF3F0" }}>
-                  <X size={14} color="#0F6B5C" />
+                  <X size={14} color="#26423B" />
                 </button>
               </div>
             ) : (
@@ -7931,7 +7789,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       <div className="mt-3">
         {selectedRowIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 mb-3 p-2.5 rounded-xl" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
-            <span className="text-sm font-bold px-2" style={{ color: "#0F6B5C" }}>{selectedRowIds.length} طالب محدد</span>
+            <span className="text-sm font-bold px-2" style={{ color: "#26423B" }}>{selectedRowIds.length} طالب محدد</span>
             <button onClick={selectAllRows} className="text-xs font-semibold px-2 py-1 rounded-lg hover:bg-black/5" style={{ color: INK }}>تحديد الكل</button>
             <button onClick={clearSelection} className="text-xs font-semibold px-2 py-1 rounded-lg hover:bg-black/5" style={{ color: INK }}>إلغاء التحديد</button>
             <div className="mr-auto flex gap-2">
@@ -7956,17 +7814,17 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 {cls.showRowNumbers && (
                   <th
                     className="p-2 text-center"
-                    style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: 0, zIndex: 9, width: NUM_W, minWidth: NUM_W }}
+                    style={{ background: GOLD_LIGHT, border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: 0, zIndex: 9, width: NUM_W, minWidth: NUM_W }}
                   >#</th>
                 )}
                 <th
                   className="p-2 text-right"
-                  style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 9, width: NAME_W, minWidth: NAME_W }}
+                  style={{ background: GOLD_LIGHT, border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 9, width: NAME_W, minWidth: NAME_W }}
                 >الاسم</th>
                 {hasTotalGradeCol && (
                   <th
                     className="p-2 text-center"
-                    style={{ background: "#0F6B5C", color: "#fff", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: nameEndOffset, zIndex: 9, width: TOTAL_GRADE_W, minWidth: TOTAL_GRADE_W }}
+                    style={{ background: DASH_GREEN, color: "#fff", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: nameEndOffset, zIndex: 9, width: TOTAL_GRADE_W, minWidth: TOTAL_GRADE_W }}
                   >الدرجة الكلية</th>
                 )}
                 {columnMeta.map((col, i) => (
@@ -7989,12 +7847,12 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                     <div className="flex items-center justify-center gap-1.5 mb-1">
                       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col.color }} />
                       <span className="font-semibold">{col.name}</span>
-                      {col.autoRenew && <RefreshCw size={11} color="#0F6B5C" title="تفريغ تلقائي مفعّل" />}
+                      {col.autoRenew && <RefreshCw size={11} color="#26423B" title="تفريغ تلقائي مفعّل" />}
                     </div>
                     <div className="flex items-center justify-center gap-0.5">
                       <MiniIconBtn icon={ChevronRight} title="نقل لليمين" disabled={i === 0} onClick={() => moveColumn(col.id, -1)} />
                       <MiniIconBtn icon={ChevronLeft} title="نقل لليسار" disabled={i === columnMeta.length - 1} onClick={() => moveColumn(col.id, 1)} />
-                      <MiniIconBtn icon={col.pinned ? Pin : PinOff} title={col.pinned ? "إلغاء التثبيت" : "تثبيت العمود"} color={col.pinned ? "#0F6B5C" : MUTED} onClick={() => togglePinned(col.id)} />
+                      <MiniIconBtn icon={col.pinned ? Pin : PinOff} title={col.pinned ? "إلغاء التثبيت" : "تثبيت العمود"} color={col.pinned ? "#26423B" : MUTED} onClick={() => togglePinned(col.id)} />
                       <MiniIconBtn icon={Users} title="رصد نفس القيمة لجميع الطلاب" onClick={() => setBulkSetColId(bulkSetColId === col.id ? null : col.id)} />
                       <MiniIconBtn icon={Pencil} title="تعديل العمود" onClick={() => setColModal({ mode: "edit", data: col })} />
                     </div>
@@ -8032,7 +7890,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         {(() => {
                           const pct = attendancePercent(cls, row.id);
                           if (pct === null) return null;
-                          const color = pct >= 90 ? "#0F6B5C" : pct >= 75 ? "#C97A2B" : "#C0392B";
+                          const color = pct >= 90 ? "#26423B" : pct >= 75 ? "#C97A2B" : "#C0392B";
                           return (
                             <span title="نسبة الحضور" className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${color}18`, color }}>
                               {pct}٪
@@ -8325,7 +8183,7 @@ function AuthScreen({ siteSettings }) {
           <img src={siteSettings.siteLogo} alt="فصولي" className="max-h-28 mx-auto mb-4 object-contain" />
         ) : (
           <>
-            <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#0F6B5C" }}>
+            <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#26423B" }}>
               <BookOpen size={26} color="#fff" strokeWidth={2} />
             </div>
             <h1 className="text-2xl font-extrabold text-center" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
@@ -8342,9 +8200,9 @@ function AuthScreen({ siteSettings }) {
         </Field>
 
         {error && <p className="text-xs mb-3" style={{ color: "#C0392B" }}>{error}</p>}
-        {message && <p className="text-xs mb-3" style={{ color: "#0F6B5C" }}>{message}</p>}
+        {message && <p className="text-xs mb-3" style={{ color: "#26423B" }}>{message}</p>}
 
-        <button disabled={loading || !email.trim() || !password} onClick={submit} className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 active:scale-95 transition-transform" style={{ background: "#0F6B5C" }}>
+        <button disabled={loading || !email.trim() || !password} onClick={submit} className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 active:scale-95 transition-transform" style={{ background: "#26423B" }}>
           {loading ? "جارٍ..." : mode === "login" ? "تسجيل الدخول" : "إنشاء حساب"}
         </button>
 
@@ -8359,7 +8217,7 @@ function AuthScreen({ siteSettings }) {
           الدخول عبر Google
         </button>
 
-        <button onClick={() => { setMode((m) => (m === "login" ? "signup" : "login")); setError(""); setMessage(""); }} className="w-full text-center text-xs font-semibold mt-4" style={{ color: "#0F6B5C" }}>
+        <button onClick={() => { setMode((m) => (m === "login" ? "signup" : "login")); setError(""); setMessage(""); }} className="w-full text-center text-xs font-semibold mt-4" style={{ color: "#26423B" }}>
           {mode === "login" ? "ما عندك حساب؟ أنشئ واحدًا" : "عندك حساب؟ سجّل دخولك"}
         </button>
       </div>
@@ -8388,7 +8246,7 @@ export class ErrorBoundary extends React.Component {
           <div className="w-full max-w-lg rounded-2xl p-6 text-center" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
             <p className="text-sm font-bold mb-2" style={{ color: "#C0392B" }}>حدث خطأ غير متوقع</p>
             <p className="text-xs mb-4" style={{ color: MUTED }}>حاول إعادة تحميل الصفحة. لو تكرر الخطأ، خذ لقطة شاشة من التفاصيل بالأسفل وأرسلها.</p>
-            <button onClick={() => window.location.reload()} className="px-5 py-2 rounded-lg text-sm font-bold text-white mb-4" style={{ background: "#0F6B5C" }}>
+            <button onClick={() => window.location.reload()} className="px-5 py-2 rounded-lg text-sm font-bold text-white mb-4" style={{ background: "#26423B" }}>
               إعادة تحميل الصفحة
             </button>
             <div className="text-start p-3 rounded-lg overflow-auto" style={{ background: "#F8F7F2", border: `1px solid ${LINE}`, maxHeight: 260 }}>
@@ -8602,7 +8460,7 @@ export default function App() {
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
-          <button onClick={backHome} className="mt-3 text-sm font-semibold" style={{ color: "#0F6B5C" }}>العودة للرئيسية</button>
+          <button onClick={backHome} className="mt-3 text-sm font-semibold" style={{ color: "#26423B" }}>العودة للرئيسية</button>
         </div>
       )}
       <div className="app-print-root" dir="rtl">
