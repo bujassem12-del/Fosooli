@@ -4262,7 +4262,7 @@ function NoorEmbedModal({ onImportNames, onClose }) {
         body: JSON.stringify({ cookie, stage, classCode, sectionCode, semester }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "فشل الجلب");
+      if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(" — ") || "فشل الجلب");
       setAutoResults(data.students || []);
     } catch (err) {
       setAutoError(err.message === "Failed to fetch" ? "تعذّر الوصول للخادم — تأكد من الرابط ومن أن الخادم يعمل." : err.message);
