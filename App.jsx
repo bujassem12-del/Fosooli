@@ -11,7 +11,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink
+  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -210,6 +210,26 @@ function playFeedback(enabled) {
 // على الأقل انحط له تحديد غياب)، كم يوم كان الطالب حاضر فيه. الأيام اللي ما
 // انسجل فيها أي حضور أصلاً (ما ضغط المعلم "غياب" لأي طالب) ما تُحتسب، لأننا
 // ما نملك تأكيد إنها كانت يوم دراسي فعلي بالفصل.
+// الدرجة الكلية: مجموع كل أعمدة "عداد" اللي حُدّدت لها درجة قصوى، من أصل
+// مجموع تلك الدرجات القصوى. الأعمدة اللي ما فيها درجة قصوى محددة ما تدخل
+// بالحساب أصلًا (نعتبرها أعمدة تتبّع عامة مو جزء من الدرجة النهائية).
+function totalGrade(cls, rowId) {
+  const gradeCols = cls.columns.filter((c) => c.type === "counter" && Number(c.maxValue) > 0);
+  if (gradeCols.length === 0) return null;
+  let score = 0, max = 0;
+  gradeCols.forEach((c) => {
+    score += Number(cls.cells[`${rowId}:${c.id}`]) || 0;
+    max += Number(c.maxValue);
+  });
+  const pct = max > 0 ? (score / max) * 100 : 0;
+  let band, bandColor, bandBg;
+  if (pct >= 90) { band = "ممتاز"; bandColor = "#0F6B5C"; bandBg = "#E3F1EC"; }
+  else if (pct >= 80) { band = "جيد جدًا"; bandColor = "#2E7DA6"; bandBg = "#E3EEF5"; }
+  else if (pct >= 65) { band = "جيد"; bandColor = "#C97A2B"; bandBg = "#FBEEE0"; }
+  else { band = "ضعيف"; bandColor = "#C0392B"; bandBg = "#FBEAE7"; }
+  return { score: Math.round(score * 100) / 100, max, pct: Math.round(pct), band, bandColor, bandBg };
+}
+
 function attendancePercent(cls, rowId) {
   const days = Object.keys(cls.attendance || {});
   if (days.length === 0) return null;
@@ -895,6 +915,15 @@ function weekdayOfIso(iso) {
 // into a {title, subtitle, headers, rows, filename} table description used by
 // the PNG/PDF/Excel exporters.
 function jobToTable(job) {
+  if (job.type === "shawahedReport") {
+    const entries = job.shawahed.entries || {};
+    const headers = ["الفئة", "عنوان الشاهد", "ملاحظات", "التاريخ"];
+    const rows = [];
+    SHAWAHED_CATEGORIES.forEach((cat) => {
+      (entries[cat.key] || []).forEach((e) => rows.push([cat.title, e.title, e.notes || "", formatDateDisplay(e.date)]));
+    });
+    return { title: "تقرير شواهد الأداء الوظيفي", subtitle: `${rows.length} شاهد`, headers, rows, filename: "تقرير-شواهد-الأداء-الوظيفي" };
+  }
   if (job.type === "class") {
     const cls = job.cls;
     const dateKey = job.dateKey;
@@ -924,6 +953,23 @@ function jobToTable(job) {
     const cls = job.cls;
     return { title: `تقرير شامل — ${cls.subject}`, subtitle: `${cls.grade} • ${cls.teacher}`, headers: [], rows: [], filename: `تقرير-شامل-${cls.subject || "الفصل"}` };
   }
+  if (job.type === "gradeSheet") {
+    const { cls, shortTestIds, finalExamId, reviewerName } = job;
+    const finalCol = cls.columns.find((c) => c.id === finalExamId);
+    const headers = ["الاسم", "معدل الاختبارات القصيرة", ...(finalCol ? [finalCol.name] : []), "المجموع", "توقيع المراجع"];
+    const rows = cls.rows.map((row) => {
+      const shortVals = shortTestIds.map((id) => Number(cls.cells[`${row.id}:${id}`]) || 0);
+      const shortAvg = shortVals.length ? Math.round((shortVals.reduce((a, b) => a + b, 0) / shortVals.length) * 100) / 100 : 0;
+      const finalVal = finalCol ? Number(cls.cells[`${row.id}:${finalExamId}`]) || 0 : 0;
+      const total = Math.round((shortAvg + finalVal) * 100) / 100;
+      return [row.name, shortAvg, ...(finalCol ? [finalVal] : []), total, ""];
+    });
+    return {
+      title: `كشف رصد درجات المادة — ${cls.subject}`,
+      subtitle: `${cls.grade} • ${cls.teacher}${reviewerName ? ` • المراجع: ${reviewerName}` : ""}`,
+      headers, rows, filename: `كشف-رصد-درجات-${cls.subject || "الفصل"}`,
+    };
+  }
   const { cls, row, entries } = job;
   const grouped = groupEntries(entries).flatMap((g) => g.items);
   const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
@@ -931,7 +977,98 @@ function jobToTable(job) {
   return { title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `تقرير-${row.name}` };
 }
 
+// يبني تقرير الشواهد الملوّن: يمر على كل فئة من فئات الأداء الوظيفي الاثنتا
+// عشرة، ويرسم عنوانها الملوّن، ثم كل شاهد فيها (عنوانه، ملاحظاته، صورته إن
+// وُجدت). الفئات الفاضية من الشواهد تُتخطى بدون ما تاخذ مساحة بالتقرير.
+async function buildShawahedReportCanvas(shawahed) {
+  const entries = shawahed.entries || {};
+  const scale = 3;
+  const width = 900;
+  const pad = 24;
+  const rowH = 92;
+  const catHeaderH = 46;
+  const catGap = 14;
+
+  const activeCats = SHAWAHED_CATEGORIES.filter((c) => (entries[c.key] || []).length > 0);
+  let totalEntries = 0;
+  activeCats.forEach((c) => { totalEntries += entries[c.key].length; });
+
+  const titleH = 80;
+  const height = titleH + activeCats.length * (catHeaderH + catGap) + totalEntries * rowH + pad * 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, width, height);
+  ctx.direction = "rtl";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = INK;
+  ctx.font = "bold 26px Tahoma, Arial";
+  ctx.fillText("تقرير شواهد الأداء الوظيفي", width / 2, pad + 16);
+  ctx.font = "13px Tahoma, Arial";
+  ctx.fillStyle = MUTED;
+  ctx.fillText(`${totalEntries} شاهد عبر ${activeCats.length} فئة`, width / 2, pad + 42);
+
+  let y = titleH;
+  for (const cat of activeCats) {
+    ctx.fillStyle = cat.color;
+    ctx.fillRect(pad, y, width - pad * 2, catHeaderH - 8);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 15px Tahoma, Arial";
+    ctx.textAlign = "right";
+    ctx.fillText(cat.title, width - pad - 14, y + (catHeaderH - 8) / 2);
+    y += catHeaderH;
+
+    for (const entry of entries[cat.key]) {
+      const rowY = y;
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(pad, rowY, width - pad * 2, rowH - 8);
+
+      let photoImg = null;
+      if (entry.photo) {
+        try { photoImg = await loadImage(entry.photo); } catch (e) { photoImg = null; }
+      }
+      if (photoImg) {
+        const thumbSize = rowH - 24;
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(width - pad - 12 - thumbSize, rowY + 12, thumbSize, thumbSize, 8);
+        ctx.clip();
+        ctx.drawImage(photoImg, width - pad - 12 - thumbSize, rowY + 12, thumbSize, thumbSize);
+        ctx.restore();
+      }
+      const textRightEdge = photoImg ? width - pad - 24 - (rowH - 24) : width - pad - 16;
+      ctx.textAlign = "right";
+      ctx.fillStyle = INK;
+      ctx.font = "bold 14px Tahoma, Arial";
+      ctx.fillText(entry.title, textRightEdge, rowY + 26);
+      if (entry.notes) {
+        ctx.font = "12px Tahoma, Arial";
+        ctx.fillStyle = MUTED;
+        const wrapped = wrapCanvasText(ctx, entry.notes, textRightEdge - pad - 10);
+        ctx.fillText(wrapped[0] || "", textRightEdge, rowY + 48);
+      }
+      ctx.font = "11px Tahoma, Arial";
+      ctx.fillStyle = MUTED;
+      ctx.fillText(formatDateDisplay(entry.date), textRightEdge, rowY + rowH - 26);
+
+      y += rowH;
+    }
+    y += catGap;
+  }
+
+  return { canvas, logicalWidth: width, logicalHeight: height };
+}
+
 async function jobToCanvas(job) {
+  if (job.type === "shawahedReport") {
+    return buildShawahedReportCanvas(job.shawahed);
+  }
   if (job.type === "report") {
     const { cls, row, entries } = job;
     const groups = groupEntries(entries);
@@ -1444,7 +1581,7 @@ function PrintPreviewModal({ job, format, onClose, onExport }) {
   );
 }
 
-function Modal({ title, onClose, children, wide = false, lg = false, xl = false, zIndex = 50, accent = null }) {
+function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl = false, zIndex = 50, accent = null }) {
   const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md md:max-w-lg";
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [entered, setEntered] = useState(false);
@@ -1497,6 +1634,16 @@ function Modal({ title, onClose, children, wide = false, lg = false, xl = false,
           onPointerDown={onHeaderPointerDown}
         >
           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: isMagic ? "#fff" : INK }}>
+            {onBack && (
+              <button
+                onClick={onBack}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="رجوع"
+                className={`p-1 rounded-full transition-all shrink-0 ${isMagic ? "hover:bg-white/20" : "hover:bg-black/5"}`}
+              >
+                <ArrowRight size={18} color={isMagic ? "#fff" : MUTED} />
+              </button>
+            )}
             {isMagic ? <Sparkles size={16} strokeWidth={2.5} /> : <Move size={14} color={MUTED} />}
             {title}
           </h3>
@@ -1682,6 +1829,17 @@ function ColumnDraftForm({ draft, onChange, onRemove, removable }) {
       {draft.type === "dropdown" && (
         <Field label="خيارات القائمة (لكل خيار لونه الخاص)">
           <OptionsEditor options={draft.options || []} onChange={(options) => set({ options })} />
+        </Field>
+      )}
+      {draft.type === "counter" && (
+        <Field label="الدرجة القصوى لهذا العمود (اختياري)" hint="لو حددتها، يدخل هذا العمود بحساب 'الدرجة الكلية' التلقائية بالجدول.">
+          <input
+            type="number"
+            value={draft.maxValue || ""}
+            onChange={(e) => set({ maxValue: e.target.value })}
+            style={inputStyle}
+            placeholder="مثال: 10"
+          />
         </Field>
       )}
       <Field label="لون العمود">
@@ -2251,9 +2409,9 @@ function TestBuilderModal({ onSave, onClose }) {
   );
 }
 
-function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, onDelete, onClose }) {
-  return (
-    <Modal title="الاختبارات" onClose={onClose} wide>
+function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, onDelete, onArchive, onClose, bare = false }) {
+  const content = (
+    <>
       <button onClick={onCreateNew} className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white" style={{ background: "#0F6B5C" }}>
         <Plus size={16} /> إنشاء اختبار جديد
       </button>
@@ -2270,11 +2428,18 @@ function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, o
               <button onClick={() => onPrint(t.id)} title="طباعة الورقة" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Printer size={15} color={MUTED} /></button>
               <button onClick={() => onGradeCamera(t.id)} title="تصحيح بالكاميرا" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Camera size={15} color={MUTED} /></button>
               <button onClick={() => onGrade(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: "#0F6B5C" }}>تصحيح</button>
+              <button onClick={() => onArchive(t.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Archive size={14} color={MUTED} /></button>
               <button onClick={() => onDelete(t.id)} className="p-1.5 rounded hover:bg-black/5 shrink-0"><Trash2 size={14} color="#C0392B" /></button>
             </div>
           ))}
         </div>
       )}
+    </>
+  );
+  if (bare) return content;
+  return (
+    <Modal title="الاختبارات" onClose={onClose} wide>
+      {content}
     </Modal>
   );
 }
@@ -3115,6 +3280,356 @@ function rowMatchesFilter(cls, row, filter) {
   }
 }
 
+function GradeSheetModal({ cls, onClose, onGenerate }) {
+  const gradeColumns = cls.columns.filter((c) => c.type === "counter");
+  const [shortTestIds, setShortTestIds] = useState([]);
+  const [finalExamId, setFinalExamId] = useState("");
+  const [reviewerName, setReviewerName] = useState("");
+
+  const toggleShortTest = (id) => {
+    setShortTestIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  return (
+    <Modal title="كشف رصد درجات المادة" onClose={onClose} accent="magic">
+      <p className="text-xs mb-4" style={{ color: MUTED }}>
+        هذا الكشف يتبع نفس التنسيق المعتمد بنظام نور: معدل الاختبارات القصيرة، اختبار نهاية الفصل، المجموع، وخانة توقيع المراجع — جاهز للتسليم مباشرة.
+      </p>
+      {gradeColumns.length === 0 ? (
+        <p className="text-sm text-center py-6" style={{ color: MUTED }}>لا يوجد أعمدة من نوع "عداد" بهذا الفصل بعد — أضف أعمدة الدرجات أولًا.</p>
+      ) : (
+        <>
+          <Field label="أعمدة الاختبارات القصيرة (يُحسب معدلها)" hint="اختر كل الأعمدة اللي تمثّل اختبارات قصيرة متكررة.">
+            <div className="space-y-1.5">
+              {gradeColumns.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm p-2 rounded-lg" style={{ border: `1px solid ${LINE}` }}>
+                  <input type="checkbox" checked={shortTestIds.includes(c.id)} onChange={() => toggleShortTest(c.id)} />
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+          </Field>
+          <Field label="عمود اختبار نهاية الفصل">
+            <select value={finalExamId} onChange={(e) => setFinalExamId(e.target.value)} style={inputStyle}>
+              <option value="">— بدون —</option>
+              {gradeColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="اسم المراجع (اختياري)">
+            <input value={reviewerName} onChange={(e) => setReviewerName(e.target.value)} style={inputStyle} placeholder="مثال: أ. محمد العتيبي" />
+          </Field>
+          <button
+            disabled={shortTestIds.length === 0 && !finalExamId}
+            onClick={() => onGenerate({ shortTestIds, finalExamId, reviewerName: reviewerName.trim() })}
+            className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+            style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}
+          >
+            إنشاء الكشف
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function ShawahedCategoryModal({ category, entries, onAdd, onDelete, onArchive, onClose }) {
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [photo, setPhoto] = useState(null);
+  const photoInputRef = useRef(null);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const submit = () => {
+    if (!title.trim()) return;
+    onAdd({ id: uid(), title: title.trim(), notes: notes.trim(), photo, date: todayKey() });
+    setTitle(""); setNotes(""); setPhoto(null);
+  };
+
+  return (
+    <Modal title={category.title} onClose={onClose} accent="magic" wide>
+      <div className="rounded-xl p-3 mb-4" style={{ background: `${category.color}10`, border: `1px solid ${category.color}40` }}>
+        <p className="text-xs font-bold mb-2" style={{ color: category.color }}>إضافة شاهد جديد</p>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {category.suggestions.map((s) => (
+            <button key={s} onClick={() => setTitle(s)} className="text-xs px-2.5 py-1 rounded-full hover:opacity-80" style={{ background: "#fff", border: `1px solid ${LINE}`, color: INK }}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان الشاهد" style={{ ...inputStyle, marginBottom: 8 }} />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ملاحظات إضافية (اختياري)" style={{ ...inputStyle, minHeight: 60, resize: "vertical", marginBottom: 8 }} />
+        <div className="flex items-center gap-2 mb-2">
+          <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
+          {photo ? (
+            <div className="relative">
+              <img src={photo} alt="" className="w-14 h-14 rounded-lg object-cover dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
+              <button onClick={() => setPhoto(null)} className="absolute -top-1.5 -left-1.5 p-0.5 rounded-full" style={{ background: "#C0392B" }}><X size={10} color="#fff" /></button>
+            </div>
+          ) : (
+            <button onClick={() => photoInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold" style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}>
+              <Camera size={14} color={category.color} /> إرفاق صورة (اختياري)
+            </button>
+          )}
+        </div>
+        <button
+          disabled={!title.trim()}
+          onClick={submit}
+          className="w-full py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
+          style={{ background: category.color }}
+        >
+          إضافة
+        </button>
+      </div>
+
+      <p className="text-xs font-bold mb-2" style={{ color: MUTED }}>الشواهد المضافة ({entries.length})</p>
+      {entries.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد شواهد بهذي الفئة بعد.</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-start gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              {e.photo && <img src={e.photo} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
+                {e.notes && <p className="text-xs mt-0.5" style={{ color: MUTED }}>{e.notes}</p>}
+                <p className="text-[11px] mt-1" style={{ color: MUTED }}>{formatDateDisplay(e.date)}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
+                <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function UnifiedArchiveModal({ archivedClasses, shawahed, archivedTests, onRestoreClass, onRestoreShawahed, onRestoreTest, onDeleteTestForever, onClose, bare = false }) {
+  const [tab, setTab] = useState("classes");
+  const archivedEntries = shawahed.archivedEntries || {};
+  const shawahedCount = SHAWAHED_CATEGORIES.reduce((sum, c) => sum + (archivedEntries[c.key]?.length || 0), 0);
+  const tabs = [
+    { key: "classes", label: `الفصول (${archivedClasses.length})` },
+    { key: "shawahed", label: `الشواهد (${shawahedCount})` },
+    { key: "tests", label: `الاختبارات (${archivedTests.length})` },
+  ];
+
+  const content = (
+    <>
+      <div className="flex items-center gap-2 mb-4">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold"
+            style={{ background: tab === t.key ? INK : "transparent", color: tab === t.key ? "#fff" : MUTED, border: `1px solid ${tab === t.key ? INK : LINE}` }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "classes" && (
+        archivedClasses.length === 0 ? (
+          <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد فصول مؤرشفة.</p>
+        ) : (
+          <div className="space-y-2">
+            {archivedClasses.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: INK }}>{c.subject}</p>
+                  <p className="text-xs" style={{ color: MUTED }}>{c.grade} • {c.teacher}</p>
+                </div>
+                <button onClick={() => onRestoreClass(c.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                  <RotateCcw size={12} /> استعادة
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === "shawahed" && (
+        (() => {
+          const allArchived = SHAWAHED_CATEGORIES.flatMap((cat) => (archivedEntries[cat.key] || []).map((e) => ({ ...e, cat })));
+          if (allArchived.length === 0) return <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد شواهد مؤرشفة.</p>;
+          return (
+            <div className="space-y-2">
+              {allArchived.map((e) => (
+                <div key={e.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+                  {e.photo && <img src={e.photo} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
+                    <p className="text-xs" style={{ color: MUTED }}>{e.cat.title}</p>
+                  </div>
+                  <button onClick={() => onRestoreShawahed(e.cat.key, e.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                    <RotateCcw size={12} /> استعادة
+                  </button>
+                </div>
+              ))}
+            </div>
+          );
+        })()
+      )}
+
+      {tab === "tests" && (
+        archivedTests.length === 0 ? (
+          <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد اختبارات مؤرشفة.</p>
+        ) : (
+          <div className="space-y-2">
+            {archivedTests.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: INK }}>{t.title}</p>
+                  <p className="text-xs" style={{ color: MUTED }}>{t.questions.length} سؤال</p>
+                </div>
+                <button onClick={() => onRestoreTest(t.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                  <RotateCcw size={12} /> استعادة
+                </button>
+                <button onClick={() => onDeleteTestForever(t.id)} title="حذف نهائي" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Trash2 size={14} color="#C0392B" /></button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Modal title="الأرشيف" onClose={onClose} wide>
+      {content}
+    </Modal>
+  );
+}
+
+function ShawahedArchiveModal({ archivedEntries, onRestore, onClose }) {
+  const allArchived = SHAWAHED_CATEGORIES.flatMap((cat) => (archivedEntries[cat.key] || []).map((e) => ({ ...e, cat })));
+  return (
+    <Modal title="أرشيف الشواهد" onClose={onClose} wide>
+      {allArchived.length === 0 ? (
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد شواهد مؤرشفة.</p>
+      ) : (
+        <div className="space-y-2">
+          {allArchived.map((e) => (
+            <div key={e.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              {e.photo && <img src={e.photo} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
+                <p className="text-xs" style={{ color: MUTED }}>{e.cat.title}</p>
+              </div>
+              <button onClick={() => onRestore(e.cat.key, e.id)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ border: `1px solid ${LINE}`, color: "#0F6B5C" }}>
+                <RotateCcw size={12} /> استعادة
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ShawahedHub({ shawahed, onUpdate, onClose, onExport, bare = false }) {
+  const [openCat, setOpenCat] = useState(null);
+  const [showArchive, setShowArchive] = useState(false);
+  const entries = shawahed.entries || {};
+  const archivedEntries = shawahed.archivedEntries || {};
+  const totalCount = SHAWAHED_CATEGORIES.reduce((sum, c) => sum + (entries[c.key]?.length || 0), 0);
+
+  const addEntry = (catKey, entry) => {
+    onUpdate({ ...shawahed, entries: { ...entries, [catKey]: [...(entries[catKey] || []), entry] } });
+  };
+  const deleteEntry = (catKey, entryId) => {
+    onUpdate({ ...shawahed, entries: { ...entries, [catKey]: (entries[catKey] || []).filter((e) => e.id !== entryId) } });
+  };
+  const archiveEntry = (catKey, entryId) => {
+    const entry = (entries[catKey] || []).find((e) => e.id === entryId);
+    if (!entry) return;
+    onUpdate({
+      ...shawahed,
+      entries: { ...entries, [catKey]: entries[catKey].filter((e) => e.id !== entryId) },
+      archivedEntries: { ...archivedEntries, [catKey]: [...(archivedEntries[catKey] || []), entry] },
+    });
+  };
+  const restoreEntry = (catKey, entryId) => {
+    const entry = (archivedEntries[catKey] || []).find((e) => e.id === entryId);
+    if (!entry) return;
+    onUpdate({
+      ...shawahed,
+      entries: { ...entries, [catKey]: [...(entries[catKey] || []), entry] },
+      archivedEntries: { ...archivedEntries, [catKey]: archivedEntries[catKey].filter((e) => e.id !== entryId) },
+    });
+  };
+
+  const content = (
+    <>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <p className="text-xs font-semibold flex-1" style={{ color: MUTED }}>{totalCount} شاهد بكل الفئات</p>
+        <IconBtn icon={Archive} label="الأرشيف" onClick={() => setShowArchive(true)} />
+        <IconBtn icon={FileText} label="تصدير التقرير" magic onClick={onExport} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {SHAWAHED_CATEGORIES.map((cat) => {
+          const count = entries[cat.key]?.length || 0;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => setOpenCat(cat)}
+              className="text-right rounded-2xl p-4 hover:-translate-y-0.5 transition-all"
+              style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(35,38,34,0.06)" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white" style={{ background: cat.color }}>{count}</span>
+                <FileCheck size={16} color={cat.color} />
+              </div>
+              <p className="text-sm font-semibold leading-snug" style={{ color: INK }}>{cat.title}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {openCat && (
+        <ShawahedCategoryModal
+          category={openCat}
+          entries={entries[openCat.key] || []}
+          onAdd={(entry) => addEntry(openCat.key, entry)}
+          onDelete={(id) => deleteEntry(openCat.key, id)}
+          onArchive={(id) => archiveEntry(openCat.key, id)}
+          onClose={() => setOpenCat(null)}
+        />
+      )}
+      {showArchive && (
+        <ShawahedArchiveModal
+          archivedEntries={archivedEntries}
+          onRestore={restoreEntry}
+          onClose={() => setShowArchive(false)}
+        />
+      )}
+    </>
+  );
+
+  if (bare) return content;
+
+  return (
+    <Modal title="شواهد الأداء الوظيفي" onClose={onClose} accent="magic" xl>
+      {content}
+    </Modal>
+  );
+}
+
 function NoorEmbedModal({ onImportNames, onClose }) {
   const [loadState, setLoadState] = useState("loading"); // loading | loaded | blocked
   const [pasteText, setPasteText] = useState("");
@@ -3353,6 +3868,23 @@ function trashEntryLabel(entry) {
   if (entry.type === "reportBulk") return `حذف جماعي من التقرير (${entry.data.entries.length} رصد)`;
   return "عنصر محذوف";
 }
+
+// شواهد الأداء الوظيفي — الفئات الاثنتا عشرة الرسمية، وقائمة اقتراحات لكل
+// فئة تسهّل إضافة شاهد جديد بضغطة (يقدر المعلم يعدّل النص أو يكتب غيره تمامًا).
+const SHAWAHED_CATEGORIES = [
+  { key: "duties", title: "أداء الواجبات الوظيفية", color: "#0F6B5C", suggestions: ["سجل الحضور والانصراف", "محضر اجتماع", "خطاب شكر وتقدير"] },
+  { key: "community", title: "التفاعل مع المجتمع المهني", color: "#3B4C8C", suggestions: ["شهادة مشاركة بدورة تدريبية", "محضر مجتمع تعلم مهني", "شهادة تقديم ورشة عمل"] },
+  { key: "parents", title: "التفاعل مع أولياء الأمور", color: "#C97A2B", suggestions: ["سجل تواصل مع ولي أمر", "دعوة اجتماع أولياء أمور", "استبيان رضا أولياء الأمور"] },
+  { key: "strategies", title: "التنوع في استراتيجيات التدريس", color: "#7A4E9E", suggestions: ["تحضير درس باستراتيجية التعلم التعاوني", "صورة من نشاط تعلم نشط", "خطة درس متنوعة الاستراتيجيات"] },
+  { key: "outcomes", title: "تحسين نتائج المتعلمين", color: "#2E9FD6", suggestions: ["مقارنة نتائج قبل وبعد", "شهادة تفوق طالب", "تقرير تحسن مستوى الفصل"] },
+  { key: "plan", title: "إعداد وتنفيذ خطة التعلم", color: "#B4526A", suggestions: ["خطة فصلية", "خطة درس يومية", "توزيع منهج"] },
+  { key: "techUse", title: "توظيف تقنيات ووسائل التعلم المناسبة", color: "#4E6FE0", suggestions: ["لقطة من استخدام السبورة الذكية", "رابط عرض تفاعلي", "صورة وسيلة تعليمية"] },
+  { key: "environment", title: "تهيئة بيئة تعليمية", color: "#6B9E4E", suggestions: ["صورة تجهيز الفصل", "لوحة تحفيزية بالفصل", "ركن تعليمي"] },
+  { key: "classroom", title: "الإدارة الصفية", color: "#9E6B4E", suggestions: ["نظام لوائح الفصل", "سجل تعزيز سلوك", "خطة إدارة صفية"] },
+  { key: "analysis", title: "تحليل نتائج المتعلمين وتشخيص مستواهم", color: "#5C7C9E", suggestions: ["تحليل نتائج اختبار", "تقرير تشخيصي لطالب", "رسم بياني لنتائج الفصل"] },
+  { key: "assessment", title: "تنوع أساليب التقويم", color: "#9E4E7A", suggestions: ["نموذج تقويم أداء", "بطاقة ملاحظة", "اختبار قصير متنوع"] },
+  { key: "activities", title: "تهيئة البيئة المدرسية للبرامج والأنشطة الطلابية", color: "#C9A227", suggestions: ["صورة نشاط طلابي", "برنامج إذاعة مدرسية", "مسابقة صفية"] },
+];
 
 const SUBSCRIPTION_LABELS = { free: "مجاني", trial: "تجريبي", active: "مشترك", expired: "منتهي" };
 
@@ -5141,7 +5673,7 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
   );
 }
 
-function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint }) {
+function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint }) {
   const [editing, setEditing] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showTrash, setShowTrash] = useState(false);
@@ -5201,7 +5733,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
   ];
 
   return (
-    <Modal title={`تقرير الطالب — ${row.name}`} onClose={onClose} lg>
+    <Modal title={`تقرير الطالب — ${row.name}`} onClose={onClose} onBack={onBack} lg>
       <div className="rounded-2xl p-4 mb-3" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
         <div className="flex flex-wrap items-center gap-4 mb-3">
           {row.photo ? (
@@ -5630,11 +6162,12 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
 
 function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner }) {
   const [modal, setModal] = useState(null);
+  const [mainTab, setMainTab] = useState("classes");
   const [tab, setTab] = useState("active");
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTodayActivity, setShowTodayActivity] = useState(false);
-  const [showTestsList, setShowTestsList] = useState(false);
+  const [shawahedPreview, setShawahedPreview] = useState(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showTestBuilder, setShowTestBuilder] = useState(false);
   const [gradingTestId, setGradingTestId] = useState(null);
@@ -5642,6 +6175,17 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
   const [omrTestId, setOmrTestId] = useState(null);
   const addTest = (test) => setData((d) => ({ ...d, tests: [...(d.tests || []), test] }));
   const deleteTest = (id) => setData((d) => ({ ...d, tests: (d.tests || []).filter((t) => t.id !== id) }));
+  const archiveTest = (id) => setData((d) => {
+    const test = (d.tests || []).find((t) => t.id === id);
+    if (!test) return d;
+    return { ...d, tests: d.tests.filter((t) => t.id !== id), archivedTests: [...(d.archivedTests || []), test] };
+  });
+  const restoreTest = (id) => setData((d) => {
+    const test = (d.archivedTests || []).find((t) => t.id === id);
+    if (!test) return d;
+    return { ...d, archivedTests: d.archivedTests.filter((t) => t.id !== id), tests: [...(d.tests || []), test] };
+  });
+  const deleteArchivedTestForever = (id) => setData((d) => ({ ...d, archivedTests: (d.archivedTests || []).filter((t) => t.id !== id) }));
   const saveTestResult = (testId, result) => setData((d) => ({ ...d, tests: (d.tests || []).map((t) => (t.id === testId ? { ...t, results: [...(t.results || []), result] } : t)) }));
   const applyResultToClass = (classId, colId, studentName, value) => {
     setData((d) => ({
@@ -5852,7 +6396,28 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           </div>
         </div>
 
+        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
+          {[
+            { key: "classes", label: "الفصول", icon: BookOpen },
+            { key: "shawahed", label: "شواهد", icon: FileCheck },
+            { key: "tests", label: "الاختبارات", icon: ListChecks },
+            { key: "archive", label: "المؤرشفة", icon: Archive },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setMainTab(t.key)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold shrink-0 transition-all"
+              style={mainTab === t.key
+                ? { background: "linear-gradient(135deg, #12806E, #0F6B5C)", color: "#fff", boxShadow: "0 2px 8px rgba(15,107,92,0.28)" }
+                : { background: "#fff", color: MUTED, border: `1px solid ${LINE}` }}
+            >
+              <t.icon size={15} /> {t.label}
+            </button>
+          ))}
+        </div>
 
+
+        {mainTab === "classes" && (<>
         <ScheduleMiniCard schedule={data.schedule} image={data.scheduleImage} onOpen={() => setShowSchedule(true)} />
 
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
@@ -5884,7 +6449,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 8 }}>
             <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
             <IconBtn icon={ListTodo} label="نشاطي اليوم" onClick={() => setShowTodayActivity(true)} />
-            <IconBtn icon={ListChecks} label="الاختبارات" onClick={() => setShowTestsList(true)} />
           </div>
           <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: classes.length > 0 ? `1px solid ${LINE}` : "none", paddingInlineEnd: 8 }}>
             <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatestClass} />
@@ -5898,9 +6462,11 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           )}
         </div>
         )}
+        </>)}
       </div>
 
       <div className="mt-5">
+      {mainTab === "classes" && (<>
       {showSearch && (
         <div className="mb-5">
           <div className="relative" style={{ maxWidth: "320px" }}>
@@ -6002,7 +6568,55 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           ))}
         </div>
       )}
+      </>)}
       </div>
+
+      {mainTab === "shawahed" && (
+        <ShawahedHub
+          bare
+          shawahed={data.shawahed || {}}
+          onUpdate={(next) => setData((d) => ({ ...d, shawahed: next }))}
+          onExport={() => setShawahedPreview({ type: "shawahedReport", shawahed: data.shawahed || {} })}
+        />
+      )}
+      {mainTab === "tests" && (
+        <TestsListModal
+          bare
+          tests={data.tests || []}
+          onCreateNew={() => setShowTestBuilder(true)}
+          onGrade={(id) => setGradingTestId(id)}
+          onGradeCamera={(id) => setOmrTestId(id)}
+          onPrint={(id) => setPrintingTestId(id)}
+          onDelete={deleteTest}
+          onArchive={archiveTest}
+        />
+      )}
+      {mainTab === "archive" && (
+        <UnifiedArchiveModal
+          bare
+          archivedClasses={data.classes.filter((c) => c.archived)}
+          shawahed={data.shawahed || {}}
+          archivedTests={data.archivedTests || []}
+          onRestoreClass={toggleArchive}
+          onRestoreShawahed={(catKey, entryId) => {
+            const shawahed = data.shawahed || {};
+            const entries = shawahed.entries || {};
+            const archivedEntries = shawahed.archivedEntries || {};
+            const entry = (archivedEntries[catKey] || []).find((e) => e.id === entryId);
+            if (!entry) return;
+            setData((d) => ({
+              ...d,
+              shawahed: {
+                ...shawahed,
+                entries: { ...entries, [catKey]: [...(entries[catKey] || []), entry] },
+                archivedEntries: { ...archivedEntries, [catKey]: archivedEntries[catKey].filter((e) => e.id !== entryId) },
+              },
+            }));
+          }}
+          onRestoreTest={restoreTest}
+          onDeleteTestForever={deleteArchivedTestForever}
+        />
+      )}
 
       {modal && (
         <ClassModal
@@ -6084,15 +6698,17 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       {showTodayActivity && <TodayActivityModal classes={data.classes.filter((c) => !c.archived)} onClose={() => setShowTodayActivity(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {showAdminPanel && <AdminPanelModal currentUserId={userId} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} onClose={() => setShowAdminPanel(false)} />}
-      {showTestsList && (
-        <TestsListModal
-          tests={data.tests || []}
-          onCreateNew={() => { setShowTestsList(false); setShowTestBuilder(true); }}
-          onGrade={(id) => { setShowTestsList(false); setGradingTestId(id); }}
-          onGradeCamera={(id) => { setShowTestsList(false); setOmrTestId(id); }}
-          onPrint={(id) => { setShowTestsList(false); setPrintingTestId(id); }}
-          onDelete={deleteTest}
-          onClose={() => setShowTestsList(false)}
+      {shawahedPreview && (
+        <PrintPreviewModal
+          job={shawahedPreview}
+          format="pdf"
+          onClose={() => setShawahedPreview(null)}
+          onExport={(key) => {
+            if (key === "pdf") exportPdfShare(shawahedPreview);
+            else if (key === "png") exportPng(shawahedPreview);
+            else if (key === "excel") exportExcel(shawahedPreview);
+            setShawahedPreview(null);
+          }}
         />
       )}
       {showTestBuilder && (
@@ -6158,6 +6774,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
+  const [showGradeSheet, setShowGradeSheet] = useState(false);
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -6605,7 +7222,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const NUM_W = 48;
   const NAME_W = 180;
   const PIN_W = 160;
-  const leadWidth = (cls.showRowNumbers ? NUM_W : 0) + NAME_W;
+  const TOTAL_GRADE_W = 110;
+  const hasTotalGradeCol = cls.columns.some((c) => c.type === "counter" && Number(c.maxValue) > 0);
+  const nameEndOffset = (cls.showRowNumbers ? NUM_W : 0) + NAME_W;
+  const leadWidth = nameEndOffset + (hasTotalGradeCol ? TOTAL_GRADE_W : 0);
   let pinCounter = 0;
   const columnMeta = cls.columns.map((col) => {
     if (col.pinned) {
@@ -6674,6 +7294,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
+          <IconBtn icon={FileSpreadsheet} label="كشف رصد درجات" magic onClick={() => setShowGradeSheet(true)} />
           <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
@@ -6747,6 +7368,12 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                   className="p-2 text-right"
                   style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 9, width: NAME_W, minWidth: NAME_W }}
                 >الاسم</th>
+                {hasTotalGradeCol && (
+                  <th
+                    className="p-2 text-center"
+                    style={{ background: "#0F6B5C", color: "#fff", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: nameEndOffset, zIndex: 9, width: TOTAL_GRADE_W, minWidth: TOTAL_GRADE_W }}
+                  >الدرجة الكلية</th>
+                )}
                 {columnMeta.map((col, i) => (
                   <th
                     key={col.id}
@@ -6829,6 +7456,24 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         <MiniIconBtn icon={Pencil} title="تعديل الصف" onClick={() => setRowModal({ mode: "edit", data: row })} />
                       </div>
                     </td>
+                    {hasTotalGradeCol && (() => {
+                      const tg = totalGrade(cls, row.id);
+                      return (
+                        <td
+                          className="p-1.5 text-center"
+                          style={{ border: `1px solid ${LINE}`, background: tg ? tg.bandBg : "#fff", position: "sticky", insetInlineStart: nameEndOffset, zIndex: 2 }}
+                        >
+                          {tg ? (
+                            <div>
+                              <p className="font-bold text-sm" style={{ color: tg.bandColor }}>{tg.score}/{tg.max}</p>
+                              <p className="text-[11px] font-semibold" style={{ color: tg.bandColor }}>{tg.band}</p>
+                            </div>
+                          ) : (
+                            <span className="text-xs" style={{ color: MUTED }}>—</span>
+                          )}
+                        </td>
+                      );
+                    })()}
                     {columnMeta.map((col) => (
                       <td
                         key={col.id}
@@ -6885,6 +7530,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           ministryName={ministryName}
           logoImage={logoImage}
           onClose={() => setReportRowId(null)}
+          onBack={() => { setReportRowId(null); setShowReportPicker(true); }}
           onEditEntry={(entryId, value) => updateReportEntryValue(reportRow.id, entryId, value)}
           onDeleteEntry={(entryId) => removeReportEntry(reportRow.id, entryId)}
           onDeleteCategory={(colId) => removeReportCategory(reportRow.id, colId)}
@@ -7013,6 +7659,16 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           rows={cls.rows}
           onSelect={(rowId) => { setReportRowId(rowId); setShowReportPicker(false); }}
           onClose={() => setShowReportPicker(false)}
+        />
+      )}
+      {showGradeSheet && (
+        <GradeSheetModal
+          cls={cls}
+          onClose={() => setShowGradeSheet(false)}
+          onGenerate={({ shortTestIds, finalExamId, reviewerName }) => {
+            setShowGradeSheet(false);
+            openPrintPreview({ type: "gradeSheet", cls, shortTestIds, finalExamId, reviewerName }, "pdf");
+          }}
         />
       )}
       {confirmBulkDelete && (
@@ -7162,7 +7818,17 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = still checking, null = logged out
   const [data, setData] = useState({ classes: [], trash: [], schedule: {}, scheduleImage: null, settings: { feedback: true } });
   const [loaded, setLoaded] = useState(false);
-  const [view, setView] = useState({ page: "home" });
+  const [view, setViewRaw] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("fosooli-last-view") || "null");
+      if (saved && saved.page === "class" && saved.id) return saved;
+    } catch (e) { /* ignore */ }
+    return { page: "home" };
+  });
+  const setView = (next) => {
+    setViewRaw(next);
+    try { localStorage.setItem("fosooli-last-view", JSON.stringify(next)); } catch (e) { /* ignore */ }
+  };
   const [printJob, requestPrint] = usePrint();
   const [siteSettings, setSiteSettings] = useState({});
   const [isOwner, setIsOwner] = useState(false);
@@ -7194,6 +7860,7 @@ export default function App() {
         const { data: profile } = await supabase.from("profiles").select("is_owner, is_disabled").eq("id", session.user.id).maybeSingle();
         if (profile?.is_disabled) {
           setDisabledMessage(true);
+          try { localStorage.removeItem("fosooli-last-view"); } catch (e2) { /* ignore */ }
           await supabase.auth.signOut();
           return;
         }
@@ -7238,6 +7905,11 @@ export default function App() {
     }, 600);
     return () => clearTimeout(t);
   }, [data, loaded, session]);
+
+  const handleSignOut = async () => {
+    try { localStorage.removeItem("fosooli-last-view"); } catch (e) { /* ignore */ }
+    await supabase.auth.signOut();
+  };
 
   const openClass = (id) => setView({ page: "class", id });
   const backHome = () => setView({ page: "home" });
@@ -7330,7 +8002,7 @@ export default function App() {
   const appContent = (
     <>
       <PrintStyles />
-      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={() => supabase.auth.signOut()} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} />}
+      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} />}
       {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
