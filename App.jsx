@@ -3280,6 +3280,35 @@ function rowMatchesFilter(cls, row, filter) {
   }
 }
 
+function GradeSheetClassPicker({ classes, onSelect, onClose }) {
+  const activeClasses = classes.filter((c) => !c.archived);
+  return (
+    <Modal title="كشف رصد درجات — اختر الفصل" onClose={onClose} accent="magic">
+      {activeClasses.length === 0 ? (
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد فصول بعد.</p>
+      ) : (
+        <div className="space-y-2">
+          {activeClasses.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onSelect(c.id)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+              style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: INK }}>{c.subject}</p>
+                <p className="text-xs" style={{ color: MUTED }}>{c.grade} • {c.teacher}</p>
+              </div>
+              <ChevronLeft size={16} color={MUTED} />
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function GradeSheetModal({ cls, onClose, onGenerate }) {
   const gradeColumns = cls.columns.filter((c) => c.type === "counter");
   const [shortTestIds, setShortTestIds] = useState([]);
@@ -3333,10 +3362,11 @@ function GradeSheetModal({ cls, onClose, onGenerate }) {
   );
 }
 
-function ShawahedCategoryModal({ category, entries, onAdd, onDelete, onArchive, onClose }) {
+function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onClose }) {
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const photoInputRef = useRef(null);
 
   const handlePhotoChange = (e) => {
@@ -3348,16 +3378,34 @@ function ShawahedCategoryModal({ category, entries, onAdd, onDelete, onArchive, 
     e.target.value = "";
   };
 
+  const resetForm = () => { setTitle(""); setNotes(""); setPhoto(null); setEditingId(null); };
+
+  const startEdit = (entry) => {
+    setEditingId(entry.id);
+    setTitle(entry.title);
+    setNotes(entry.notes || "");
+    setPhoto(entry.photo || null);
+  };
+
   const submit = () => {
     if (!title.trim()) return;
-    onAdd({ id: uid(), title: title.trim(), notes: notes.trim(), photo, date: todayKey() });
-    setTitle(""); setNotes(""); setPhoto(null);
+    if (editingId) {
+      onEdit(editingId, { title: title.trim(), notes: notes.trim(), photo });
+    } else {
+      onAdd({ id: uid(), title: title.trim(), notes: notes.trim(), photo, date: todayKey() });
+    }
+    resetForm();
   };
 
   return (
     <Modal title={category.title} onClose={onClose} accent="magic" wide>
       <div className="rounded-xl p-3 mb-4" style={{ background: `${category.color}10`, border: `1px solid ${category.color}40` }}>
-        <p className="text-xs font-bold mb-2" style={{ color: category.color }}>إضافة شاهد جديد</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold" style={{ color: category.color }}>{editingId ? "تعديل الشاهد" : "إضافة شاهد جديد"}</p>
+          {editingId && (
+            <button onClick={resetForm} className="text-xs font-semibold" style={{ color: MUTED }}>إلغاء التعديل</button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {category.suggestions.map((s) => (
             <button key={s} onClick={() => setTitle(s)} className="text-xs px-2.5 py-1 rounded-full hover:opacity-80" style={{ background: "#fff", border: `1px solid ${LINE}`, color: INK }}>
@@ -3386,7 +3434,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onDelete, onArchive, 
           className="w-full py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
           style={{ background: category.color }}
         >
-          إضافة
+          {editingId ? "حفظ التعديل" : "إضافة"}
         </button>
       </div>
 
@@ -3396,7 +3444,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onDelete, onArchive, 
       ) : (
         <div className="space-y-2">
           {entries.map((e) => (
-            <div key={e.id} className="flex items-start gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <div key={e.id} className="flex items-start gap-3 p-3 rounded-xl" style={{ border: `1px solid ${editingId === e.id ? category.color : LINE}`, background: "#fff" }}>
               {e.photo && <img src={e.photo} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
@@ -3404,6 +3452,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onDelete, onArchive, 
                 <p className="text-[11px] mt-1" style={{ color: MUTED }}>{formatDateDisplay(e.date)}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => startEdit(e)} title="تعديل" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
                 <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
                 <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
               </div>
@@ -3552,6 +3601,9 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, bare = false }) {
   const addEntry = (catKey, entry) => {
     onUpdate({ ...shawahed, entries: { ...entries, [catKey]: [...(entries[catKey] || []), entry] } });
   };
+  const editEntry = (catKey, entryId, patch) => {
+    onUpdate({ ...shawahed, entries: { ...entries, [catKey]: (entries[catKey] || []).map((e) => (e.id === entryId ? { ...e, ...patch } : e)) } });
+  };
   const deleteEntry = (catKey, entryId) => {
     onUpdate({ ...shawahed, entries: { ...entries, [catKey]: (entries[catKey] || []).filter((e) => e.id !== entryId) } });
   };
@@ -3606,6 +3658,7 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, bare = false }) {
           category={openCat}
           entries={entries[openCat.key] || []}
           onAdd={(entry) => addEntry(openCat.key, entry)}
+          onEdit={(entryId, patch) => editEntry(openCat.key, entryId, patch)}
           onDelete={(id) => deleteEntry(openCat.key, id)}
           onArchive={(id) => archiveEntry(openCat.key, id)}
           onClose={() => setOpenCat(null)}
@@ -6168,6 +6221,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
   const [showSettings, setShowSettings] = useState(false);
   const [showTodayActivity, setShowTodayActivity] = useState(false);
   const [shawahedPreview, setShawahedPreview] = useState(null);
+  const [showGradeSheetFlow, setShowGradeSheetFlow] = useState(false);
+  const [gradeSheetClassId, setGradeSheetClassId] = useState(null);
+  const [gradeSheetPreview, setGradeSheetPreview] = useState(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showTestBuilder, setShowTestBuilder] = useState(false);
   const [gradingTestId, setGradingTestId] = useState(null);
@@ -6449,6 +6505,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: `1px solid ${LINE}`, paddingInlineEnd: 8 }}>
             <IconBtn icon={Search} label="بحث عن طالب في كل الفصول" onClick={() => setShowSearch((s) => !s)} />
             <IconBtn icon={ListTodo} label="نشاطي اليوم" onClick={() => setShowTodayActivity(true)} />
+            <IconBtn icon={FileSpreadsheet} label="كشف رصد درجات" magic onClick={() => setShowGradeSheetFlow(true)} />
           </div>
           <div className="flex flex-wrap items-center gap-2" style={{ borderInlineEnd: classes.length > 0 ? `1px solid ${LINE}` : "none", paddingInlineEnd: 8 }}>
             <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatestClass} />
@@ -6708,6 +6765,41 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             else if (key === "png") exportPng(shawahedPreview);
             else if (key === "excel") exportExcel(shawahedPreview);
             setShawahedPreview(null);
+          }}
+        />
+      )}
+      {showGradeSheetFlow && !gradeSheetClassId && (
+        <GradeSheetClassPicker
+          classes={data.classes}
+          onSelect={(id) => setGradeSheetClassId(id)}
+          onClose={() => setShowGradeSheetFlow(false)}
+        />
+      )}
+      {showGradeSheetFlow && gradeSheetClassId && (() => {
+        const cls = data.classes.find((c) => c.id === gradeSheetClassId);
+        if (!cls) { setGradeSheetClassId(null); return null; }
+        return (
+          <GradeSheetModal
+            cls={cls}
+            onClose={() => { setShowGradeSheetFlow(false); setGradeSheetClassId(null); }}
+            onGenerate={({ shortTestIds, finalExamId, reviewerName }) => {
+              setGradeSheetPreview({ type: "gradeSheet", cls, shortTestIds, finalExamId, reviewerName });
+              setShowGradeSheetFlow(false);
+              setGradeSheetClassId(null);
+            }}
+          />
+        );
+      })()}
+      {gradeSheetPreview && (
+        <PrintPreviewModal
+          job={gradeSheetPreview}
+          format="pdf"
+          onClose={() => setGradeSheetPreview(null)}
+          onExport={(key) => {
+            if (key === "pdf") exportPdfShare(gradeSheetPreview);
+            else if (key === "png") exportPng(gradeSheetPreview);
+            else if (key === "excel") exportExcel(gradeSheetPreview);
+            setGradeSheetPreview(null);
           }}
         />
       )}
