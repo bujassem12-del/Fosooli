@@ -980,47 +980,86 @@ function jobToTable(job) {
 // يبني تقرير الشواهد الملوّن: يمر على كل فئة من فئات الأداء الوظيفي الاثنتا
 // عشرة، ويرسم عنوانها الملوّن، ثم كل شاهد فيها (عنوانه، ملاحظاته، صورته إن
 // وُجدت). الفئات الفاضية من الشواهد تُتخطى بدون ما تاخذ مساحة بالتقرير.
-async function buildShawahedReportCanvas(shawahed) {
+async function buildShawahedReportCanvas(shawahed, meta = {}) {
+  const { countryName, ministryName, schoolName, logoImage, teacherName, principalName } = meta;
   const entries = shawahed.entries || {};
   const scale = 3;
   const width = 900;
-  const pad = 24;
-  const rowH = 92;
-  const catHeaderH = 46;
-  const catGap = 14;
+  const pad = 50;
+  const rowH = 84;
+  const catHeaderH = 34;
+  const catGap = 20;
 
   const activeCats = SHAWAHED_CATEGORIES.filter((c) => (entries[c.key] || []).length > 0);
   let totalEntries = 0;
   activeCats.forEach((c) => { totalEntries += entries[c.key].length; });
 
-  const titleH = 80;
-  const height = titleH + activeCats.length * (catHeaderH + catGap) + totalEntries * rowH + pad * 2;
+  let logoImageElement = null;
+  if (logoImage) {
+    try { logoImageElement = await loadImage(logoImage); } catch (e) { logoImageElement = null; }
+  }
+
+  // ارتفاع الترويسة الرسمية (شعار + دولة + وزارة + مدرسة + عنوان + بيانات المعلم)
+  let headerH = 30;
+  if (countryName) headerH += 20;
+  if (ministryName) headerH += 18;
+  if (schoolName) headerH += 24;
+  headerH += 44; // العنوان
+  headerH += 56; // بيانات المعلم/التاريخ
+  headerH += 20;
+
+  const footerH = 110; // مساحة التوقيعات
+  const height = headerH + activeCats.length * (catHeaderH + catGap) + totalEntries * rowH + footerH + pad;
 
   const canvas = document.createElement("canvas");
   canvas.width = width * scale;
   canvas.height = height * scale;
   const ctx = canvas.getContext("2d");
   ctx.scale(scale, scale);
-  ctx.fillStyle = PAPER;
+  ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
   ctx.direction = "rtl";
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = INK;
-  ctx.font = "bold 26px Tahoma, Arial";
-  ctx.fillText("تقرير شواهد الأداء الوظيفي", width / 2, pad + 16);
-  ctx.font = "13px Tahoma, Arial";
-  ctx.fillStyle = MUTED;
-  ctx.fillText(`${totalEntries} شاهد عبر ${activeCats.length} فئة`, width / 2, pad + 42);
+  ctx.textBaseline = "alphabetic";
 
-  let y = titleH;
+  let hy = 34;
+  if (logoImageElement) ctx.drawImage(logoImageElement, width - pad - 56, 14, 56, 56);
+  if (countryName) { ctx.font = "bold 15px Tahoma, Arial"; ctx.fillStyle = INK; ctx.fillText(countryName, width / 2, hy); hy += 20; }
+  if (ministryName) { ctx.font = "13px Tahoma, Arial"; ctx.fillStyle = MUTED; ctx.fillText(ministryName, width / 2, hy); hy += 18; }
+  if (schoolName) { ctx.font = "bold 14px Tahoma, Arial"; ctx.fillStyle = INK; ctx.fillText(schoolName, width / 2, hy); hy += 24; }
+
+  hy += 12;
+  ctx.font = "bold 22px Tahoma, Arial";
+  ctx.fillStyle = "#0F6B5C";
+  ctx.fillText("سجل توثيق شواهد الأداء الوظيفي", width / 2, hy);
+  hy += 40;
+
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, hy); ctx.lineTo(width - pad, hy); ctx.stroke();
+  hy += 26;
+
+  ctx.textAlign = "right";
+  ctx.font = "14px Tahoma, Arial";
+  ctx.fillStyle = INK;
+  ctx.fillText(`اسم المعلم/ـة: ${teacherName && teacherName.trim() ? teacherName : "...................................."}`, width - pad, hy);
+  ctx.textAlign = "left";
+  ctx.fillText(`تاريخ الطباعة: ${formatDateDisplay(todayKey())}`, pad, hy);
+  hy += 24;
+  ctx.textAlign = "right";
+  ctx.fillText(`إجمالي الشواهد الموثّقة: ${totalEntries} شاهدًا عبر ${activeCats.length} من أصل ${SHAWAHED_CATEGORIES.length} معيارًا`, width - pad, hy);
+  hy += 30;
+
+  let y = hy;
   for (const cat of activeCats) {
+    const officialIndex = SHAWAHED_CATEGORIES.indexOf(cat) + 1;
     ctx.fillStyle = cat.color;
-    ctx.fillRect(pad, y, width - pad * 2, catHeaderH - 8);
+    ctx.fillRect(pad, y, width - pad * 2, catHeaderH);
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 15px Tahoma, Arial";
+    ctx.font = "bold 14px Tahoma, Arial";
     ctx.textAlign = "right";
-    ctx.fillText(cat.title, width - pad - 14, y + (catHeaderH - 8) / 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${officialIndex}. ${cat.title}`, width - pad - 12, y + catHeaderH / 2);
     y += catHeaderH;
 
     for (const entry of entries[cat.key]) {
@@ -1062,12 +1101,24 @@ async function buildShawahedReportCanvas(shawahed) {
     y += catGap;
   }
 
+  // خط توقيعات رسمي بالأسفل
+  y += 20;
+  ctx.strokeStyle = LINE;
+  ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(width - pad, y); ctx.stroke();
+  y += 40;
+  ctx.textAlign = "center";
+  ctx.font = "13px Tahoma, Arial";
+  ctx.fillStyle = INK;
+  const sigColW = (width - pad * 2) / 2;
+  ctx.fillText("توقيع المعلم/ـة: ....................................", pad + sigColW * 1.5 - sigColW / 2, y);
+  ctx.fillText(`توقيع مدير/ة المدرسة${principalName ? ` (${principalName})` : ""}: ....................................`, pad + sigColW / 2, y);
+
   return { canvas, logicalWidth: width, logicalHeight: height };
 }
 
 async function jobToCanvas(job) {
   if (job.type === "shawahedReport") {
-    return buildShawahedReportCanvas(job.shawahed);
+    return buildShawahedReportCanvas(job.shawahed, job.meta || {});
   }
   if (job.type === "report") {
     const { cls, row, entries } = job;
@@ -6633,7 +6684,17 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           bare
           shawahed={data.shawahed || {}}
           onUpdate={(next) => setData((d) => ({ ...d, shawahed: next }))}
-          onExport={() => setShawahedPreview({ type: "shawahedReport", shawahed: data.shawahed || {} })}
+          onExport={() => setShawahedPreview({
+            type: "shawahedReport",
+            shawahed: data.shawahed || {},
+            meta: {
+              countryName: data.settings?.countryName,
+              ministryName: data.settings?.ministryName,
+              schoolName: data.settings?.schoolName,
+              logoImage: data.settings?.logoImage,
+              principalName: data.settings?.principalName,
+            },
+          })}
         />
       )}
       {mainTab === "tests" && (
