@@ -10,7 +10,7 @@ import {
   Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange,
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
-  Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download,
+  Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked,
   CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
@@ -44,6 +44,19 @@ function colorLight(hex) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
+// يستخدم لتلوين خانة عمود "عداد" تدريجيًا حسب قيمتها الحالية نسبةً للحد
+// الأقصى — عند ratio=0 يرجع تدرّجًا فاتحًا جدًا من اللون، وعند ratio=1
+// يرجع اللون كاملًا بلا تخفيف (تدرّج حراري بسيط).
+function intensityColor(hex, ratio) {
+  if (!hex || hex[0] !== "#" || hex.length !== 7) return "#F3F1E9";
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "#F3F1E9";
+  const clamped = Math.max(0, Math.min(1, Number(ratio) || 0));
+  const mixFactor = 0.85 - clamped * 0.85;
+  const mix = (c) => Math.round(c + (255 - c) * mixFactor);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
 const CLASS_EMOJIS = ["📐", "📖", "🔬", "🎨", "⚽", "🕌", "🌍", "💻", "✏️", "📊", "🎵", "🧮", "🔤", "🌱", "⚗️", "📚"];
 
 const INK = "#232622";
@@ -52,10 +65,33 @@ const LINE = "#E4DFD2";
 const MUTED = "#7A7768";
 
 // Dashboard-style theme accents (sidebar, stat cards, shawahed report banners)
-const DASH_GREEN = "#26423B";
-const DASH_GREEN_DARK = "#1B322C";
+// DASH_GREEN/DASH_GREEN_DARK هنا "let" وليس "const" عمدًا — تسمح بتخصيص لون
+// هوية شخصي لكل معلم (راجع applyThemeColor) يُطبَّق تلقائيًا بكل مكان
+// بالتطبيق يستخدم هذين المتغيرين، دون الحاجة نمرّر اللون كـ prop بمئات
+// الأماكن.
+let DASH_GREEN = "#26423B";
+let DASH_GREEN_DARK = "#1B322C";
 const GOLD = "#D9A441";
 const GOLD_LIGHT = "#F7EBD2";
+
+// يغمّق لونًا سداسيًا بنسبة معيّنة (0-1) — يُستخدم لتوليد الدرجة الغامقة
+// المرافقة لأي لون هوية شخصي يختاره المعلم.
+function darkenHex(hex, amount = 0.3) {
+  if (!hex || hex[0] !== "#" || hex.length !== 7) return hex;
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
+  const dim = (c) => Math.max(0, Math.round(c * (1 - amount)));
+  const toHex = (c) => c.toString(16).padStart(2, "0");
+  return `#${toHex(dim(r))}${toHex(dim(g))}${toHex(dim(b))}`;
+}
+
+// يطبّق لون الهوية الشخصية للمعلم على كامل التطبيق — يستدعى مرة كل ما
+// تتغيّر إعدادات المستخدم (راجع useEffect بمكوّن App).
+function applyThemeColor(hex) {
+  const safe = hex && /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : "#26423B";
+  DASH_GREEN = safe;
+  DASH_GREEN_DARK = darkenHex(safe, 0.32);
+}
 
 // يكتشف عمود الأسماء تلقائيًا من ملف Excel بغض النظر عن ترتيب الأعمدة —
 // يهم خصوصًا لملفات نظام نور التي عادةً تضع الرقم التسلسلي أو رقم الهوية
@@ -245,6 +281,11 @@ function attendancePercent(cls, rowId) {
 
 function attendanceStatus(cls, rowId, dateKey) {
   return cls.attendance?.[dateKey]?.[rowId] === "absent" ? "absent" : "present";
+}
+// "وضع الاختبار": يقفل أزرار التعديل/الحذف الهيكلية للفصل مؤقتًا (منع لمسة
+// خطأ أثناء التجول بالفصل)، بينما رصد الدرجات والغياب يبقى شغّالًا طبيعيًا.
+function isExamModeActive(cls) {
+  return !!(cls.examModeUntil && new Date(cls.examModeUntil).getTime() > Date.now());
 }
 // Pure state-updater factories (used with updateClass both from the class
 // table's quick-mark button and from the متابعة الحضور modal).
@@ -473,6 +514,239 @@ function buildReportCanvas({ title, subtitle, groups, photoImageElement }) {
     });
     y += sectionGap;
   });
+  return { canvas, logicalWidth: width, logicalHeight: height };
+}
+
+// أصغر قيمة أعلى تكرارًا بمصفوفة قيم (لأعمدة القوائم المنسدلة) — تُستخدم
+// بتقرير ولي الأمر المبسّط لاختيار "الحالة الأكثر تكرارًا" بدل عرض كل سجل.
+function mostFrequentValue(values) {
+  const counts = {};
+  values.forEach((v) => { counts[v] = (counts[v] || 0) + 1; });
+  let best = null, bestCount = 0;
+  Object.entries(counts).forEach(([k, c]) => { if (c > bestCount) { best = k; bestCount = c; } });
+  return { value: best, count: bestCount };
+}
+
+// يرسم نجوم تقييم (ممتلئة/فارغة) بدل جدول أرقام — أسهل بكثير لولي أمر
+// يقرأها بسرعة من عرض مباشر.
+function drawStars(ctx, cx, cy, filled, total, size, color) {
+  const gap = size * 1.3;
+  const startX = cx - ((total - 1) * gap) / 2;
+  for (let i = 0; i < total; i++) {
+    const x = startX + i * gap;
+    const isFilled = i < filled;
+    ctx.save();
+    ctx.translate(x, cy);
+    ctx.beginPath();
+    for (let p = 0; p < 5; p++) {
+      const angle = (p * 4 * Math.PI) / 5 - Math.PI / 2;
+      const px = Math.cos(angle) * size, py = Math.sin(angle) * size;
+      if (p === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    if (isFilled) { ctx.fillStyle = color; ctx.fill(); }
+    else { ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
+// تقرير ولي الأمر المبسّط: بطاقات وأيقونات ونجوم بدل جداول تفصيلية — مصمَّم
+// ليُفهَم بنظرة سريعة بدون خلفية تربوية، مع إبقاء تقرير المعلم التفصيلي
+// (buildReportCanvas) كما هو للاستخدام الداخلي.
+async function buildParentReportCanvas({ cls, row, entries, meta = {} }) {
+  const { schoolName, teacherName, date } = meta;
+  const width = 760;
+  const scale = 3;
+  const pad = 32;
+  const groups = groupEntries(entries);
+
+  const cardW = (width - pad * 2 - 16) / 2;
+  const cardH = 92;
+  const cardsPerRow = 2;
+  const cardRows = Math.ceil(groups.length / cardsPerRow);
+
+  const attPct = attendancePercent(cls, row.id);
+  const grade = totalGrade(cls, row.id);
+
+  const headerH = 150;
+  const statsH = attPct !== null || grade ? 110 : 0;
+  const cardsH = groups.length > 0 ? cardRows * (cardH + 14) + 40 : 60;
+  const footerH = 90;
+  const height = headerH + statsH + cardsH + footerH;
+
+  let photoImageElement = null;
+  if (row.photo) { try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; } }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, width, height);
+  ctx.direction = "rtl";
+  ctx.textBaseline = "middle";
+
+  // ---- header ----
+  const grad = ctx.createLinearGradient(0, 0, width, 0);
+  grad.addColorStop(0, DASH_GREEN);
+  grad.addColorStop(1, DASH_GREEN_DARK);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, headerH);
+
+  if (photoImageElement) {
+    const r = 34;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(width - pad - r, headerH / 2, r, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(photoImageElement, width - pad - r * 2, headerH / 2 - r, r * 2, r * 2);
+    ctx.restore();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(width - pad - r, headerH / 2, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = GOLD_LIGHT;
+  ctx.font = "13px Tahoma, Arial";
+  ctx.fillText("📋 تقرير مبسّط لولي الأمر", width / 2, 34);
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 26px Tahoma, Arial";
+  ctx.fillText(row.name, width / 2, 68);
+  ctx.font = "13px Tahoma, Arial";
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  const sub = [cls.subject, cls.grade, schoolName].filter(Boolean).join("  •  ");
+  ctx.fillText(sub, width / 2, 96);
+  ctx.font = "12px Tahoma, Arial";
+  ctx.fillStyle = GOLD_LIGHT;
+  ctx.fillText(date || formatDateDisplay(todayKey()), width / 2, 122);
+
+  let y = headerH + 20;
+
+  // ---- attendance + overall grade badges ----
+  if (attPct !== null || grade) {
+    const badges = [];
+    if (attPct !== null) {
+      const face = attPct >= 90 ? "😊" : attPct >= 75 ? "🙂" : "😟";
+      const color = attPct >= 90 ? "#0F9D58" : attPct >= 75 ? "#C97A2B" : "#C0392B";
+      badges.push({ icon: face, label: "نسبة الحضور", value: `${attPct}٪`, color });
+    }
+    if (grade) {
+      const face = grade.pct >= 90 ? "🏆" : grade.pct >= 65 ? "⭐" : "📈";
+      badges.push({ icon: face, label: "التقييم العام", value: grade.band, color: grade.bandColor });
+    }
+    const bW = (width - pad * 2 - 16) / badges.length;
+    badges.forEach((b, i) => {
+      const x = pad + i * (bW + 16);
+      ctx.fillStyle = `${b.color}14`;
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(x, y, bW, 90, 16);
+      ctx.fill();
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.font = "28px Tahoma, Arial";
+      ctx.fillText(b.icon, x + bW / 2, y + 32);
+      ctx.font = "bold 20px Tahoma, Arial";
+      ctx.fillStyle = b.color;
+      ctx.fillText(b.value, x + bW / 2, y + 58);
+      ctx.font = "12px Tahoma, Arial";
+      ctx.fillStyle = MUTED;
+      ctx.fillText(b.label, x + bW / 2, y + 78);
+    });
+    y += 90 + 20;
+  }
+
+  // ---- category cards ----
+  if (groups.length === 0) {
+    ctx.textAlign = "center";
+    ctx.font = "14px Tahoma, Arial";
+    ctx.fillStyle = MUTED;
+    ctx.fillText("لا يوجد رصد لهذا الطالب بعد.", width / 2, y + 20);
+  } else {
+    groups.forEach((g, gi) => {
+      const col = cls.columns.find((c) => c.id === g.colId);
+      const colIdx = gi % cardsPerRow;
+      const rowIdx = Math.floor(gi / cardsPerRow);
+      const x = pad + colIdx * (cardW + 16);
+      const cy = y + rowIdx * (cardH + 14);
+
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, cy, cardW, cardH, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      // colored icon chip
+      const chipR = 20;
+      ctx.beginPath();
+      ctx.arc(x + 34, cy + cardH / 2, chipR, 0, Math.PI * 2);
+      ctx.fillStyle = g.colColor || "#0F6B5C";
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "bold 16px Tahoma, Arial";
+      ctx.fillText((g.colName || "؟").trim().charAt(0), x + 34, cy + cardH / 2);
+
+      ctx.textAlign = "right";
+      ctx.fillStyle = INK;
+      ctx.font = "bold 14px Tahoma, Arial";
+      ctx.fillText(g.colName, x + cardW - 16, cy + 26);
+
+      if (col && col.type === "counter") {
+        const nums = g.items.map((it) => Number(it.value)).filter((n) => !Number.isNaN(n));
+        const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+        const max = Number(col.maxValue) || 5;
+        const starCount = Math.max(0, Math.min(5, Math.round((avg / max) * 5)));
+        drawStars(ctx, x + cardW - 60, cy + 58, starCount, 5, 7, g.colColor || "#0F6B5C");
+        ctx.textAlign = "left";
+        ctx.font = "11px Tahoma, Arial";
+        ctx.fillStyle = MUTED;
+        ctx.fillText(`المعدل: ${Math.round(avg * 10) / 10}`, x + 16, cy + 58);
+      } else if (col && col.type === "dropdown") {
+        const { value, count } = mostFrequentValue(g.items.map((it) => it.value));
+        const opt = (col.options || []).find((o) => o.label === value);
+        ctx.textAlign = "right";
+        ctx.font = "bold 13px Tahoma, Arial";
+        ctx.fillStyle = opt?.color || g.colColor || INK;
+        ctx.fillText(value || "—", x + cardW - 16, cy + 56);
+        ctx.textAlign = "left";
+        ctx.font = "11px Tahoma, Arial";
+        ctx.fillStyle = MUTED;
+        ctx.fillText(`${count} من ${g.items.length}`, x + 16, cy + 56);
+      } else {
+        ctx.textAlign = "right";
+        ctx.font = "bold 13px Tahoma, Arial";
+        ctx.fillStyle = INK;
+        ctx.fillText(`${g.items.length} ملاحظة مسجّلة`, x + cardW - 16, cy + 56);
+      }
+    });
+    y += cardRows * (cardH + 14) + 10;
+  }
+
+  // ---- footer ----
+  ctx.strokeStyle = LINE;
+  ctx.beginPath();
+  ctx.moveTo(pad, height - footerH + 10);
+  ctx.lineTo(width - pad, height - footerH + 10);
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.font = "13px Tahoma, Arial";
+  ctx.fillStyle = DASH_GREEN;
+  ctx.fillText("🌟 استمروا بدعم ابنكم/ابنتكم في المنزل، ونرحّب بتواصلكم دائمًا", width / 2, height - footerH + 40);
+  if (teacherName) {
+    ctx.font = "12px Tahoma, Arial";
+    ctx.fillStyle = MUTED;
+    ctx.fillText(`المعلم: ${teacherName}`, width / 2, height - footerH + 64);
+  }
+
   return { canvas, logicalWidth: width, logicalHeight: height };
 }
 
@@ -992,6 +1266,28 @@ function jobToTable(job) {
       headers, rows, filename: `كشف-رصد-درجات-${cls.subject || "الفصل"}`,
     };
   }
+  if (job.type === "periodComparison") {
+    const { cls, colName, from1, to1, from2, to2, rows: compRows } = job;
+    const headers = ["الاسم", `الفترة الأولى (${from1} إلى ${to1})`, `الفترة الثانية (${from2} إلى ${to2})`, "الفرق"];
+    const rows = compRows.map((r) => [
+      r.row.name,
+      r.avg1 === null ? "—" : Math.round(r.avg1 * 100) / 100,
+      r.avg2 === null ? "—" : Math.round(r.avg2 * 100) / 100,
+      r.diff === null ? "—" : (r.diff > 0 ? "+" : "") + Math.round(r.diff * 100) / 100,
+    ]);
+    return {
+      title: `مقارنة أداء — ${colName || ""}`,
+      subtitle: `${cls.subject} • ${cls.grade}`,
+      headers, rows, filename: `مقارنة-أداء-${cls.subject || "الفصل"}`,
+    };
+  }
+  if (job.type === "parentReport") {
+    const { cls, row, entries } = job;
+    const grouped = groupEntries(entries).flatMap((g) => g.items);
+    const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
+    const rows = grouped.map((e) => [e.colName, `${e.day ? e.day + "، " : ""}${e.date || ""}`, e.time || "", e.value]);
+    return { title: `تقرير ولي الأمر: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `تقرير-ولي-الأمر-${row.name}` };
+  }
   const { cls, row, entries } = job;
   const grouped = groupEntries(entries).flatMap((g) => g.items);
   const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
@@ -1386,6 +1682,10 @@ async function jobToCanvas(job) {
     }
     return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement });
   }
+  if (job.type === "parentReport") {
+    const { cls, row, entries, meta } = job;
+    return buildParentReportCanvas({ cls, row, entries, meta: meta || {} });
+  }
   if (job.type === "classFullReport") {
     const cls = job.cls;
     const studentCanvases = [];
@@ -1683,7 +1983,7 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
   );
 }
 
-function IconBtn({ icon: Icon, label, onClick, tone = "default", magic = false }) {
+function IconBtn({ icon: Icon, label, onClick, tone = "default", magic = false, disabled = false }) {
   const tones = {
     default: { bg: "#fff", fg: INK, border: LINE, shadow: "0 1px 2px rgba(35,38,34,0.05)" },
     danger: { bg: "#FBEDEA", fg: "#9A3B2E", border: "#F5DCD5", shadow: "0 1px 2px rgba(154,59,46,0.06)" },
@@ -1694,7 +1994,8 @@ function IconBtn({ icon: Icon, label, onClick, tone = "default", magic = false }
   return (
     <button
       onClick={onClick}
-      className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all hover:brightness-110 hover:-translate-y-px active:scale-95 active:translate-y-0 whitespace-nowrap ${magic ? "magic-shimmer" : ""}`}
+      disabled={disabled}
+      className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all hover:brightness-110 hover:-translate-y-px active:scale-95 active:translate-y-0 whitespace-nowrap disabled:opacity-35 disabled:pointer-events-none disabled:hover:brightness-100 disabled:hover:translate-y-0 ${magic ? "magic-shimmer" : ""}`}
       style={{ background: t.bg, color: t.fg, border: `1px solid ${t.border}`, boxShadow: t.shadow }}
     >
       {magic && <Sparkles size={12} strokeWidth={2.5} className="shrink-0" />}
@@ -2140,15 +2441,39 @@ function ColumnDraftForm({ draft, onChange, onRemove, removable }) {
         </Field>
       )}
       {draft.type === "counter" && (
-        <Field label="الدرجة القصوى لهذا العمود (اختياري)" hint="لو حددتها، يدخل هذا العمود بحساب 'الدرجة الكلية' التلقائية بالجدول.">
-          <input
-            type="number"
-            value={draft.maxValue || ""}
-            onChange={(e) => set({ maxValue: e.target.value })}
-            style={inputStyle}
-            placeholder="مثال: 10"
-          />
-        </Field>
+        <>
+          <Field label="الدرجة القصوى لهذا العمود (اختياري)" hint="لو حددتها، يدخل هذا العمود بحساب 'الدرجة الكلية' التلقائية بالجدول.">
+            <input
+              type="number"
+              value={draft.maxValue || ""}
+              onChange={(e) => set({ maxValue: e.target.value })}
+              style={inputStyle}
+              placeholder="مثال: 10"
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm font-medium mt-1 mb-1" style={{ color: INK }}>
+            <input type="checkbox" checked={!!draft.colorScale} onChange={(e) => set({ colorScale: e.target.checked })} />
+            تلوين الخانة تدريجيًا حسب القيمة (خفيف ← غامق بلون العمود)
+          </label>
+          {draft.colorScale && (
+            <div className="mb-2">
+              <p className="text-xs mb-1.5" style={{ color: MUTED }}>
+                مثال: كل ما زادت القيمة، صار لون الخانة أغمق (المقياس من ١ إلى {draft.maxValue || 5}).
+              </p>
+              <div className="flex gap-1">
+                {Array.from({ length: Number(draft.maxValue) || 5 }, (_, i) => i + 1).map((v) => (
+                  <div
+                    key={v}
+                    className="flex-1 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+                    style={{ background: intensityColor(draft.color, v / (Number(draft.maxValue) || 5)), color: v / (Number(draft.maxValue) || 5) > 0.55 ? "#fff" : INK }}
+                  >
+                    {v}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
       <Field label="لون العمود">
         <ColorSwatches value={draft.color} onChange={(color) => set({ color })} />
@@ -2200,7 +2525,7 @@ function ColumnDraftForm({ draft, onChange, onRemove, removable }) {
 }
 
 function emptyColumnDraft() {
-  return { key: uid(), name: "", type: "text", options: [], color: COLORS[2].hex, autoRenew: false, pinned: false, bulkValue: "", behaviorFlag: false, behaviorThreshold: 3 };
+  return { key: uid(), name: "", type: "text", options: [], color: COLORS[2].hex, autoRenew: false, pinned: false, bulkValue: "", behaviorFlag: false, behaviorThreshold: 3, colorScale: false };
 }
 
 function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
@@ -2428,7 +2753,7 @@ function parseNoorStudentTable(text) {
   return results;
 }
 
-function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNumbers, onToggleShowRowNumbers }) {
+function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNumbers, onToggleShowRowNumbers, isOwner }) {
   const isEdit = !!initial;
   const [single, setSingle] = useState(() => (initial ? { ...initial } : null));
   const [drafts, setDrafts] = useState(() => (isEdit ? [] : [emptyRowDraft()]));
@@ -2608,6 +2933,7 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
       </div>
       {showNoorEmbed && (
         <NoorEmbedModal
+          isOwner={isOwner}
           onClose={() => setShowNoorEmbed(false)}
           onImportNames={(rows) => {
             setShowNoorEmbed(false);
@@ -2723,9 +3049,12 @@ function emptyTestQuestion() {
   return { id: uid(), text: "", options: [{ id: uid(), text: "" }, { id: uid(), text: "" }], correctOptionId: null };
 }
 
-function TestBuilderModal({ onSave, onClose }) {
+function TestBuilderModal({ onSave, onClose, questionBank = [], onAddToBank }) {
   const [title, setTitle] = useState("");
   const [questions, setQuestions] = useState([emptyTestQuestion()]);
+  const [saveToBankIds, setSaveToBankIds] = useState(() => new Set());
+  const [showBankPicker, setShowBankPicker] = useState(false);
+  const [bankSearch, setBankSearch] = useState("");
 
   const updateQuestion = (qid, patch) => setQuestions((qs) => qs.map((q) => (q.id === qid ? { ...q, ...patch } : q)));
   const updateOption = (qid, oid, text) => setQuestions((qs) => qs.map((q) => (q.id === qid ? { ...q, options: q.options.map((o) => (o.id === oid ? { ...o, text } : o)) } : q)));
@@ -2733,12 +3062,46 @@ function TestBuilderModal({ onSave, onClose }) {
   const removeOption = (qid, oid) => setQuestions((qs) => qs.map((q) => (q.id === qid ? { ...q, options: q.options.filter((o) => o.id !== oid), correctOptionId: q.correctOptionId === oid ? null : q.correctOptionId } : q)));
   const addQuestion = () => setQuestions((qs) => [...qs, emptyTestQuestion()]);
   const removeQuestion = (qid) => setQuestions((qs) => qs.filter((q) => q.id !== qid));
+  const toggleSaveToBank = (qid) => setSaveToBankIds((s) => { const n = new Set(s); if (n.has(qid)) n.delete(qid); else n.add(qid); return n; });
+
+  const insertFromBank = (bankQ) => {
+    const newOptions = bankQ.options.map((o) => ({ id: uid(), text: o.text, _origId: o.id }));
+    const newCorrect = newOptions.find((o) => o._origId === bankQ.correctOptionId)?.id || null;
+    const cleanOptions = newOptions.map(({ id, text }) => ({ id, text }));
+    setQuestions((qs) => [...qs, { id: uid(), text: bankQ.text, options: cleanOptions, correctOptionId: newCorrect }]);
+  };
+
+  const filteredBank = questionBank.filter((q) => q.text.toLowerCase().includes(bankSearch.trim().toLowerCase()));
 
   const valid = title.trim() && questions.length > 0 && questions.every((q) => q.text.trim() && q.options.length >= 2 && q.options.every((o) => o.text.trim()) && q.correctOptionId);
 
   return (
     <Modal title="إنشاء اختبار جديد" onClose={onClose} wide>
       <Field label="عنوان الاختبار"><input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: اختبار الوحدة الأولى" /></Field>
+
+      {questionBank.length > 0 && (
+        <div className="mb-4">
+          <button onClick={() => setShowBankPicker((s) => !s)} className="text-sm font-semibold flex items-center gap-1.5 mb-2" style={{ color: "#26423B" }}>
+            <BookMarked size={15} /> إضافة من بنك الأسئلة ({questionBank.length})
+          </button>
+          {showBankPicker && (
+            <div className="p-3 rounded-xl mb-2" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+              <input value={bankSearch} onChange={(e) => setBankSearch(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} placeholder="ابحث بنص السؤال..." />
+              <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                {filteredBank.length === 0 ? (
+                  <p className="text-xs text-center py-4" style={{ color: MUTED }}>لا يوجد أسئلة مطابقة.</p>
+                ) : filteredBank.map((q) => (
+                  <div key={q.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+                    <span className="flex-1 text-xs truncate" style={{ color: INK }}>{q.text}</span>
+                    <button onClick={() => insertFromBank(q)} className="text-xs font-bold px-2.5 py-1 rounded-lg text-white shrink-0" style={{ background: "#26423B" }}>إضافة</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-4 mb-4">
         {questions.map((q, qi) => (
           <div key={q.id} className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
@@ -2757,6 +3120,10 @@ function TestBuilderModal({ onSave, onClose }) {
                 </div>
               ))}
               <button onClick={() => addOption(q.id)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}><Plus size={12} /> إضافة خيار</button>
+              <label className="flex items-center gap-1.5 text-xs mt-1.5" style={{ color: MUTED }}>
+                <input type="checkbox" checked={saveToBankIds.has(q.id)} onChange={() => toggleSaveToBank(q.id)} />
+                <BookMarked size={12} /> احفظ هذا السؤال ببنك الأسئلة لإعادة استخدامه لاحقًا
+              </label>
             </div>
           </div>
         ))}
@@ -2766,7 +3133,11 @@ function TestBuilderModal({ onSave, onClose }) {
         <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: MUTED }}>إلغاء</button>
         <button
           disabled={!valid}
-          onClick={() => onSave({ id: uid(), title: title.trim(), questions, results: [], createdAt: todayKey() })}
+          onClick={() => {
+            const toBank = questions.filter((q) => saveToBankIds.has(q.id));
+            if (toBank.length > 0 && onAddToBank) onAddToBank(toBank);
+            onSave({ id: uid(), title: title.trim(), questions, results: [], createdAt: todayKey() });
+          }}
           className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
           style={{ background: "#26423B" }}
         >حفظ الاختبار</button>
@@ -2775,7 +3146,44 @@ function TestBuilderModal({ onSave, onClose }) {
   );
 }
 
-function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, onDelete, onArchive, onClose, bare = false }) {
+// تحليل الأسئلة بعد التصحيح: يوري أي سؤال أخطأ فيه أكبر نسبة من الطلاب —
+// يساعد المعلم يعرف بالضبط أي جزء من الدرس يحتاج إعادة شرح.
+function TestAnalysisModal({ test, onClose }) {
+  const results = test.results || [];
+  const analysis = test.questions.map((q, qi) => {
+    const total = results.length;
+    const wrong = results.filter((r) => r.answers?.[q.id] !== q.correctOptionId).length;
+    const pct = total > 0 ? Math.round((wrong / total) * 100) : 0;
+    return { q, qi, wrong, total, pct };
+  }).sort((a, b) => b.pct - a.pct);
+
+  return (
+    <Modal title={`تحليل الأسئلة — ${test.title}`} onClose={onClose} wide>
+      <p className="text-xs mb-4" style={{ color: MUTED }}>{results.length} طالب مصحّح — الأسئلة مرتّبة من الأصعب (أعلى نسبة خطأ) للأسهل.</p>
+      {results.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد نتائج مصحّحة بعد لهذا الاختبار.</p>
+      ) : (
+        <div className="space-y-2">
+          {analysis.map(({ q, qi, wrong, total, pct }) => (
+            <div key={q.id} className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <p className="text-sm font-semibold flex-1" style={{ color: INK }}>س{qi + 1}. {q.text}</p>
+                <span className="text-xs font-bold px-2 py-1 rounded-full shrink-0" style={{ background: pct >= 50 ? "#FBEAE7" : pct >= 25 ? "#FCEFE2" : "#E3F1EC", color: pct >= 50 ? "#C0392B" : pct >= 25 ? "#C97A2B" : "#0F9D58" }}>
+                  {wrong} من {total} أخطأوا ({pct}٪)
+                </span>
+              </div>
+              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "#F0EFE9" }}>
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 50 ? "#C0392B" : pct >= 25 ? "#C97A2B" : "#0F9D58" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, onDelete, onArchive, onAnalyze, onClose, bare = false }) {
   const content = (
     <>
       <button onClick={onCreateNew} className="mb-4 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white" style={{ background: "#26423B" }}>
@@ -2791,6 +3199,9 @@ function TestsListModal({ tests, onCreateNew, onGrade, onGradeCamera, onPrint, o
                 <p className="text-sm font-bold" style={{ color: INK }}>{t.title}</p>
                 <p className="text-xs" style={{ color: MUTED }}>{t.questions.length} سؤال • {(t.results || []).length} طالب مصحّح</p>
               </div>
+              {(t.results || []).length > 0 && (
+                <button onClick={() => onAnalyze(t.id)} title="تحليل الأسئلة" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><BarChart3 size={15} color={MUTED} /></button>
+              )}
               <button onClick={() => onPrint(t.id)} title="طباعة الورقة" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Printer size={15} color={MUTED} /></button>
               <button onClick={() => onGradeCamera(t.id)} title="تصحيح بالكاميرا" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0"><Camera size={15} color={MUTED} /></button>
               <button onClick={() => onGrade(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: "#26423B" }}>تصحيح</button>
@@ -3182,10 +3593,14 @@ function PrintTestModal({ test, classes, onClose }) {
   const optionCount = test.questions[0]?.options.length || 0;
   const omrSupported = test.questions.length > 0 && test.questions.every((q) => q.options.length === optionCount);
   const [omrFormat, setOmrFormat] = useState(false);
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
 
-  const buildSheet = (studentName, index) => omrFormat
-    ? buildOMRSheetCanvas({ title: test.title, studentName, questionCount: test.questions.length, optionCount, studentIndex: index })
-    : buildTestPaperCanvas({ title: test.title, studentName, questions: test.questions });
+  const buildSheet = (studentName, index) => {
+    const questions = shuffleQuestions && !omrFormat ? shuffleArr(test.questions) : test.questions;
+    return omrFormat
+      ? buildOMRSheetCanvas({ title: test.title, studentName, questionCount: test.questions.length, optionCount, studentIndex: index })
+      : buildTestPaperCanvas({ title: test.title, studentName, questions });
+  };
 
   const downloadBlank = () => {
     const built = buildSheet(null);
@@ -3242,6 +3657,15 @@ function PrintTestModal({ test, classes, onClose }) {
               {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade} ({c.rows.length} طالب)</option>)}
             </select>
           </Field>
+          {!omrFormat && (
+            <label className="flex items-start gap-2 text-sm font-medium mb-3" style={{ color: INK }}>
+              <input type="checkbox" checked={shuffleQuestions} onChange={(e) => setShuffleQuestions(e.target.checked)} className="mt-0.5" />
+              <span>
+                ترتيب عشوائي للأسئلة لكل طالب
+                <span className="block text-xs font-normal mt-0.5" style={{ color: MUTED }}>يقلّل النسخ بين الطلاب المتجاورين بالجلوس — كل ورقة يصير ترتيب أسئلتها مختلف.</span>
+              </span>
+            </label>
+          )}
           {generating ? (
             <div className="p-3 rounded-xl flex items-center gap-2" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
               <div className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: "#26423B transparent #26423B #26423B", animation: "spin 0.8s linear infinite" }} />
@@ -3732,6 +4156,127 @@ function GradeSheetModal({ cls, onClose, onGenerate }) {
 // لأسباب أمنية (نفس السبب اللي يمنع تضمينه بإطار)، فهذه الأداة تجهّز قائمة
 // الدرجات بترتيب الطلاب الحالي (المطابق لترتيبهم لو استُوردوا من نور
 // أصلًا) جاهزة للنسخ، وتبقى خطوة اللصق داخل صفحة "رصد الدرجات" بنور يدويًا.
+function computeColumnPeriodAverage(cls, rowId, colId, from, to) {
+  const list = cls.reports?.[rowId] || [];
+  const nums = list
+    .filter((e) => e.colId === colId && e.dateKey && (!from || e.dateKey >= from) && (!to || e.dateKey <= to))
+    .map((e) => Number(e.value))
+    .filter((n) => !Number.isNaN(n));
+  if (nums.length === 0) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+// مقارنة أداء الطلاب بعمود درجات (نوع "عداد") بين فترتين زمنيتين — يوري
+// مين تحسّن ومين تراجع، مفيد لاجتماعات المتابعة وتقارير أولياء الأمور.
+function PeriodComparisonModal({ cls, onClose, onPrint }) {
+  const gradeColumns = cls.columns.filter((c) => c.type === "counter");
+  const [colId, setColId] = useState(gradeColumns[0]?.id || "");
+  const [from1, setFrom1] = useState("");
+  const [to1, setTo1] = useState("");
+  const [from2, setFrom2] = useState("");
+  const [to2, setTo2] = useState("");
+  const [computed, setComputed] = useState(null);
+
+  const col = cls.columns.find((c) => c.id === colId);
+
+  const runCompare = () => {
+    const rows = cls.rows.map((row) => {
+      const avg1 = computeColumnPeriodAverage(cls, row.id, colId, from1, to1);
+      const avg2 = computeColumnPeriodAverage(cls, row.id, colId, from2, to2);
+      const diff = avg1 !== null && avg2 !== null ? avg2 - avg1 : null;
+      return { row, avg1, avg2, diff };
+    }).sort((a, b) => {
+      if (a.diff === null && b.diff === null) return 0;
+      if (a.diff === null) return 1;
+      if (b.diff === null) return -1;
+      return b.diff - a.diff;
+    });
+    const improved = rows.filter((r) => r.diff !== null && r.diff > 0).length;
+    const declined = rows.filter((r) => r.diff !== null && r.diff < 0).length;
+    const same = rows.filter((r) => r.diff === 0).length;
+    setComputed({ rows, improved, declined, same });
+  };
+
+  return (
+    <Modal title="مقارنة أداء بين فترتين" onClose={onClose} accent="magic" wide>
+      {gradeColumns.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد أعمدة من نوع "عداد" بهذا الفصل بعد.</p>
+      ) : (
+        <>
+          <Field label="العمود (الدرجة) المراد مقارنته">
+            <select value={colId} onChange={(e) => { setColId(e.target.value); setComputed(null); }} style={inputStyle}>
+              {gradeColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+            <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+              <p className="text-xs font-bold mb-2" style={{ color: INK }}>الفترة الأولى</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input type="date" value={from1} onChange={(e) => setFrom1(e.target.value)} style={inputStyle} />
+                <input type="date" value={to1} onChange={(e) => setTo1(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+            <div className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+              <p className="text-xs font-bold mb-2" style={{ color: INK }}>الفترة الثانية</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input type="date" value={from2} onChange={(e) => setFrom2(e.target.value)} style={inputStyle} />
+                <input type="date" value={to2} onChange={(e) => setTo2(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+          </div>
+          <button
+            disabled={!from1 || !to1 || !from2 || !to2}
+            onClick={runCompare}
+            className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110 mb-4"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+          >
+            قارن الآن
+          </button>
+
+          {computed && (
+            <>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "#E3F1EC", color: "#0F9D58" }}>تحسّن: {computed.improved}</span>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "#FBEAE7", color: "#C0392B" }}>تراجع: {computed.declined}</span>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "#F3F1E9", color: MUTED }}>ثابت/بلا بيانات: {computed.rows.length - computed.improved - computed.declined}</span>
+                <IconBtn icon={Printer} label="طباعة / تصدير" onClick={() => onPrint({ colName: col?.name, from1, to1, from2, to2, rows: computed.rows })} />
+              </div>
+              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, maxHeight: 360, overflowY: "auto" }}>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr>
+                      <th className="p-2 text-right" style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>الاسم</th>
+                      <th className="p-2 text-center" style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>الفترة الأولى</th>
+                      <th className="p-2 text-center" style={{ background: "#F3F1E9", border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>الفترة الثانية</th>
+                      <th className="p-2 text-center" style={{ background: GOLD_LIGHT, border: `1px solid ${LINE}`, position: "sticky", top: 0 }}>الفرق</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {computed.rows.map((r, i) => {
+                      const color = r.diff === null ? MUTED : r.diff > 0 ? "#0F9D58" : r.diff < 0 ? "#C0392B" : MUTED;
+                      const arrow = r.diff === null ? "—" : r.diff > 0 ? "▲" : r.diff < 0 ? "▼" : "＝";
+                      return (
+                        <tr key={r.row.id} style={{ background: i % 2 ? "#FBFAF6" : "#fff" }}>
+                          <td className="p-2" style={{ border: `1px solid ${LINE}`, color: INK }}>{r.row.name}</td>
+                          <td className="p-2 text-center" style={{ border: `1px solid ${LINE}`, color: MUTED }}>{r.avg1 === null ? "—" : Math.round(r.avg1 * 100) / 100}</td>
+                          <td className="p-2 text-center" style={{ border: `1px solid ${LINE}`, color: MUTED }}>{r.avg2 === null ? "—" : Math.round(r.avg2 * 100) / 100}</td>
+                          <td className="p-2 text-center font-bold" style={{ border: `1px solid ${LINE}`, color }}>
+                            {arrow} {r.diff === null ? "" : Math.abs(Math.round(r.diff * 100) / 100)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function NoorGradesExportModal({ cls, onClose }) {
   const gradeColumns = cls.columns.filter((c) => c.type === "counter" || c.type === "text");
   const [colId, setColId] = useState(gradeColumns[0]?.id || "");
@@ -4041,6 +4586,44 @@ function ShawahedArchiveModal({ archivedEntries, onRestore, onClose }) {
   );
 }
 
+// نافذة تحديد "هدف" (عدد شواهد مطلوب) لكل معيار من المعايير الاثني عشر —
+// يُستخدم بعدها لعرض شريط تقدّم بصري بدل الاعتماد على تذكّر أي معيار ناقص.
+function ShawahedGoalsModal({ goals, onSave, onClose }) {
+  const [draft, setDraft] = useState(() => ({ ...(goals || {}) }));
+  const setGoal = (key, val) => setDraft((d) => ({ ...d, [key]: val }));
+
+  return (
+    <Modal title="تحديد أهداف الشواهد" onClose={onClose} accent="magic" wide>
+      <p className="text-xs mb-4" style={{ color: MUTED }}>
+        حدّد عدد الشواهد المستهدف لكل معيار (اتركه فارغًا لعدم عرض شريط تقدّم لذلك المعيار). بعد الحفظ، تظهر أشرطة تقدّم بصرية بكل بطاقة تبيّن مدى اكتمالها.
+      </p>
+      <div className="space-y-2 mb-4 max-h-96 overflow-y-auto">
+        {SHAWAHED_CATEGORIES.map((cat, i) => (
+          <div key={cat.key} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ border: `1px solid ${LINE}` }}>
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cat.color }} />
+            <span className="flex-1 text-sm" style={{ color: INK }}>{i + 1}. {cat.title}</span>
+            <input
+              type="number"
+              min={0}
+              value={draft[cat.key] ?? ""}
+              onChange={(e) => setGoal(cat.key, e.target.value ? Math.max(0, Number(e.target.value)) : "")}
+              style={{ ...inputStyle, width: 80, textAlign: "center" }}
+              placeholder="—"
+            />
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={() => onSave(draft)}
+        className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        حفظ الأهداف
+      </button>
+    </Modal>
+  );
+}
+
 // مودال يسمح باختيار فئة واحدة (تقرير مستقل) أو عدة فئات (تُدمج بتقرير
 // واحد) قبل المعاينة/الطباعة/المشاركة.
 function ShawahedExportPickerModal({ shawahed, initialKeys, onClose, onConfirm }) {
@@ -4093,11 +4676,131 @@ function ShawahedExportPickerModal({ shawahed, initialKeys, onClose, onConfirm }
   );
 }
 
+// مكتبة الملفات: مكان لرفع وحفظ مصادر تعليمية (أوراق عمل، عروض...)
+// ومشاركتها مع فصل معيّن أو كل الفصول — بدل التنقل بين تطبيقات ثانية.
+// ⚠️ الملفات تُخزَّن كـ base64 داخل بيانات حسابك (نفس أسلوب صور الطلاب
+// والشعارات بالتطبيق) — مناسب لملفات صغيرة إلى متوسطة، وننصح بعدم رفع
+// ملفات كبيرة جدًا (فيديوهات مثلًا) حتى لا يبطئ تحميل بياناتك.
+function libraryFileIcon(mimeType) {
+  if (!mimeType) return FileText;
+  if (mimeType.startsWith("image/")) return FileImage;
+  if (mimeType.includes("pdf")) return FileText;
+  if (mimeType.includes("sheet") || mimeType.includes("excel")) return FileSpreadsheet;
+  return FileText;
+}
+
+function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = false }) {
+  const fileInputRef = useRef(null);
+  const [filterClassId, setFilterClassId] = useState("all");
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert("الملف كبير جدًا (أكبر من ٨ ميجا) — يُفضّل رفع ملفات أصغر حتى لا يبطئ تحميل بياناتك.");
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      onUpload({
+        id: uid(),
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+        dataUrl: reader.result,
+        classId: null,
+        uploadedAt: todayKey(),
+      });
+      setUploading(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const filtered = (library || []).filter((item) => filterClassId === "all" || item.classId === filterClassId || (filterClassId === "shared" && !item.classId));
+
+  const content = (
+    <>
+      <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
+        <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: "#8A4A1E" }}>
+          الملفات تُحفظ ضمن بيانات حسابك مباشرة — تجنّب رفع ملفات كبيرة جدًا (الحد الأقصى هنا ٨ ميجابايت لكل ملف).
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input ref={fileInputRef} type="file" onChange={handleFile} style={{ display: "none" }} />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-60"
+          style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+        >
+          <Plus size={16} /> {uploading ? "جارٍ الرفع..." : "رفع ملف جديد"}
+        </button>
+        <select value={filterClassId} onChange={(e) => setFilterClassId(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
+          <option value="all">كل الملفات</option>
+          <option value="shared">مشتركة (كل الفصول)</option>
+          {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade}</option>)}
+        </select>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد ملفات بعد.</p>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((item) => {
+            const Icon = libraryFileIcon(item.mimeType);
+            const cls = classes.find((c) => c.id === item.classId);
+            return (
+              <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}>
+                  <Icon size={18} color="#26423B" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: INK }}>{item.name}</p>
+                  <p className="text-xs" style={{ color: MUTED }}>{formatDateDisplay(item.uploadedAt)} • {cls ? `${cls.subject} — ${cls.grade}` : "مشترك (كل الفصول)"}</p>
+                </div>
+                <select
+                  value={item.classId || ""}
+                  onChange={(e) => onAssign(item.id, e.target.value || null)}
+                  className="text-xs rounded-lg px-2 py-1.5 shrink-0"
+                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff", maxWidth: 130 }}
+                >
+                  <option value="">مشترك (الكل)</option>
+                  {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject}</option>)}
+                </select>
+                <a href={item.dataUrl} download={item.name} title="تنزيل" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                  <ImageDown size={15} color={MUTED} />
+                </a>
+                <button onClick={() => onDelete(item.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                  <Trash2 size={15} color="#C0392B" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
+  if (bare) return content;
+  return (
+    <Modal title="المكتبة" onClose={() => {}} wide>
+      {content}
+    </Modal>
+  );
+}
+
 function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare = false }) {
   const [openCat, setOpenCat] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [showExportPicker, setShowExportPicker] = useState(false);
+  const [showGoals, setShowGoals] = useState(false);
   const entries = shawahed.entries || {};
+  const goals = shawahed.goals || {};
   const archivedEntries = shawahed.archivedEntries || {};
   const totalCount = SHAWAHED_CATEGORIES.reduce((sum, c) => sum + (entries[c.key]?.length || 0), 0);
 
@@ -4133,12 +4836,15 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare
     <>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <p className="text-xs font-semibold flex-1" style={{ color: MUTED }}>{totalCount} شاهد بكل الفئات</p>
+        <IconBtn icon={Target} label="تحديد أهداف" onClick={() => setShowGoals(true)} />
         <IconBtn icon={Archive} label="الأرشيف" onClick={() => setShowArchive(true)} />
         <IconBtn icon={FileText} label="طباعة / مشاركة" magic onClick={() => setShowExportPicker(true)} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {SHAWAHED_CATEGORIES.map((cat) => {
           const count = entries[cat.key]?.length || 0;
+          const goal = Number(goals[cat.key]) || 0;
+          const pct = goal > 0 ? Math.min(100, Math.round((count / goal) * 100)) : null;
           return (
             <button
               key={cat.key}
@@ -4162,11 +4868,29 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare
                   <FileCheck size={16} color={cat.color} />
                 </div>
               </div>
-              <p className="text-sm font-semibold leading-snug" style={{ color: INK }}>{cat.title}</p>
+              <p className="text-sm font-semibold leading-snug mb-2" style={{ color: INK }}>{cat.title}</p>
+              {pct !== null && (
+                <div>
+                  <div className="w-full h-1.5 rounded-full overflow-hidden mb-1" style={{ background: "#F0EFE9" }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 100 ? "#0F9D58" : cat.color }} />
+                  </div>
+                  <p className="text-[11px]" style={{ color: pct >= 100 ? "#0F9D58" : MUTED }}>
+                    {pct >= 100 ? "✓ اكتمل الهدف" : `${count} من ${goal} (${pct}٪)`}
+                  </p>
+                </div>
+              )}
             </button>
           );
         })}
       </div>
+
+      {showGoals && (
+        <ShawahedGoalsModal
+          goals={goals}
+          onClose={() => setShowGoals(false)}
+          onSave={(newGoals) => { onUpdate({ ...shawahed, goals: newGoals }); setShowGoals(false); }}
+        />
+      )}
 
       {showExportPicker && (
         <ShawahedExportPickerModal
@@ -4206,7 +4930,7 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare
   );
 }
 
-function NoorEmbedModal({ onImportNames, onClose }) {
+function NoorEmbedModal({ onImportNames, onClose, isOwner }) {
   const [mode, setMode] = useState("paste"); // "paste" | "auto"
   const [pasteText, setPasteText] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(null); // Set of selected indices, null = not yet computed
@@ -4216,6 +4940,7 @@ function NoorEmbedModal({ onImportNames, onClose }) {
   const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("fosooli-noor-server-url") || "");
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("fosooli-noor-api-key") || "");
   const [cookie, setCookie] = useState(() => localStorage.getItem("fosooli-noor-cookie") || "");
+  const [pagePath, setPagePath] = useState(() => localStorage.getItem("fosooli-noor-page-path") || "");
   const [stage, setStage] = useState("");
   const [classCode, setClassCode] = useState("");
   const [sectionCode, setSectionCode] = useState("");
@@ -4227,6 +4952,7 @@ function NoorEmbedModal({ onImportNames, onClose }) {
   useEffect(() => { localStorage.setItem("fosooli-noor-server-url", serverUrl); }, [serverUrl]);
   useEffect(() => { localStorage.setItem("fosooli-noor-api-key", apiKey); }, [apiKey]);
   useEffect(() => { localStorage.setItem("fosooli-noor-cookie", cookie); }, [cookie]);
+  useEffect(() => { localStorage.setItem("fosooli-noor-page-path", pagePath); }, [pagePath]);
 
   const pastedResults = parseNoorStudentTable(pasteText);
   const parsed = mode === "auto" ? autoResults : pastedResults;
@@ -4250,8 +4976,8 @@ function NoorEmbedModal({ onImportNames, onClose }) {
   const fetchAutomatically = async () => {
     setAutoError("");
     setAutoResults([]);
-    if (!serverUrl.trim() || !apiKey.trim() || !cookie.trim()) {
-      setAutoError("عبّي رابط الخادم ومفتاح API والكوكي أولًا.");
+    if (!serverUrl.trim() || !apiKey.trim() || !cookie.trim() || !pagePath.trim()) {
+      setAutoError("عبّي رابط الخادم ومفتاح API والكوكي ورابط الصفحة أولًا.");
       return;
     }
     setAutoLoading(true);
@@ -4259,7 +4985,7 @@ function NoorEmbedModal({ onImportNames, onClose }) {
       const res = await fetch(`${serverUrl.replace(/\/$/, "")}/api/noor/students`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-        body: JSON.stringify({ cookie, stage, classCode, sectionCode, semester }),
+        body: JSON.stringify({ cookie, pagePath, stage, classCode, sectionCode, semester }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(" — ") || "فشل الجلب");
@@ -4282,16 +5008,18 @@ function NoorEmbedModal({ onImportNames, onClose }) {
 
   return (
     <Modal title="استيراد الأسماء من نور" onClose={onClose} accent="magic" xl>
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => setMode("paste")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "paste" ? INK : "transparent", color: mode === "paste" ? "#fff" : MUTED, border: `1px solid ${mode === "paste" ? INK : LINE}` }}>
-          لصق يدوي (يعمل فورًا)
-        </button>
-        <button onClick={() => setMode("auto")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "auto" ? INK : "transparent", color: mode === "auto" ? "#fff" : MUTED, border: `1px solid ${mode === "auto" ? INK : LINE}` }}>
-          الوضع الآلي (يحتاج خادم متصل)
-        </button>
-      </div>
+      {isOwner && (
+        <div className="flex gap-2 mb-4">
+          <button onClick={() => setMode("paste")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "paste" ? INK : "transparent", color: mode === "paste" ? "#fff" : MUTED, border: `1px solid ${mode === "paste" ? INK : LINE}` }}>
+            لصق يدوي (يعمل فورًا)
+          </button>
+          <button onClick={() => setMode("auto")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "auto" ? INK : "transparent", color: mode === "auto" ? "#fff" : MUTED, border: `1px solid ${mode === "auto" ? INK : LINE}` }}>
+            الوضع الآلي (يحتاج خادم متصل)
+          </button>
+        </div>
+      )}
 
-      {mode === "paste" ? (
+      {(mode === "paste" || !isOwner) ? (
         <>
           <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
             <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
@@ -4341,6 +5069,9 @@ function NoorEmbedModal({ onImportNames, onClose }) {
           <Field label="رابط الخادم"><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} style={inputStyle} placeholder="https://noor-proxy-xxxx.onrender.com" /></Field>
           <Field label="مفتاح API"><input value={apiKey} onChange={(e) => setApiKey(e.target.value)} style={inputStyle} placeholder="نفس SERVER_API_KEY" /></Field>
           <Field label="الكوكي (من تبويب Network بنور)"><textarea value={cookie} onChange={(e) => setCookie(e.target.value)} style={{ ...inputStyle, minHeight: 70, fontFamily: "monospace", fontSize: 11 }} placeholder="الصق قيمة هيدر Cookie كاملة" /></Field>
+          <Field label="رابط الصفحة كامل (من شريط العنوان)" hint="انسخه من شريط عنوان المتصفح وأنت واقف بصفحة قائمة الطلاب — يتغيّر كل جلسة دخول، انسخه بنفس وقت الكوكي.">
+            <input value={pagePath} onChange={(e) => setPagePath(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", fontSize: 11 }} placeholder="https://noor.moe.gov.sa/Noor/UsersManagement/TeacherStudents.aspx?EKME-..." />
+          </Field>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <input value={stage} onChange={(e) => setStage(e.target.value)} style={inputStyle} placeholder="الصف (اختياري)" />
             <input value={classCode} onChange={(e) => setClassCode(e.target.value)} style={inputStyle} placeholder="القسم (اختياري)" />
@@ -4496,17 +5227,31 @@ function DropdownCell({ column, value, onChange }) {
   );
 }
 
-function Cell({ column, value, onChange }) {
-  if (column.type === "counter") return <CounterCell value={value} onChange={onChange} />;
+// يبني معرّف DOM ثابت لكل خلية إدخال بالجدول، يُستخدم للتنقل بلوحة
+// المفاتيح (Enter) للخلية المقابلة بالصف التالي مباشرة — مفيد لرصد سريع
+// لعمود كامل (درجات اختبار مثلًا) بدون ما تلمس كل خلية بالماوس.
+function cellDomId(rowId, colId) {
+  return `cell-input-${rowId}-${colId}`;
+}
+function focusNextCell(nextRowId, colId) {
+  if (!nextRowId) return;
+  requestAnimationFrame(() => {
+    const el = document.getElementById(cellDomId(nextRowId, colId));
+    if (el) { el.focus(); if (el.select) el.select(); }
+  });
+}
+
+function Cell({ column, value, onChange, rowId, nextRowId }) {
+  if (column.type === "counter") return <CounterCell value={value} onChange={onChange} rowId={rowId} colId={column.id} nextRowId={nextRowId} />;
   if (column.type === "dropdown") return <DropdownCell column={column} value={value} onChange={onChange} />;
-  return <TextCell value={value} onChange={onChange} />;
+  return <TextCell value={value} onChange={onChange} rowId={rowId} colId={column.id} nextRowId={nextRowId} />;
 }
 
 // Counter cell: +/- buttons and direct typing both only update a local
 // number, and only log ONE report entry once the value settles (debounced)
 // or when the input loses focus — so reaching "4" via four clicks (or typing
 // "5" directly) logs a single record, not one per click.
-function CounterCell({ value, onChange }) {
+function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
   const [n, setN] = useState(Number(value) || 0);
   useEffect(() => { setN(Number(value) || 0); }, [value]);
   const timerRef = useRef(null);
@@ -4530,11 +5275,14 @@ function CounterCell({ value, onChange }) {
     <div className="flex items-center justify-center gap-1.5">
       <button onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
       <input
+        id={rowId && colId ? cellDomId(rowId, colId) : undefined}
         type="number"
         value={n}
         onChange={(e) => { const v = Number(e.target.value) || 0; setN(v); scheduleCommit(v); }}
         onBlur={() => commitNow(n)}
-        onKeyDown={(e) => { if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); } }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); focusNextCell(nextRowId, colId); }
+        }}
         className="w-9 text-center font-semibold text-sm bg-transparent"
         style={{ outline: "none", color: INK }}
       />
@@ -4547,7 +5295,7 @@ function CounterCell({ value, onChange }) {
 // in), and only commits — i.e. only logs ONE report entry with the finished
 // sentence — on blur or Enter. This is what fixes notes being logged letter
 // by letter as you type.
-function TextCell({ value, onChange }) {
+function TextCell({ value, onChange, rowId, colId, nextRowId }) {
   const [local, setLocal] = useState(value || "");
   useEffect(() => { setLocal(value || ""); }, [value]);
   const commit = () => {
@@ -4555,10 +5303,13 @@ function TextCell({ value, onChange }) {
   };
   return (
     <input
+      id={rowId && colId ? cellDomId(rowId, colId) : undefined}
       value={local}
       onChange={(e) => setLocal(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") { commit(); e.currentTarget.blur(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { commit(); e.currentTarget.blur(); focusNextCell(nextRowId, colId); }
+      }}
       className="w-full text-sm text-center rounded-md px-1.5 py-1 bg-transparent"
       style={{ outline: "none" }}
       placeholder="—"
@@ -5116,7 +5867,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   );
 }
 
-function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, schoolName, principalName, countryName, ministryName, logoImage, teacherPhoto, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onClose }) {
+function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, themeColor, density, fontScale, schoolName, principalName, countryName, ministryName, logoImage, teacherPhoto, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onClose }) {
   const logoInputRef = useRef(null);
   const teacherPhotoInputRef = useRef(null);
   const badgeInputRef = useRef(null);
@@ -5207,6 +5958,44 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
             >
               <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all" style={{ [feedback ? "right" : "left"]: "2px" }} />
             </button>
+          </div>
+          <div className="p-3 rounded-xl mt-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Palette size={18} color={themeColor || "#26423B"} />
+              <div>
+                <p className="text-sm font-semibold" style={{ color: INK }}>لون الهوية الشخصية</p>
+                <p className="text-xs" style={{ color: MUTED }}>يُطبَّق على الأزرار الرئيسية والتبويبات بكل التطبيق</p>
+              </div>
+            </div>
+            <ColorSwatches value={themeColor || "#26423B"} onChange={(c) => onChangeSchoolInfo({ themeColor: c })} />
+          </div>
+          <div className="p-3 rounded-xl mt-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: INK }}>كثافة عرض الجدول</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onChangeSchoolInfo({ density: "comfortable" })}
+                className="flex-1 text-xs font-semibold py-2 rounded-lg"
+                style={{ background: density !== "compact" ? "#26423B" : "transparent", color: density !== "compact" ? "#fff" : MUTED, border: `1px solid ${density !== "compact" ? "#26423B" : LINE}` }}
+              >مريح</button>
+              <button
+                onClick={() => onChangeSchoolInfo({ density: "compact" })}
+                className="flex-1 text-xs font-semibold py-2 rounded-lg"
+                style={{ background: density === "compact" ? "#26423B" : "transparent", color: density === "compact" ? "#fff" : MUTED, border: `1px solid ${density === "compact" ? "#26423B" : LINE}` }}
+              >مضغوط (طلاب أكثر بنفس الشاشة)</button>
+            </div>
+          </div>
+          <div className="p-3 rounded-xl mt-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: INK }}>حجم الخط</p>
+            <div className="flex gap-2">
+              {[{ v: 1, l: "عادي" }, { v: 1.1, l: "أكبر قليلًا" }, { v: 1.25, l: "أكبر" }].map((opt) => (
+                <button
+                  key={opt.v}
+                  onClick={() => onChangeSchoolInfo({ fontScale: opt.v })}
+                  className="flex-1 text-xs font-semibold py-2 rounded-lg"
+                  style={{ background: (fontScale || 1) === opt.v ? "#26423B" : "transparent", color: (fontScale || 1) === opt.v ? "#fff" : MUTED, border: `1px solid ${(fontScale || 1) === opt.v ? "#26423B" : LINE}` }}
+                >{opt.l}</button>
+              ))}
+            </div>
           </div>
         </>
       )}
@@ -5897,6 +6686,156 @@ function TrashModal({ trash, onRestore, onClose, onClearAll }) {
   );
 }
 
+// نافذة تفعيل وضع الاختبار: تختار مدة فيقفل خلالها كل أزرار إضافة/تعديل/حذف
+// الأعمدة والصفوف بالفصل (رصد الدرجات والغياب يبقى شغّالًا طبيعيًا).
+function ExamModeModal({ onClose, onActivate }) {
+  const PRESETS = [15, 30, 45, 60, 90];
+  const [minutes, setMinutes] = useState(45);
+  return (
+    <Modal title="تفعيل وضع الاختبار" onClose={onClose} accent="magic">
+      <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
+        <Lock size={15} color={DASH_GREEN} className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: DASH_GREEN }}>
+          يقفل أزرار إضافة/تعديل/حذف الأعمدة والصفوف والحذف الجماعي لفترة تحددها، لمنع أي لمسة خطأ أثناء تجوّلك بالفصل. رصد الدرجات وتسجيل الغياب يبقيان شغّالين بشكل طبيعي.
+        </p>
+      </div>
+      <Field label="المدة">
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          {PRESETS.map((m) => (
+            <button
+              key={m}
+              onClick={() => setMinutes(m)}
+              className="py-2 rounded-lg text-sm font-semibold"
+              style={{ background: minutes === m ? DASH_GREEN : "#fff", color: minutes === m ? "#fff" : INK, border: `1px solid ${minutes === m ? DASH_GREEN : LINE}` }}
+            >
+              {m} دقيقة
+            </button>
+          ))}
+        </div>
+        <input
+          type="number"
+          min={1}
+          value={minutes}
+          onChange={(e) => setMinutes(Math.max(1, Number(e.target.value) || 1))}
+          style={inputStyle}
+          placeholder="مدة مخصّصة بالدقائق"
+        />
+      </Field>
+      <button
+        onClick={() => onActivate(minutes)}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white mt-2 transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        <Lock size={15} /> تفعيل القفل لمدة {minutes} دقيقة
+      </button>
+    </Modal>
+  );
+}
+
+// شريط تنبيه ثابت أعلى صفحة الفصل يظهر أثناء تفعيل وضع الاختبار، مع عدّاد
+// تنازلي مباشر وزر لإنهاء القفل يدويًا قبل انتهاء المدة.
+function ExamModeBanner({ examModeUntil, onUnlock }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const remainingMs = new Date(examModeUntil).getTime() - now;
+  if (remainingMs <= 0) return null;
+  const mins = Math.floor(remainingMs / 60000);
+  const secs = Math.floor((remainingMs % 60000) / 1000);
+  return (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl mb-1.5" style={{ background: `linear-gradient(135deg, ${DASH_GREEN}, ${DASH_GREEN_DARK})`, color: "#fff" }}>
+      <span className="flex items-center gap-2 text-xs font-bold">
+        <Lock size={14} /> وضع الاختبار مفعّل — يُفتح تلقائيًا خلال {mins}:{String(secs).padStart(2, "0")}
+      </span>
+      <button onClick={onUnlock} className="text-xs font-bold px-3 py-1 rounded-lg shrink-0 hover:bg-white/10" style={{ background: "rgba(255,255,255,0.18)" }}>
+        <Unlock size={12} className="inline ml-1" /> إنهاء الآن
+      </button>
+    </div>
+  );
+}
+
+// يفحص هل صف معيّن يطابق "قاعدة تلوين الصف" المحددة بالفصل (نسبة حضور أو
+// قيمة عمود عدّاد)، ويرجّع لون التمييز إذا تحقق الشرط، أو null إذا لا.
+function rowColorRuleMatch(cls, row) {
+  const rule = cls.rowColorRule;
+  if (!rule || !rule.color) return null;
+  let actual = null;
+  if (rule.type === "attendance") {
+    actual = attendancePercent(cls, row.id);
+  } else if (rule.type === "column" && rule.colId) {
+    const raw = cls.cells[`${row.id}:${rule.colId}`] ?? lastReportedValue(cls, row.id, rule.colId);
+    actual = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+  }
+  if (actual === null || Number.isNaN(actual)) return null;
+  const threshold = Number(rule.value);
+  const matched =
+    rule.operator === "lt" ? actual < threshold :
+    rule.operator === "gt" ? actual > threshold :
+    rule.operator === "eq" ? actual === threshold : false;
+  return matched ? rule.color : null;
+}
+
+function RowColorRuleModal({ cls, onClose, onSave, onClear }) {
+  const counterColumns = cls.columns.filter((c) => c.type === "counter");
+  const initial = cls.rowColorRule;
+  const [type, setType] = useState(initial?.type || "attendance");
+  const [colId, setColId] = useState(initial?.colId || counterColumns[0]?.id || "");
+  const [operator, setOperator] = useState(initial?.operator || "lt");
+  const [value, setValue] = useState(initial?.value ?? 80);
+  const [color, setColor] = useState(initial?.color || "#F9D8D8");
+
+  return (
+    <Modal title="تلوين الصف تلقائيًا حسب شرط" onClose={onClose} accent="magic">
+      <p className="text-xs mb-4" style={{ color: MUTED }}>
+        يُلوَّن الصف كاملًا تلقائيًا عند تحقق الشرط — يلفت انتباهك فورًا بدون فحص كل عمود يدويًا (مثال: نسبة حضور أقل من ٨٠٪).
+      </p>
+      <Field label="نوع الشرط">
+        <div className="flex gap-2">
+          <button onClick={() => setType("attendance")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: type === "attendance" ? INK : "transparent", color: type === "attendance" ? "#fff" : MUTED, border: `1px solid ${type === "attendance" ? INK : LINE}` }}>نسبة الحضور</button>
+          <button onClick={() => setType("column")} disabled={counterColumns.length === 0} className="flex-1 text-xs font-semibold py-2 rounded-lg disabled:opacity-40" style={{ background: type === "column" ? INK : "transparent", color: type === "column" ? "#fff" : MUTED, border: `1px solid ${type === "column" ? INK : LINE}` }}>قيمة عمود</button>
+        </div>
+      </Field>
+      {type === "column" && (
+        <Field label="العمود">
+          <select value={colId} onChange={(e) => setColId(e.target.value)} style={inputStyle}>
+            {counterColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+      )}
+      <div className="grid grid-cols-2 gap-2 mb-1">
+        <Field label="الشرط">
+          <select value={operator} onChange={(e) => setOperator(e.target.value)} style={inputStyle}>
+            <option value="lt">أقل من</option>
+            <option value="gt">أكبر من</option>
+            <option value="eq">يساوي</option>
+          </select>
+        </Field>
+        <Field label="القيمة">
+          <input type="number" value={value} onChange={(e) => setValue(Number(e.target.value) || 0)} style={inputStyle} />
+        </Field>
+      </div>
+      <Field label="لون التمييز">
+        <ColorSwatches value={color} onChange={setColor} />
+      </Field>
+      <div className="flex justify-between items-center mt-4">
+        <div>
+          {initial && <button onClick={() => { onClear(); onClose(); }} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ color: "#9A3B2E" }}>إزالة القاعدة</button>}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: MUTED }}>إلغاء</button>
+          <button
+            onClick={() => { onSave({ type, colId: type === "column" ? colId : null, operator, value, color }); onClose(); }}
+            className="px-5 py-2 rounded-lg text-sm font-bold text-white"
+            style={{ background: "#26423B" }}
+          >حفظ</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
   const [dateKey, setDateKey] = useState(todayKey());
 
@@ -6248,7 +7187,9 @@ function SiteFooter({ contacts, badges }) {
 }
 
 function TodayActivityModal({ classes, onClose }) {
-  const t = todayKey();
+  const [selectedDate, setSelectedDate] = useState(todayKey());
+  const t = selectedDate;
+  const isToday = t === todayKey();
   const groups = classes.map((cls) => {
     const items = [];
     Object.entries(cls.reports || {}).forEach(([rowId, entries]) => {
@@ -6263,10 +7204,13 @@ function TodayActivityModal({ classes, onClose }) {
   const totalCount = groups.reduce((s, g) => s + g.items.length, 0);
 
   return (
-    <Modal title="نشاطي اليوم" onClose={onClose} wide>
-      <p className="text-sm mb-4" style={{ color: MUTED }}>{formatDateDisplay(t)} — {totalCount} رصد إجمالي عبر {groups.length} فصل</p>
+    <Modal title={isToday ? "نشاطي اليوم" : "نشاطي"} onClose={onClose} wide>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <p className="text-sm" style={{ color: MUTED }}>{formatDateDisplay(t)} — {totalCount} رصد إجمالي عبر {groups.length} فصل</p>
+        <DateField value={selectedDate} onChange={setSelectedDate} />
+      </div>
       {groups.length === 0 ? (
-        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لم تسجّل أي شيء اليوم بعد.</p>
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>{isToday ? "لم تسجّل أي شيء اليوم بعد." : "لا يوجد رصد بهذا التاريخ."}</p>
       ) : (
         <div className="space-y-4">
           {groups.map(({ cls, items }) => (
@@ -6339,7 +7283,7 @@ function ScheduleMiniCard({ schedule, image, onOpen }) {
   );
 }
 
-function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint }) {
+function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent }) {
   const [editing, setEditing] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showTrash, setShowTrash] = useState(false);
@@ -6393,6 +7337,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
     { key: "trash", icon: FolderOpen, label: "سجل المحذوفات", color: "#6B7A3A", onClick: () => setShowTrash(true) },
     { key: "remedial", icon: Activity, label: "خطة علاجية", color: "#7A4E9E", onClick: () => setShowRemedialPlan(true) },
     { key: "print", icon: Printer, label: "طباعة", color: "#2E7DA6", onClick: () => onPrint() },
+    { key: "printParent", icon: Users, label: "تقرير لولي الأمر", color: "#0F9D58", onClick: () => onPrintParent() },
     { key: "certificate", icon: Award, label: "شهادة تقدير", color: "#C97A2B", onClick: () => setShowCertificate(true) },
     { key: "share", icon: Share2, label: "مشاركة التقرير", color: "#5B6472", onClick: shareStudentReadOnly },
     ...(entries.length > 0 ? [{ key: "deleteAll", icon: Trash2, label: "حذف كل التقرير", color: "#C0392B", onClick: () => setConfirmDeleteAll(true) }] : []),
@@ -6841,6 +7786,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
   const [showTestBuilder, setShowTestBuilder] = useState(false);
   const [gradingTestId, setGradingTestId] = useState(null);
   const [printingTestId, setPrintingTestId] = useState(null);
+  const [analyzingTestId, setAnalyzingTestId] = useState(null);
   const [omrTestId, setOmrTestId] = useState(null);
   const addTest = (test) => setData((d) => ({ ...d, tests: [...(d.tests || []), test] }));
   const deleteTest = (id) => setData((d) => ({ ...d, tests: (d.tests || []).filter((t) => t.id !== id) }));
@@ -7070,6 +8016,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             { key: "classes", label: "الفصول", icon: BookOpen },
             { key: "shawahed", label: "شواهد", icon: FileCheck },
             { key: "tests", label: "الاختبارات", icon: ListChecks },
+            { key: "library", label: "المكتبة", icon: FolderOpen },
             { key: "archive", label: "المؤرشفة", icon: Archive },
           ].map((t) => (
             <button
@@ -7093,10 +8040,6 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           <button onClick={() => setTab("active")} className="px-4 py-1.5 rounded-full text-sm font-semibold"
             style={{ background: tab === "active" ? INK : "transparent", color: tab === "active" ? "#fff" : MUTED, border: `1px solid ${tab === "active" ? INK : LINE}` }}>
             النشطة ({data.classes.filter((c) => !c.archived).length})
-          </button>
-          <button onClick={() => setTab("archived")} className="px-4 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5"
-            style={{ background: tab === "archived" ? INK : "transparent", color: tab === "archived" ? "#fff" : MUTED, border: `1px solid ${tab === "archived" ? INK : LINE}` }}>
-            <FolderClock size={14} />المؤرشفة ({data.classes.filter((c) => c.archived).length})
           </button>
           <button onClick={() => setModal({ mode: "add" })} className="mr-auto flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold text-white transition-all hover:brightness-105 hover:-translate-y-px active:scale-95 active:translate-y-0" style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, boxShadow: "0 3px 10px rgba(38,66,59,0.32)" }}>
             <Plus size={18} strokeWidth={2.5} /> إضافة فصل جديد
@@ -7284,6 +8227,17 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           onPrint={(id) => setPrintingTestId(id)}
           onDelete={deleteTest}
           onArchive={archiveTest}
+          onAnalyze={(id) => setAnalyzingTestId(id)}
+        />
+      )}
+      {mainTab === "library" && (
+        <LibraryHub
+          bare
+          library={data.library || []}
+          classes={data.classes}
+          onUpload={(item) => setData((d) => ({ ...d, library: [...(d.library || []), item] }))}
+          onDelete={(id) => setData((d) => ({ ...d, library: (d.library || []).filter((x) => x.id !== id) }))}
+          onAssign={(id, classId) => setData((d) => ({ ...d, library: (d.library || []).map((x) => (x.id === id ? { ...x, classId } : x)) }))}
         />
       )}
       {mainTab === "archive" && (
@@ -7363,6 +8317,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           onToggleFeedback={() => setData((d) => ({ ...d, settings: { ...(d.settings || {}), feedback: !(d.settings?.feedback !== false) } }))}
           darkMode={!!data.settings?.darkMode}
           onToggleDarkMode={() => setData((d) => ({ ...d, settings: { ...(d.settings || {}), darkMode: !d.settings?.darkMode } }))}
+          themeColor={data.settings?.themeColor}
+          density={data.settings?.density}
+          fontScale={data.settings?.fontScale}
           schoolName={data.settings?.schoolName}
           principalName={data.settings?.principalName}
           countryName={data.settings?.countryName}
@@ -7443,6 +8400,8 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       )}
       {showTestBuilder && (
         <TestBuilderModal
+          questionBank={data.questionBank || []}
+          onAddToBank={(qs) => setData((d) => ({ ...d, questionBank: [...(d.questionBank || []), ...qs] }))}
           onSave={(test) => { addTest(test); setShowTestBuilder(false); setShowTestsList(true); }}
           onClose={() => { setShowTestBuilder(false); setShowTestsList(true); }}
         />
@@ -7472,6 +8431,12 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           onClose={() => { setPrintingTestId(null); setShowTestsList(true); }}
         />
       )}
+      {analyzingTestId && (
+        <TestAnalysisModal
+          test={(data.tests || []).find((t) => t.id === analyzingTestId)}
+          onClose={() => setAnalyzingTestId(null)}
+        />
+      )}
       {isOwner && <SiteFooter contacts={siteSettings.footerContacts} badges={siteSettings.footerBadges} />}
     </div>
   );
@@ -7479,7 +8444,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
 // ---------- Class detail page ----------
 
-function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass }) {
+function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, isOwner, density }) {
   const [colModal, setColModal] = useState(null);
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -7506,6 +8471,14 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showReportPicker, setShowReportPicker] = useState(false);
   const [showGradeSheet, setShowGradeSheet] = useState(false);
   const [showNoorGradesExport, setShowNoorGradesExport] = useState(false);
+  const [showPeriodComparison, setShowPeriodComparison] = useState(false);
+  const [showExamMode, setShowExamMode] = useState(false);
+  const [showRowColorRule, setShowRowColorRule] = useState(false);
+  const [showStatsRow, setShowStatsRow] = useState(false);
+  const examLocked = isExamModeActive(cls);
+  const compactDensity = density === "compact";
+  const cellPadClass = compactDensity ? "p-0.5" : "p-1";
+  const namePadClass = compactDensity ? "p-1" : "p-2";
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -7607,7 +8580,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
   const saveColumnsMany = (drafts) => {
     updateClass((c) => {
-      const newCols = drafts.map((d) => ({ id: uid(), name: d.name.trim(), type: d.type, options: d.options, color: d.color, autoRenew: !!d.autoRenew, pinned: !!d.pinned, behaviorFlag: !!d.behaviorFlag, behaviorThreshold: d.behaviorThreshold || 3 }));
+      const newCols = drafts.map((d) => ({ id: uid(), name: d.name.trim(), type: d.type, options: d.options, color: d.color, maxValue: d.maxValue || "", colorScale: !!d.colorScale, autoRenew: !!d.autoRenew, pinned: !!d.pinned, behaviorFlag: !!d.behaviorFlag, behaviorThreshold: d.behaviorThreshold || 3 }));
       const cells = { ...c.cells };
       const reports = { ...(c.reports || {}) };
       let touched = false;
@@ -7991,6 +8964,13 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <p className="text-xs" style={{ color: MUTED }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p>
         </div>
 
+        {examLocked && (
+          <ExamModeBanner
+            examModeUntil={cls.examModeUntil}
+            onUnlock={() => updateClass((c) => ({ ...c, examModeUntil: null }))}
+          />
+        )}
+
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
 
         <button
@@ -8008,6 +8988,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={LayoutGrid} label="لوحة العرض" onClick={() => setShowBoard(true)} />
           <IconBtn icon={Printer} label="طباعة" onClick={printCurrentScreen} />
           <IconBtn icon={FileOutput} label="طباعة الجدول مفرغ" onClick={() => openPrintPreview({ type: "blank", cls })} />
+          <IconBtn icon={Palette} label={cls.rowColorRule ? "تعديل تلوين الصف" : "تلوين الصف حسب شرط"} onClick={() => setShowRowColorRule(true)} />
+          <IconBtn icon={BarChart3} label={showStatsRow ? "إخفاء صف المعدل (تجريبي)" : "إظهار صف المعدل (تجريبي)"} onClick={() => setShowStatsRow((s) => !s)} />
         </div>
 
         <div className="rounded-2xl p-1.5 mb-1.5 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
@@ -8021,15 +9003,22 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
         <div className="rounded-2xl p-1.5 mb-2 flex flex-wrap items-center gap-1.5" style={{ background: "#fff", boxShadow: "0 2px 8px rgba(35,38,34,0.06)", border: `1px solid ${LINE}` }}>
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
-          <IconBtn icon={Plus} label="إضافة عمود" tone="primary" onClick={() => setColModal({ mode: "add" })} />
-          <IconBtn icon={Plus} label="إضافة صف" tone="primary" onClick={() => setRowModal({ mode: "add" })} />
+          <IconBtn icon={Plus} label="إضافة عمود" tone="primary" disabled={examLocked} onClick={() => setColModal({ mode: "add" })} />
+          <IconBtn icon={Plus} label="إضافة صف" tone="primary" disabled={examLocked} onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
           <IconBtn icon={FileSpreadsheet} label="كشف رصد درجات" magic onClick={() => setShowGradeSheet(true)} />
           <IconBtn icon={ExternalLink} label="تصدير الدرجات لنور" onClick={() => setShowNoorGradesExport(true)} />
-          <IconBtn icon={RotateCcw} label="تراجع" onClick={restoreLatest} />
-          <IconBtn icon={FolderOpen} label="استعادة" onClick={() => setShowTrash(true)} />
-          <IconBtn icon={Trash2} label="حذف الكل" tone="danger" onClick={deleteAll} />
+          <IconBtn icon={BarChart3} label="مقارنة أداء بين فترتين" onClick={() => setShowPeriodComparison(true)} />
+          <IconBtn icon={RotateCcw} label="تراجع" disabled={examLocked} onClick={restoreLatest} />
+          <IconBtn icon={FolderOpen} label="استعادة" disabled={examLocked} onClick={() => setShowTrash(true)} />
+          <IconBtn icon={Trash2} label="حذف الكل" tone="danger" disabled={examLocked} onClick={deleteAll} />
+          <IconBtn
+            icon={examLocked ? Unlock : Lock}
+            label={examLocked ? "إنهاء وضع الاختبار" : "وضع الاختبار"}
+            tone={examLocked ? "danger" : "default"}
+            onClick={() => (examLocked ? updateClass((c) => ({ ...c, examModeUntil: null })) : setShowExamMode(true))}
+          />
           <IconBtn icon={Search} label="بحث" onClick={() => setShowSearch((s) => !s)} />
           {showSearch && (
             <div className="relative" style={{ width: "200px" }}>
@@ -8072,10 +9061,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
             <button onClick={selectAllRows} className="text-xs font-semibold px-2 py-1 rounded-lg hover:bg-black/5" style={{ color: INK }}>تحديد الكل</button>
             <button onClick={clearSelection} className="text-xs font-semibold px-2 py-1 rounded-lg hover:bg-black/5" style={{ color: INK }}>إلغاء التحديد</button>
             <div className="mr-auto flex gap-2">
-              <IconBtn icon={Send} label="نقل إلى فصل آخر" onClick={() => setShowMoveModal(true)} />
+              <IconBtn icon={Send} label="نقل إلى فصل آخر" disabled={examLocked} onClick={() => setShowMoveModal(true)} />
               <IconBtn icon={Award} label="شهادات جماعية" onClick={() => setShowBulkCertificateModal(true)} />
               <IconBtn icon={Users} label="رصد جماعي" onClick={() => setShowBulkRecordModal(true)} />
-              <IconBtn icon={Trash2} label="حذف المحددين" tone="danger" onClick={() => setConfirmBulkDelete(true)} />
+              <IconBtn icon={Trash2} label="حذف المحددين" tone="danger" disabled={examLocked} onClick={() => setConfirmBulkDelete(true)} />
             </div>
           </div>
         )}
@@ -8129,11 +9118,11 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                       {col.autoRenew && <RefreshCw size={11} color="#26423B" title="تفريغ تلقائي مفعّل" />}
                     </div>
                     <div className="flex items-center justify-center gap-0.5">
-                      <MiniIconBtn icon={ChevronRight} title="نقل لليمين" disabled={i === 0} onClick={() => moveColumn(col.id, -1)} />
-                      <MiniIconBtn icon={ChevronLeft} title="نقل لليسار" disabled={i === columnMeta.length - 1} onClick={() => moveColumn(col.id, 1)} />
-                      <MiniIconBtn icon={col.pinned ? Pin : PinOff} title={col.pinned ? "إلغاء التثبيت" : "تثبيت العمود"} color={col.pinned ? "#26423B" : MUTED} onClick={() => togglePinned(col.id)} />
+                      <MiniIconBtn icon={ChevronRight} title="نقل لليمين" disabled={examLocked || i === 0} onClick={() => moveColumn(col.id, -1)} />
+                      <MiniIconBtn icon={ChevronLeft} title="نقل لليسار" disabled={examLocked || i === columnMeta.length - 1} onClick={() => moveColumn(col.id, 1)} />
+                      <MiniIconBtn icon={col.pinned ? Pin : PinOff} title={col.pinned ? "إلغاء التثبيت" : "تثبيت العمود"} color={col.pinned ? "#26423B" : MUTED} disabled={examLocked} onClick={() => togglePinned(col.id)} />
                       <MiniIconBtn icon={Users} title="رصد نفس القيمة لجميع الطلاب" onClick={() => setBulkSetColId(bulkSetColId === col.id ? null : col.id)} />
-                      <MiniIconBtn icon={Pencil} title="تعديل العمود" onClick={() => setColModal({ mode: "edit", data: col })} />
+                      <MiniIconBtn icon={Pencil} title="تعديل العمود" disabled={examLocked} onClick={() => setColModal({ mode: "edit", data: col })} />
                     </div>
                     {bulkSetColId === col.id && (
                       <BulkSetPopover column={col} onApply={(v) => bulkSetColumnValue(col, v)} onClose={() => setBulkSetColId(null)} />
@@ -8144,19 +9133,39 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((row) => {
+              {showStatsRow && (
+                <tr style={{ background: GOLD_LIGHT }}>
+                  {cls.showRowNumbers && <td style={{ border: `1px solid ${LINE}` }} />}
+                  <td className="p-2 text-xs font-bold" style={{ border: `1px solid ${LINE}`, color: DASH_GREEN }}>📊 المعدل</td>
+                  {hasTotalGradeCol && <td style={{ border: `1px solid ${LINE}` }} />}
+                  {columnMeta.map((col) => {
+                    if (col.type !== "counter") return <td key={col.id} style={{ border: `1px solid ${LINE}` }} />;
+                    const validNums = cls.rows.map((r) => cls.cells[`${r.id}:${col.id}`]).filter((v) => v !== undefined && v !== "" && !Number.isNaN(Number(v))).map(Number);
+                    const avg = validNums.length ? validNums.reduce((a, b) => a + b, 0) / validNums.length : null;
+                    return (
+                      <td key={col.id} className="p-2 text-center text-xs font-bold" style={{ border: `1px solid ${LINE}`, color: DASH_GREEN }}>
+                        {avg === null ? "—" : Math.round(avg * 100) / 100}
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: `1px solid ${LINE}` }} />
+                </tr>
+              )}
+              {visibleRows.map((row, vIdx) => {
                 const i = cls.rows.findIndex((r) => r.id === row.id);
+                const ruleColor = rowColorRuleMatch(cls, row);
+                const nextVisibleRowId = visibleRows[vIdx + 1]?.id || null;
                 return (
                   <tr key={row.id} className={`data-row ${row.id === animatingRowId ? "trash-toss" : ""}`}>
                     {cls.showRowNumbers && (
                       <td
                         className="p-2 text-center text-xs font-semibold"
-                        style={{ border: `1px solid ${LINE}`, color: MUTED, background: "#fff", position: "sticky", insetInlineStart: 0, zIndex: 3, width: NUM_W, minWidth: NUM_W }}
+                        style={{ border: `1px solid ${LINE}`, color: MUTED, background: ruleColor || "#fff", position: "sticky", insetInlineStart: 0, zIndex: 3, width: NUM_W, minWidth: NUM_W }}
                       >{i + 1}</td>
                     )}
                     <td
-                      className="p-2 font-medium"
-                      style={{ border: `1px solid ${LINE}`, color: INK, borderInlineStart: `4px solid ${row.color}`, background: "#fff", position: "sticky", insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 3, width: NAME_W, minWidth: NAME_W }}
+                      className={`${namePadClass} font-medium`}
+                      style={{ border: `1px solid ${LINE}`, color: INK, borderInlineStart: `4px solid ${row.color}`, background: ruleColor || "#fff", position: "sticky", insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 3, width: NAME_W, minWidth: NAME_W, fontSize: compactDensity ? 12 : undefined }}
                     >
                       <div className="flex items-center gap-1.5 mb-1">
                         <input
@@ -8181,11 +9190,11 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         )}
                       </div>
                       <div className="flex items-center gap-0.5" style={{ paddingInlineStart: 20 }}>
-                        <MiniIconBtn icon={ChevronUp} title="نقل لأعلى" disabled={i === 0} onClick={() => moveRow(row.id, -1)} />
-                        <MiniIconBtn icon={ChevronDown} title="نقل لأسفل" disabled={i === cls.rows.length - 1} onClick={() => moveRow(row.id, 1)} />
+                        <MiniIconBtn icon={ChevronUp} title="نقل لأعلى" disabled={examLocked || i === 0} onClick={() => moveRow(row.id, -1)} />
+                        <MiniIconBtn icon={ChevronDown} title="نقل لأسفل" disabled={examLocked || i === cls.rows.length - 1} onClick={() => moveRow(row.id, 1)} />
                         <span className="mx-1" style={{ width: 1, height: 14, background: LINE, display: "inline-block" }} />
-                        <MiniIconBtn icon={Copy} title="نسخ الصف" onClick={() => duplicateRowById(row.id)} />
-                        <MiniIconBtn icon={Pencil} title="تعديل الصف" onClick={() => setRowModal({ mode: "edit", data: row })} />
+                        <MiniIconBtn icon={Copy} title="نسخ الصف" disabled={examLocked} onClick={() => duplicateRowById(row.id)} />
+                        <MiniIconBtn icon={Pencil} title="تعديل الصف" disabled={examLocked} onClick={() => setRowModal({ mode: "edit", data: row })} />
                       </div>
                     </td>
                     {hasTotalGradeCol && (() => {
@@ -8206,22 +9215,28 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         </td>
                       );
                     })()}
-                    {columnMeta.map((col) => (
+                    {columnMeta.map((col) => {
+                      const cellVal = cls.cells[`${row.id}:${col.id}`];
+                      const cellBg = col.type === "counter" && col.colorScale
+                        ? intensityColor(col.color, (Number(cellVal) || 0) / (Number(col.maxValue) || 5))
+                        : (ruleColor || (col.pinned ? "#FBFAF6" : "#fff"));
+                      return (
                       <td
                         key={col.id}
-                        className={`p-1 text-center ${col.id === animatingColId ? "trash-toss" : ""}`}
+                        className={`${cellPadClass} text-center ${col.id === animatingColId ? "trash-toss" : ""}`}
                         style={{
                           border: `1px solid ${LINE}`,
-                          background: col.pinned ? "#FBFAF6" : "#fff",
+                          background: cellBg,
                           position: col.pinned ? "sticky" : "static",
                           insetInlineStart: col.pinned ? col.pinOffset : undefined,
                           zIndex: col.pinned ? 2 : 0,
                         }}
                       >
-                        <Cell column={col} value={cls.cells[`${row.id}:${col.id}`]} onChange={(v) => setCell(row, col, v)} />
+                        <Cell column={col} value={cellVal} onChange={(v) => setCell(row, col, v)} rowId={row.id} nextRowId={nextVisibleRowId} />
                       </td>
-                    ))}
-                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: "#fff", position: "sticky", insetInlineEnd: 0, zIndex: 2 }}>
+                      );
+                    })}
+                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: ruleColor || "#fff", position: "sticky", insetInlineEnd: 0, zIndex: 2 }}>
                       {blinkRowId === row.id ? (
                         <span className="inline-block w-10 h-4" />
                       ) : (
@@ -8247,6 +9262,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onDelete={deleteRow}
           showRowNumbers={cls.showRowNumbers}
           onToggleShowRowNumbers={() => updateClass((c) => ({ ...c, showRowNumbers: !c.showRowNumbers }))}
+          isOwner={isOwner}
         />
       )}
       {showBoard && <DisplayBoard cls={cls} onClose={() => setShowBoard(false)} onPrint={(dateKey) => openPrintPreview({ type: "class", cls, dateKey })} />}
@@ -8272,6 +9288,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onRestoreEntry={(trashId) => restoreReportEntryFromTrash(reportRow.id, trashId)}
           onClearTrash={() => clearReportTrash(reportRow.id)}
           onPrint={() => openPrintPreview({ type: "report", cls, row: reportRow, entries: reportEntries })}
+          onPrintParent={() => openPrintPreview({ type: "parentReport", cls, row: reportRow, entries: reportEntries, meta: { schoolName, teacherName: cls.teacher } })}
         />
       )}
       {confirmAction && (
@@ -8405,6 +9422,31 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       )}
       {showNoorGradesExport && (
         <NoorGradesExportModal cls={cls} onClose={() => setShowNoorGradesExport(false)} />
+      )}
+      {showPeriodComparison && (
+        <PeriodComparisonModal
+          cls={cls}
+          onClose={() => setShowPeriodComparison(false)}
+          onPrint={(data) => openPrintPreview({ type: "periodComparison", cls, ...data })}
+        />
+      )}
+      {showExamMode && (
+        <ExamModeModal
+          onClose={() => setShowExamMode(false)}
+          onActivate={(minutes) => {
+            const until = new Date(Date.now() + minutes * 60000).toISOString();
+            updateClass((c) => ({ ...c, examModeUntil: until }));
+            setShowExamMode(false);
+          }}
+        />
+      )}
+      {showRowColorRule && (
+        <RowColorRuleModal
+          cls={cls}
+          onClose={() => setShowRowColorRule(false)}
+          onSave={(rule) => updateClass((c) => ({ ...c, rowColorRule: rule }))}
+          onClear={() => updateClass((c) => ({ ...c, rowColorRule: null }))}
+        />
       )}
       {confirmBulkDelete && (
         <ConfirmDialog
@@ -8575,6 +9617,20 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // يطبّق لون الهوية الشخصية للمعلم (لو حدده بالإعدادات) على كامل التطبيق
+  // كل ما تغيّرت القيمة — أو يرجّع للون الافتراضي لو ما حدد شيء.
+  useEffect(() => {
+    applyThemeColor(data.settings?.themeColor);
+  }, [data.settings?.themeColor]);
+
+  // يكبّر/يصغّر حجم الخط بكامل التطبيق عبر تعديل حجم خط عنصر <html> —
+  // معظم أحجام Tailwind مبنية على rem، فتتناسب تلقائيًا مع أي تغيير هنا.
+  useEffect(() => {
+    const scale = Number(data.settings?.fontScale) || 1;
+    document.documentElement.style.fontSize = `${16 * scale}px`;
+    return () => { document.documentElement.style.fontSize = ""; };
+  }, [data.settings?.fontScale]);
+
   // إعدادات الموقع العامة (تذييل الصفحة، الشعار، شهادات الثقة): تُحمَّل حتى
   // قبل تسجيل الدخول (تظهر بشاشة الدخول نفسها)، ويقرأها الجميع، لكن فقط
   // المالك (is_owner) يقدر يكتبها فعليًا — القاعدة الأمنية بجهة الخادم.
@@ -8738,7 +9794,7 @@ export default function App() {
     <>
       <PrintStyles />
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} isOwner={isOwner} density={data.settings?.density} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
