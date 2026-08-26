@@ -10,7 +10,7 @@ import {
   Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange,
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
-  Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers,
+  Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
   CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
@@ -1449,15 +1449,12 @@ async function buildShawahedReportCanvas(shawahed, meta = {}) {
 // توقيع بالأسفل. يقبل قائمة مفاتيح الفئات المختارة فقط (تقرير فئة واحدة أو
 // عدة فئات مدمجة معًا حسب اختيار المستخدم).
 async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
-  const { countryName, ministryName, schoolName, logoImage, teacherName, principalName, subject, grade } = meta;
+  const { countryName, ministryName, schoolName, logoImage, teacherName, principalName, description } = meta;
   const entries = shawahed.entries || {};
   const cats = SHAWAHED_CATEGORIES.filter((c) => selectedKeys.includes(c.key) && (entries[c.key] || []).length > 0);
   const scale = 3;
-  const width = 900;
-  const pad = 36;
-
-  let totalEntries = 0;
-  cats.forEach((c) => { totalEntries += entries[c.key].length; });
+  const width = 860;
+  const pad = 40;
 
   let logoImageElement = null;
   if (logoImage) {
@@ -1465,29 +1462,40 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   }
 
   const measure = document.createElement("canvas").getContext("2d");
-  measure.font = "13px Tahoma, Arial";
+  measure.font = "13px 'IBM Plex Sans Arabic', Tahoma, Arial";
 
-  const bannerH = 108;
-  const breadcrumbH = 48;
-  const statsH = 92;
-  const catHeaderH = 40;
-  const rowH = 78;
-  const catGap = 16;
-  const footerH = 130;
+  // ---- header sizing ----
+  let headerH = 46; // top accent strip + breathing room
+  if (logoImageElement) headerH += 74; else headerH += 8;
+  if (countryName) headerH += 22;
+  if (ministryName) headerH += 20;
+  if (schoolName) headerH += 26;
+  headerH += 44; // report title
+  headerH += 12;
 
-  const rowLinesByCat = {};
+  // ---- description sizing ----
+  const descLines = description && description.trim() ? wrapCanvasText(measure, description.trim(), width - pad * 2) : [];
+  const descH = descLines.length ? descLines.length * 20 + 30 : 0;
+
+  // ---- cards grid sizing (2 columns) ----
+  const gap = 16;
+  const cardW = (width - pad * 2 - gap) / 2;
+  const cardImgH = 130;
+  const cardTextH = 76;
+  const cardH = cardImgH + cardTextH;
+  const catHeaderH = 38;
+
+  let bodyH = 0;
+  const catRowsCount = {};
   cats.forEach((cat) => {
-    rowLinesByCat[cat.key] = (entries[cat.key] || []).map((e) =>
-      wrapCanvasText(measure, e.notes || "", width - pad * 2 - 200)
-    );
+    const n = (entries[cat.key] || []).length;
+    const rows = Math.ceil(n / 2);
+    catRowsCount[cat.key] = rows;
+    bodyH += catHeaderH + 14 + rows * (cardH + gap);
   });
 
-  let bodyHeight = 0;
-  cats.forEach((cat) => {
-    bodyHeight += catHeaderH + 4 + (entries[cat.key] || []).length * rowH + catGap;
-  });
-
-  const height = bannerH + breadcrumbH + statsH + bodyHeight + footerH + pad;
+  const footerH = 110;
+  const height = headerH + descH + bodyH + footerH + pad;
 
   const canvas = document.createElement("canvas");
   canvas.width = width * scale;
@@ -1499,156 +1507,149 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
 
-  // ---- top banner ----
-  const bannerGrad = ctx.createLinearGradient(0, 0, width, 0);
-  bannerGrad.addColorStop(0, DASH_GREEN);
-  bannerGrad.addColorStop(1, DASH_GREEN_DARK);
-  ctx.fillStyle = bannerGrad;
-  ctx.fillRect(0, 0, width, bannerH);
+  // ---- clean header ----
+  ctx.fillStyle = DASH_GREEN;
+  ctx.fillRect(0, 0, width, 6);
 
+  let hy = 34;
+  ctx.textAlign = "center";
   if (logoImageElement) {
     const s = 58;
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(width - pad - s, (bannerH - s) / 2, s, s, 12);
+    ctx.roundRect((width - s) / 2, hy, s, s, 12);
     ctx.clip();
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(width - pad - s, (bannerH - s) / 2, s, s);
-    ctx.drawImage(logoImageElement, width - pad - s, (bannerH - s) / 2, s, s);
+    ctx.drawImage(logoImageElement, (width - s) / 2, hy, s, s);
     ctx.restore();
+    hy += s + 16;
   }
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 24px Tahoma, Arial";
-  const bannerTitle = cats.length === 1 ? cats[0].title : "سجل توثيق شواهد الأداء الوظيفي";
-  ctx.fillText(bannerTitle, width / 2, bannerH / 2 - 12);
-  ctx.font = "13px Tahoma, Arial";
-  ctx.fillStyle = GOLD_LIGHT;
-  const sub = [countryName, ministryName, schoolName].filter(Boolean).join("  •  ");
-  ctx.fillText(sub || " ", width / 2, bannerH / 2 + 16);
-
-  // ---- breadcrumb pills ----
-  let by = bannerH + breadcrumbH / 2;
-  const crumbs = [subject, grade, teacherName].filter(Boolean);
-  if (crumbs.length) {
-    ctx.font = "12px Tahoma, Arial";
-    let cx = width - pad;
-    crumbs.forEach((c) => {
-      const w = ctx.measureText(c).width + 28;
-      cx -= w;
-      ctx.fillStyle = "#F3F1E9";
-      ctx.beginPath();
-      ctx.roundRect(cx, by - 14, w, 28, 14);
-      ctx.fill();
-      ctx.fillStyle = INK;
-      ctx.textAlign = "center";
-      ctx.fillText(c, cx + w / 2, by + 1);
-      cx -= 10;
-    });
+  if (countryName) {
+    ctx.font = "bold 15px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = INK;
+    ctx.fillText(countryName, width / 2, hy);
+    hy += 22;
   }
+  if (ministryName) {
+    ctx.font = "13px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = MUTED;
+    ctx.fillText(ministryName, width / 2, hy);
+    hy += 20;
+  }
+  if (schoolName) {
+    ctx.font = "bold 15px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = DASH_GREEN;
+    ctx.fillText(schoolName, width / 2, hy);
+    hy += 26;
+  }
+  hy += 14;
+  ctx.font = "bold 22px 'IBM Plex Sans Arabic', Tahoma, Arial";
+  ctx.fillStyle = INK;
+  const reportTitle = cats.length === 1 ? cats[0].title : "سجل توثيق شواهد الأداء الوظيفي";
+  ctx.fillText(reportTitle, width / 2, hy);
+  hy += 18;
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(width / 2 - 34, hy);
+  ctx.lineTo(width / 2 + 34, hy);
+  ctx.stroke();
 
-  // ---- stat mini-cards ----
-  let sy = bannerH + breadcrumbH + 10;
-  const stats = [
-    { label: "إجمالي الشواهد", value: totalEntries },
-    { label: "عدد الفئات", value: cats.length },
-    { label: "التاريخ", value: formatDateDisplay(todayKey()) },
-  ];
-  const cardGap = 14;
-  const cardW = (width - pad * 2 - cardGap * (stats.length - 1)) / stats.length;
-  stats.forEach((s, i) => {
-    const x = pad + i * (cardW + cardGap);
-    ctx.fillStyle = i === 1 ? GOLD : DASH_GREEN;
-    ctx.beginPath();
-    ctx.roundRect(x, sy, cardW, statsH - 16, 14);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
+  let y = headerH;
+
+  // ---- description paragraph ----
+  if (descLines.length) {
     ctx.textAlign = "center";
-    ctx.font = "bold 20px Tahoma, Arial";
-    ctx.fillText(String(s.value), x + cardW / 2, sy + statsH / 2 - 22);
-    ctx.font = "11px Tahoma, Arial";
-    ctx.globalAlpha = 0.85;
-    ctx.fillText(s.label, x + cardW / 2, sy + statsH / 2 - 2);
-    ctx.globalAlpha = 1;
-  });
+    ctx.font = "13px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = MUTED;
+    let dy = y + 16;
+    descLines.forEach((ln) => { ctx.fillText(ln, width / 2, dy); dy += 20; });
+    y += descH;
+  }
 
-  // ---- category sections ----
-  let y = bannerH + breadcrumbH + statsH;
+  // ---- category cards grid ----
   for (const cat of cats) {
-    const officialIndex = SHAWAHED_CATEGORIES.indexOf(cat) + 1;
-    ctx.fillStyle = cat.color;
-    ctx.beginPath();
-    ctx.roundRect(pad, y, width - pad * 2, catHeaderH, 10);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 14px Tahoma, Arial";
-    ctx.textAlign = "right";
-    ctx.fillText(`${officialIndex}. ${cat.title}`, width - pad - 14, y + catHeaderH / 2);
-    ctx.textAlign = "left";
-    ctx.font = "12px Tahoma, Arial";
-    ctx.fillText(`${(entries[cat.key] || []).length} شاهد`, pad + 14, y + catHeaderH / 2);
-    y += catHeaderH + 4;
-
     const list = entries[cat.key] || [];
-    for (let ri = 0; ri < list.length; ri++) {
-      const entry = list[ri];
-      const rY = y;
-      ctx.fillStyle = ri % 2 ? "#FBFAF6" : "#fff";
-      ctx.fillRect(pad, rY, width - pad * 2, rowH - 6);
-      ctx.strokeStyle = LINE;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(pad, rY, width - pad * 2, rowH - 6);
+    const officialIndex = SHAWAHED_CATEGORIES.indexOf(cat) + 1;
 
-      const chipR = 11;
-      ctx.beginPath();
-      ctx.arc(width - pad - 20, rY + 24, chipR, 0, Math.PI * 2);
-      ctx.fillStyle = cat.color;
-      ctx.fill();
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(width - pad - 25, rY + 24);
-      ctx.lineTo(width - pad - 21, rY + 28);
-      ctx.lineTo(width - pad - 14, rY + 19);
-      ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.font = "bold 14px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = cat.color;
+    ctx.fillText(`${officialIndex}.  ${cat.title}`, width - pad, y + catHeaderH / 2);
+    ctx.strokeStyle = `${cat.color}33`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, y + catHeaderH - 6);
+    ctx.lineTo(width - pad, y + catHeaderH - 6);
+    ctx.stroke();
+    y += catHeaderH + 14;
 
-      let photoImg = null;
-      if (entry.photo) { try { photoImg = await loadImage(entry.photo); } catch (e) { photoImg = null; } }
-      let leftEdge = pad + 16;
-      if (photoImg) {
-        const thumb = 44;
+    for (let ri = 0; ri < list.length; ri += 2) {
+      const pairY = y;
+      for (let ci = 0; ci < 2; ci++) {
+        const entry = list[ri + ci];
+        if (!entry) continue;
+        const cx = pad + ci * (cardW + gap);
+
+        ctx.fillStyle = "#fff";
+        ctx.strokeStyle = LINE;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(cx, pairY, cardW, cardH, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // image area (or colored placeholder)
+        let photoImg = null;
+        if (entry.photo) { try { photoImg = await loadImage(entry.photo); } catch (e) { photoImg = null; } }
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(pad + 10, rY + 12, thumb, thumb, 8);
+        ctx.roundRect(cx, pairY, cardW, cardImgH, [12, 12, 0, 0]);
         ctx.clip();
-        ctx.drawImage(photoImg, pad + 10, rY + 12, thumb, thumb);
+        if (photoImg) {
+          const iw = photoImg.width, ih = photoImg.height;
+          const ir = iw / ih, tr = cardW / cardImgH;
+          let sx, sy, sw, sh;
+          if (ir > tr) { sh = ih; sw = ih * tr; sx = (iw - sw) / 2; sy = 0; }
+          else { sw = iw; sh = iw / tr; sx = 0; sy = (ih - sh) / 2; }
+          ctx.drawImage(photoImg, sx, sy, sw, sh, cx, pairY, cardW, cardImgH);
+        } else {
+          ctx.fillStyle = `${cat.color}12`;
+          ctx.fillRect(cx, pairY, cardW, cardImgH);
+          ctx.fillStyle = cat.color;
+          ctx.textAlign = "center";
+          ctx.font = "bold 26px 'IBM Plex Sans Arabic', Tahoma, Arial";
+          ctx.fillText("✓", cx + cardW / 2, pairY + cardImgH / 2);
+        }
         ctx.restore();
-        leftEdge = pad + 10 + thumb + 12;
+
+        // text area
+        const textY = pairY + cardImgH;
+        ctx.textAlign = "right";
+        ctx.fillStyle = INK;
+        ctx.font = "bold 13px 'IBM Plex Sans Arabic', Tahoma, Arial";
+        const titleLines = wrapCanvasText(measure, entry.title, cardW - 24).slice(0, 2);
+        let ty = textY + 20;
+        titleLines.forEach((ln) => { ctx.fillText(ln, cx + cardW - 12, ty); ty += 18; });
+
+        if (entry.notes) {
+          ctx.font = "11px 'IBM Plex Sans Arabic', Tahoma, Arial";
+          ctx.fillStyle = MUTED;
+          const noteLines = wrapCanvasText(measure, entry.notes, cardW - 24).slice(0, 1);
+          if (noteLines[0]) ctx.fillText(noteLines[0], cx + cardW - 12, ty);
+        }
+
+        ctx.textAlign = "left";
+        ctx.font = "10px 'IBM Plex Sans Arabic', Tahoma, Arial";
+        ctx.fillStyle = MUTED;
+        ctx.fillText(formatDateDisplay(entry.date), cx + 12, textY + cardTextH - 12);
       }
-
-      ctx.textAlign = "right";
-      ctx.fillStyle = INK;
-      ctx.font = "bold 13px Tahoma, Arial";
-      ctx.fillText(entry.title, width - pad - 40, rY + 22);
-
-      ctx.font = "11px Tahoma, Arial";
-      ctx.fillStyle = MUTED;
-      const lines = rowLinesByCat[cat.key][ri];
-      if (lines && lines[0]) ctx.fillText(lines[0], width - pad - 40, rY + 42);
-
-      ctx.textAlign = "left";
-      ctx.font = "10px Tahoma, Arial";
-      ctx.fillStyle = MUTED;
-      ctx.fillText(formatDateDisplay(entry.date), leftEdge, rY + rowH - 22);
-
-      y += rowH;
+      y += cardH + gap;
     }
-    y += catGap;
+    y += 6;
   }
 
   // ---- footer signature cards ----
-  y += 10;
+  y += 14;
   const boxW = (width - pad * 2 - 20) / 2;
   const boxH = footerH - 30;
   ctx.textAlign = "center";
@@ -1656,20 +1657,23 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
     { label: "توقيع المعلم/ـة", name: teacherName, x: pad },
     { label: "توقيع مدير/ة المدرسة", name: principalName, x: pad + boxW + 20 },
   ].forEach((box) => {
-    ctx.fillStyle = GOLD_LIGHT;
+    ctx.fillStyle = "#FAF8F3";
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(box.x, y, boxW, boxH, 14);
+    ctx.roundRect(box.x, y, boxW, boxH, 12);
     ctx.fill();
+    ctx.stroke();
     ctx.fillStyle = DASH_GREEN;
-    ctx.font = "bold 13px Tahoma, Arial";
-    ctx.fillText(box.label, box.x + boxW / 2, y + 26);
-    ctx.font = "12px Tahoma, Arial";
+    ctx.font = "bold 12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillText(box.label, box.x + boxW / 2, y + 24);
+    ctx.font = "12px 'IBM Plex Sans Arabic', Tahoma, Arial";
     ctx.fillStyle = INK;
-    ctx.fillText(box.name && box.name.trim() ? box.name : "....................................", box.x + boxW / 2, y + 52);
+    ctx.fillText(box.name && box.name.trim() ? box.name : "....................................", box.x + boxW / 2, y + 48);
     ctx.strokeStyle = "#D8CDA8";
     ctx.beginPath();
-    ctx.moveTo(box.x + 20, y + boxH - 18);
-    ctx.lineTo(box.x + boxW - 20, y + boxH - 18);
+    ctx.moveTo(box.x + 20, y + boxH - 16);
+    ctx.lineTo(box.x + boxW - 20, y + boxH - 16);
     ctx.stroke();
   });
 
@@ -1870,6 +1874,70 @@ function buildReadOnlyStudentHtml(cls, row, entries) {
   <h1>${escapeHtml(row.name)}</h1>
   <p class="sub">${escapeHtml(cls.subject)} • ${escapeHtml(cls.grade)} • ${escapeHtml(cls.teacher)}</p>
   ${groups.length === 0 ? `<p style="color:${MUTED};">لا يوجد رصد بعد.</p>` : sectionsHtml}
+</body></html>`;
+}
+
+// نسخة HTML نظيفة للمشاركة للقراءة فقط بتبويب الشواهد — بدون أي علامة أو
+// إشارة "للقراءة فقط"، تبدو كصفحة تقرير رسمية عادية عند فتحها.
+function buildReadOnlyShawahedHtml(shawahed, selectedKeys, meta = {}) {
+  const { countryName, ministryName, schoolName, teacherName, principalName, description } = meta;
+  const entries = shawahed.entries || {};
+  const cats = SHAWAHED_CATEGORIES.filter((c) => selectedKeys.includes(c.key) && (entries[c.key] || []).length > 0);
+  const reportTitle = cats.length === 1 ? cats[0].title : "سجل توثيق شواهد الأداء الوظيفي";
+
+  const catsHtml = cats.map((cat) => {
+    const officialIndex = SHAWAHED_CATEGORIES.indexOf(cat) + 1;
+    const cardsHtml = (entries[cat.key] || []).map((e) => `
+      <div style="border:1px solid ${LINE};border-radius:12px;overflow:hidden;background:#fff;">
+        ${e.photo ? `<img src="${e.photo}" style="width:100%;height:150px;object-fit:cover;display:block;" />` : `<div style="width:100%;height:150px;background:${cat.color}12;display:flex;align-items:center;justify-content:center;color:${cat.color};font-size:26px;font-weight:bold;">✓</div>`}
+        <div style="padding:12px;">
+          <p style="margin:0 0 4px;font-weight:bold;font-size:13px;color:${INK};">${escapeHtml(e.title)}</p>
+          ${e.notes ? `<p style="margin:0 0 6px;font-size:11px;color:${MUTED};">${escapeHtml(e.notes)}</p>` : ""}
+          <p style="margin:0;font-size:10px;color:${MUTED};text-align:left;">${escapeHtml(formatDateDisplay(e.date))}</p>
+        </div>
+      </div>`).join("");
+    return `
+      <div style="margin-bottom:28px;">
+        <p style="font-weight:bold;font-size:15px;color:${cat.color};border-bottom:1px solid ${cat.color}33;padding-bottom:8px;margin-bottom:14px;">${officialIndex}. ${escapeHtml(cat.title)}</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">${cardsHtml}</div>
+      </div>`;
+  }).join("");
+
+  return `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(reportTitle)}</title>
+<style>
+  body { font-family: Tahoma, Arial, sans-serif; background: ${PAPER}; color: ${INK}; padding: 0; margin: 0; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 32px 20px 60px; }
+  .accent-bar { height: 6px; background: ${DASH_GREEN}; }
+  .header { text-align: center; margin-bottom: 24px; }
+  .header h1 { font-size: 22px; margin: 14px 0 0; }
+  .header .divider { width: 68px; height: 2px; background: ${GOLD}; margin: 10px auto 0; }
+  .desc { text-align: center; color: ${MUTED}; font-size: 13px; max-width: 620px; margin: 16px auto 28px; line-height: 1.7; }
+  @media (max-width: 500px) { div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
+</style></head>
+<body>
+  <div class="accent-bar"></div>
+  <div class="wrap">
+    <div class="header">
+      ${countryName ? `<p style="margin:0;font-weight:bold;font-size:14px;">${escapeHtml(countryName)}</p>` : ""}
+      ${ministryName ? `<p style="margin:2px 0 0;color:${MUTED};font-size:12px;">${escapeHtml(ministryName)}</p>` : ""}
+      ${schoolName ? `<p style="margin:2px 0 0;font-weight:bold;color:${DASH_GREEN};font-size:13px;">${escapeHtml(schoolName)}</p>` : ""}
+      <h1>${escapeHtml(reportTitle)}</h1>
+      <div class="divider"></div>
+    </div>
+    ${description && description.trim() ? `<p class="desc">${escapeHtml(description.trim())}</p>` : ""}
+    ${cats.length === 0 ? `<p style="text-align:center;color:${MUTED};">لا يوجد شواهد لعرضها.</p>` : catsHtml}
+    <div style="display:flex;gap:16px;margin-top:28px;">
+      <div style="flex:1;background:#FAF8F3;border:1px solid ${LINE};border-radius:12px;padding:16px;text-align:center;">
+        <p style="margin:0 0 6px;font-weight:bold;font-size:12px;color:${DASH_GREEN};">توقيع المعلم/ـة</p>
+        <p style="margin:0;font-size:12px;">${teacherName ? escapeHtml(teacherName) : "...................................."}</p>
+      </div>
+      <div style="flex:1;background:#FAF8F3;border:1px solid ${LINE};border-radius:12px;padding:16px;text-align:center;">
+        <p style="margin:0 0 6px;font-weight:bold;font-size:12px;color:${DASH_GREEN};">توقيع مدير/ة المدرسة</p>
+        <p style="margin:0;font-size:12px;">${principalName ? escapeHtml(principalName) : "...................................."}</p>
+      </div>
+    </div>
+  </div>
 </body></html>`;
 }
 
@@ -4635,15 +4703,31 @@ function ShawahedGoalsModal({ goals, onSave, onClose }) {
 }
 
 // مودال يسمح باختيار فئة واحدة (تقرير مستقل) أو عدة فئات (تُدمج بتقرير
-// واحد) قبل المعاينة/الطباعة/المشاركة.
-function ShawahedExportPickerModal({ shawahed, initialKeys, onClose, onConfirm }) {
+// واحد) قبل المعاينة/الطباعة/المشاركة، مع وصف عام جاهز وقابل للتعديل.
+function ShawahedExportPickerModal({ shawahed, initialKeys, teacherName, onClose, onConfirm, onShareReadOnly }) {
   const entries = shawahed.entries || {};
   const available = SHAWAHED_CATEGORIES.filter((c) => (entries[c.key] || []).length > 0);
   const [selected, setSelected] = useState(initialKeys && initialKeys.length ? initialKeys : available.map((c) => c.key));
+  const [description, setDescription] = useState("");
+  const [descTouched, setDescTouched] = useState(false);
 
   const toggle = (key) => setSelected((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
   const selectAll = () => setSelected(available.map((c) => c.key));
   const selectNone = () => setSelected([]);
+
+  useEffect(() => {
+    if (descTouched) return;
+    const chosen = available.filter((c) => selected.includes(c.key));
+    const total = chosen.reduce((s, c) => s + (entries[c.key]?.length || 0), 0);
+    const namesList = chosen.map((c) => c.title).join("، ");
+    const auto = chosen.length === 0
+      ? ""
+      : chosen.length === 1
+      ? `يوثّق هذا التقرير ${total} شاهدًا على أداء ${teacherName || "المعلم/ـة"} فيما يخص معيار "${chosen[0].title}"، ويُظهر التزامه/ـا التطبيقي بهذا الجانب من الأداء الوظيفي.`
+      : `يوثّق هذا التقرير ${total} شاهدًا على الأداء الوظيفي لـ ${teacherName || "المعلم/ـة"}، موزّعة على المعايير التالية: ${namesList}.`;
+    setDescription(auto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected.join(","), available.length]);
 
   return (
     <Modal title="اختر الفئات للتقرير" onClose={onClose} accent="magic">
@@ -4658,7 +4742,7 @@ function ShawahedExportPickerModal({ shawahed, initialKeys, onClose, onConfirm }
               {selected.length === 1 ? "تقرير فئة واحدة" : selected.length > 1 ? `دمج ${selected.length} فئة بتقرير واحد` : "لم يُحدَّد شيء"}
             </span>
           </div>
-          <div className="space-y-1.5 mb-4 max-h-72 overflow-y-auto">
+          <div className="space-y-1.5 mb-4 max-h-56 overflow-y-auto">
             {available.map((c) => (
               <label
                 key={c.key}
@@ -4672,14 +4756,32 @@ function ShawahedExportPickerModal({ shawahed, initialKeys, onClose, onConfirm }
               </label>
             ))}
           </div>
+          <Field label="وصف عام للتقرير (جاهز — تقدر تعدّله)">
+            <textarea
+              value={description}
+              onChange={(e) => { setDescription(e.target.value); setDescTouched(true); }}
+              style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
+              placeholder="وصف مختصر يوضّح فحوى الشواهد المرفقة..."
+            />
+          </Field>
           <button
             disabled={selected.length === 0}
-            onClick={() => onConfirm(selected)}
+            onClick={() => onConfirm(selected, description)}
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
             style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
           >
             معاينة التقرير {selected.length > 0 ? `(${selected.length})` : ""}
           </button>
+          {onShareReadOnly && (
+            <button
+              disabled={selected.length === 0}
+              onClick={() => onShareReadOnly(selected, description)}
+              className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40 transition-all hover:bg-black/5"
+              style={{ border: `1px solid ${LINE}`, color: INK }}
+            >
+              مشاركة رابط للقراءة فقط (للإدارة مثلًا)
+            </button>
+          )}
         </>
       )}
     </Modal>
@@ -4701,6 +4803,59 @@ function libraryFileIcon(mimeType) {
 
 // شارة صغيرة تبين هل التطبيق متصل بالإنترنت فعليًا وهل آخر تعديل انحفظ
 // بالسحابة أو لسه بانتظار الاتصال — تطمينة سريعة خصوصًا بشبكة مدرسة ضعيفة.
+// صندوق صغير بأعلى صفحة الفصل يسمح بإضافة "مواد إضافية" للفصل نفسه — مفيد
+// لو المعلم يدرّس نفس مجموعة الطلاب أكثر من مادة (مثلًا لغتي + دراسات
+// إسلامية) ويبي يديرهم بجدول واحد بدل تكرار إنشاء فصل منفصل لكل مادة.
+function AdditionalSubjectsBox({ subjects, onAdd, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+
+  const submit = () => {
+    if (!text.trim()) return;
+    onAdd(text.trim());
+    setText("");
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-full"
+        style={{ border: `1px solid ${LINE}`, color: "#26423B", background: subjects.length > 0 ? GOLD_LIGHT : "#fff" }}
+      >
+        <Plus size={13} />
+        {subjects.length > 0 ? `${subjects.length} مادة إضافية` : "مادة إضافية"}
+      </button>
+      {open && (
+        <div className="absolute z-30 top-full mt-1 rounded-xl shadow-lg p-3" style={{ background: "#fff", border: `1px solid ${LINE}`, width: 220, insetInlineStart: 0 }}>
+          <p className="text-xs font-bold mb-2" style={{ color: INK }}>مواد إضافية لهذا الفصل</p>
+          {subjects.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {subjects.map((s, i) => (
+                <span key={i} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full" style={{ background: GOLD_LIGHT, color: "#26423B" }}>
+                  {s}
+                  <button onClick={() => onRemove(i)}><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              style={{ ...inputStyle, padding: "6px 10px", fontSize: 12 }}
+              placeholder="اسم المادة"
+              autoFocus
+            />
+            <button onClick={submit} className="text-xs font-bold px-2.5 rounded-lg text-white shrink-0" style={{ background: "#26423B" }}>إضافة</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SyncStatusBadge({ isOnline, syncStatus }) {
   let icon = Check, color = "#0F9D58", bg = "#E3F1EC", label = "محفوظ";
   if (!isOnline) { icon = WifiOff; color = "#C0392B"; bg = "#FBEAE7"; label = "غير متصل"; }
@@ -4824,7 +4979,7 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
   );
 }
 
-function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare = false }) {
+function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onShareReadOnly, teacherName, bare = false }) {
   const [openCat, setOpenCat] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [showExportPicker, setShowExportPicker] = useState(false);
@@ -4925,8 +5080,10 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, bare
       {showExportPicker && (
         <ShawahedExportPickerModal
           shawahed={shawahed}
+          teacherName={teacherName}
           onClose={() => setShowExportPicker(false)}
-          onConfirm={(keys) => { setShowExportPicker(false); onExport(keys); }}
+          onConfirm={(keys, description) => { setShowExportPicker(false); onExport(keys, description); }}
+          onShareReadOnly={(keys, description) => { setShowExportPicker(false); onShareReadOnly(keys, description); }}
         />
       )}
 
@@ -6944,6 +7101,343 @@ function RowColorRuleModal({ cls, onClose, onSave, onClear }) {
   );
 }
 
+// ---------- الأدوات التفاعلية (ألعاب HTML مربوطة بالفصل) ----------
+//
+// أي لعبة (جاهزة من التطبيق، أو رفعها المعلم من المكتبة) لازم تنادي هذا
+// السطر بالضبط عند إجابة صحيحة، حتى تُحتسب النقطة للطالب النشط تلقائيًا:
+//   window.parent.postMessage({ type: "fasooli:answer", correct: true }, "*");
+// ولو الإجابة غلط (اختياري، ما يؤثر على الدرجة):
+//   window.parent.postMessage({ type: "fasooli:answer", correct: false }, "*");
+
+// لعبة جاهزة مدمجة بالتطبيق كمثال حي — أسئلة اختيار من متعدد سريعة، تطبّق
+// نفس البروتوكول أعلاه بالضبط.
+const BUILTIN_GAME_QUIZ_HTML = `<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, Arial, sans-serif; background: #FAF8F3; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #fff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 28px; width: 100%; max-width: 460px; text-align: center; }
+  .badge { display: inline-block; background: #26423B; color: #fff; font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 999px; margin-bottom: 16px; }
+  h1 { font-size: 19px; color: #232622; margin: 0 0 24px; line-height: 1.5; }
+  .options { display: flex; flex-direction: column; gap: 10px; }
+  button.opt { font-family: inherit; font-size: 15px; padding: 14px; border-radius: 12px; border: 2px solid #E4DFD2; background: #fff; cursor: pointer; transition: all 0.15s; }
+  button.opt:active { transform: scale(0.97); }
+  button.opt.correct { background: #E3F1EC; border-color: #0F9D58; color: #0F9D58; font-weight: bold; }
+  button.opt.wrong { background: #FBEAE7; border-color: #C0392B; color: #C0392B; }
+  .feedback { margin-top: 16px; font-size: 14px; font-weight: bold; min-height: 20px; }
+  .score { position: absolute; top: 16px; left: 16px; font-size: 12px; color: #7A7768; }
+</style></head>
+<body>
+  <div class="score" id="score">النقاط: 0</div>
+  <div class="card">
+    <span class="badge" id="qnum">سؤال 1</span>
+    <h1 id="question"></h1>
+    <div class="options" id="options"></div>
+    <p class="feedback" id="feedback"></p>
+  </div>
+<script>
+  const QUESTIONS = [
+    { q: "كم عدد أركان الإسلام؟", opts: ["ثلاثة", "أربعة", "خمسة", "ستة"], correct: 2 },
+    { q: "ما عاصمة المملكة العربية السعودية؟", opts: ["جدة", "الرياض", "الدمام", "مكة"], correct: 1 },
+    { q: "كم عدد أيام الأسبوع؟", opts: ["خمسة", "ستة", "سبعة", "ثمانية"], correct: 2 },
+    { q: "ما ناتج 7 × 6؟", opts: ["36", "42", "48", "45"], correct: 1 },
+    { q: "أين تقع قارة أفريقيا بالنسبة لآسيا؟", opts: ["شمالها", "جنوبها", "غربها", "شرقها"], correct: 2 },
+    { q: "كم عدد فصول السنة؟", opts: ["اثنان", "ثلاثة", "أربعة", "خمسة"], correct: 2 },
+    { q: "ما هو أكبر كوكب في المجموعة الشمسية؟", opts: ["الأرض", "المريخ", "المشتري", "زحل"], correct: 2 },
+    { q: "كم حرفًا في الأبجدية العربية؟", opts: ["26", "27", "28", "29"], correct: 2 },
+  ];
+  let idx = Math.floor(Math.random() * QUESTIONS.length);
+  let score = 0;
+  let qCount = 0;
+  let locked = false;
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function render() {
+    locked = false;
+    qCount++;
+    const item = QUESTIONS[idx];
+    document.getElementById("qnum").textContent = "سؤال " + qCount;
+    document.getElementById("question").textContent = item.q;
+    document.getElementById("feedback").textContent = "";
+    const optsDiv = document.getElementById("options");
+    optsDiv.innerHTML = "";
+    const order = shuffle(item.opts.map((t, i) => ({ t, correct: i === item.correct })));
+    order.forEach((o) => {
+      const btn = document.createElement("button");
+      btn.className = "opt";
+      btn.textContent = o.t;
+      btn.onclick = () => choose(btn, o.correct);
+      optsDiv.appendChild(btn);
+    });
+  }
+
+  function choose(btn, isCorrect) {
+    if (locked) return;
+    locked = true;
+    btn.classList.add(isCorrect ? "correct" : "wrong");
+    document.getElementById("feedback").textContent = isCorrect ? "✓ إجابة صحيحة! نقطة للطالب النشط 🎉" : "✗ إجابة خاطئة";
+    document.getElementById("feedback").style.color = isCorrect ? "#0F9D58" : "#C0392B";
+    if (isCorrect) { score++; document.getElementById("score").textContent = "النقاط: " + score; }
+    window.parent.postMessage({ type: "fasooli:answer", correct: isCorrect }, "*");
+    setTimeout(() => {
+      idx = Math.floor(Math.random() * QUESTIONS.length);
+      render();
+    }, 1400);
+  }
+
+  render();
+</script>
+</body></html>`;
+
+const BUILTIN_GAMES = [
+  {
+    id: "builtin-quiz",
+    name: "لعبة الأسئلة السريعة",
+    description: "أسئلة اختيار من متعدد جاهزة — كل إجابة صحيحة تسجّل نقطة للطالب النشط تلقائيًا.",
+    html: BUILTIN_GAME_QUIZ_HTML,
+  },
+];
+
+// انفجار علامة ✓ خضراء قصير فوق صف الطالب اللي حصل على نقطة لحظتها —
+// نفس أسلوب التأكيد البصري المطلوب.
+function GamePointBurst() {
+  return (
+    <div
+      className="celebrate-in"
+      style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5, pointerEvents: "none" }}
+    >
+      <div className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg" style={{ background: "#4ADE80" }}>
+        <Check size={26} color="#fff" strokeWidth={3.5} />
+      </div>
+    </div>
+  );
+}
+
+// نافذة "الأدوات التفاعلية": تختار لعبة (جاهزة من التطبيق، أو رفعتها من
+// المكتبة كملف HTML)، تحدد "الطالب النشط" من قائمة الفصل، وأي إجابة صحيحة
+// باللعبة تضيف نقطة لعموده تلقائيًا مع تأكيد بصري فوري.
+// نافذة تشغيل اللعبة فعليًا بعد ربطها بفصل — تحدد "الطالب النشط"، وأي
+// إجابة صحيحة تضيف نقطة مباشرة بعمود "المشاركة" لذاك الطالب تلقائيًا
+// (يُنشأ العمود تلقائيًا أول مرة لو ما كان موجودًا بالفصل).
+function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
+  const [activeRowId, setActiveRowId] = useState(cls.rows[0]?.id || null);
+  const [flashRowId, setFlashRowId] = useState(null);
+
+  const ensureParticipationColumn = () => {
+    const existing = cls.columns.find((c) => c.name === "المشاركة" && c.type === "counter");
+    if (existing) return existing.id;
+    const newId = uid();
+    updateClass((c) => {
+      if (c.columns.some((cc) => cc.name === "المشاركة" && cc.type === "counter")) return c;
+      return { ...c, columns: [...c.columns, { id: newId, name: "المشاركة", type: "counter", options: [], color: "#0F9D58", autoRenew: false, pinned: false }] };
+    });
+    return newId;
+  };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.data || e.data.type !== "fasooli:answer" || !e.data.correct) return;
+      if (!activeRowId) return;
+      const colId = ensureParticipationColumn();
+      updateClass((c) => {
+        const col = c.columns.find((cc) => cc.id === colId) || { id: colId, name: "المشاركة", color: "#0F9D58" };
+        const key = `${activeRowId}:${colId}`;
+        const current = Number(c.cells[key]) || 0;
+        const next = current + 1;
+        const meta = nowMeta();
+        const entry = { id: uid(), colId, colName: col.name, colColor: col.color, value: String(next), ...meta };
+        return {
+          ...c,
+          cells: { ...c.cells, [key]: String(next) },
+          reports: { ...(c.reports || {}), [activeRowId]: [...(c.reports?.[activeRowId] || []), entry] },
+        };
+      });
+      setFlashRowId(activeRowId);
+      setTimeout(() => setFlashRowId(null), 900);
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRowId, cls.columns]);
+
+  const participationCol = cls.columns.find((c) => c.name === "المشاركة" && c.type === "counter");
+
+  return (
+    <Modal title={`${game.name} — ${cls.subject}`} onClose={onClose} onBack={onBack} accent="magic" xl>
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+        <div>
+          <p className="text-xs font-bold mb-2" style={{ color: INK }}>الطالب النشط (يستلم النقاط)</p>
+          <p className="text-xs mb-2" style={{ color: MUTED }}>النقاط تُسجَّل بعمود "المشاركة"{participationCol ? "" : " (سيُنشأ تلقائيًا أول نقطة)"}</p>
+          <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
+            {cls.rows.map((row) => {
+              const isActive = row.id === activeRowId;
+              const pts = participationCol ? (cls.cells[`${row.id}:${participationCol.id}`] || 0) : 0;
+              return (
+                <button
+                  key={row.id}
+                  onClick={() => setActiveRowId(row.id)}
+                  className="relative w-full flex items-center gap-2 p-2.5 rounded-xl text-right transition-all"
+                  style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff" }}
+                >
+                  {flashRowId === row.id && <GamePointBurst />}
+                  <span className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
+                    {(row.name || "؟").trim().charAt(0)}
+                  </span>
+                  <span className="flex-1 text-sm font-semibold truncate" style={{ color: INK }}>{row.name}</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: "#26423B", color: "#fff" }}>{pts}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, minHeight: 480 }}>
+          <iframe
+            title="لعبة"
+            srcDoc={game.html}
+            sandbox="allow-scripts"
+            style={{ width: "100%", height: 480, border: "none" }}
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// خطوة اختيار الفصل اللي راح تُربَط فيه اللعبة قبل بدء اللعب.
+function GameClassPickerModal({ classes, onSelect, onClose, onBack }) {
+  const activeClasses = classes.filter((c) => !c.archived);
+  return (
+    <Modal title="اربط اللعبة بفصل" onClose={onClose} onBack={onBack} accent="magic">
+      {activeClasses.length === 0 ? (
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد فصول بعد.</p>
+      ) : (
+        <div className="space-y-2">
+          {activeClasses.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onSelect(c.id)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+              style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: INK }}>{c.subject}</p>
+                <p className="text-xs" style={{ color: MUTED }}>{c.grade} • {c.rows.length} طالب</p>
+              </div>
+              <ChevronLeft size={16} color={MUTED} />
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// تبويب "الأدوات التفاعلية" بالصفحة الرئيسية: قائمة الألعاب (جاهزة من
+// التطبيق، أو رفعتها بنفسك من المكتبة كملف HTML)، تختار لعبة ثم تربطها
+// بفصل، وبعدها تبدأ اللعب مباشرة.
+function GamesHub({ classes, library, updateClassById, bare = false }) {
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [linkedClassId, setLinkedClassId] = useState(null);
+
+  const libraryGames = (library || []).filter((f) => (f.mimeType || "").includes("html") || (f.name || "").toLowerCase().endsWith(".html"));
+
+  if (selectedGame && linkedClassId) {
+    const cls = classes.find((c) => c.id === linkedClassId);
+    if (!cls) { setLinkedClassId(null); return null; }
+    return (
+      <GamePlayerModal
+        cls={cls}
+        updateClass={(fn) => updateClassById(linkedClassId, fn)}
+        game={selectedGame}
+        onBack={() => setLinkedClassId(null)}
+        onClose={() => { setSelectedGame(null); setLinkedClassId(null); }}
+      />
+    );
+  }
+
+  if (selectedGame) {
+    return (
+      <GameClassPickerModal
+        classes={classes}
+        onSelect={(classId) => setLinkedClassId(classId)}
+        onBack={() => setSelectedGame(null)}
+        onClose={() => setSelectedGame(null)}
+      />
+    );
+  }
+
+  const content = (
+    <>
+      <p className="text-xs mb-4" style={{ color: MUTED }}>
+        اختر لعبة، اربطها بفصل، وابدأ اللعب — أي إجابة صحيحة تضيف نقطة مباشرة لعمود "المشاركة" للطالب النشط.
+      </p>
+      <p className="text-xs font-bold mb-2" style={{ color: INK }}>ألعاب جاهزة</p>
+      <div className="space-y-2 mb-5">
+        {BUILTIN_GAMES.map((g) => (
+          <button key={g.id} onClick={() => setSelectedGame(g)} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#EAF3F0" }}>
+              <Gamepad2 size={18} color="#26423B" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold" style={{ color: INK }}>{g.name}</p>
+              <p className="text-xs" style={{ color: MUTED }}>{g.description}</p>
+            </div>
+            <ChevronLeft size={16} color={MUTED} className="shrink-0" />
+          </button>
+        ))}
+      </div>
+      <p className="text-xs font-bold mb-2" style={{ color: INK }}>ألعابك المرفوعة (من المكتبة)</p>
+      {libraryGames.length === 0 ? (
+        <p className="text-xs text-center py-6" style={{ color: MUTED }}>
+          ارفع ملف HTML من تبويب "المكتبة" عشان تظهر هنا كلعبة قابلة للربط. أي لعبة ترفعها لازم تنادي عند الإجابة الصحيحة:
+          <br /><code style={{ direction: "ltr", display: "inline-block", marginTop: 6 }}>window.parent.postMessage({"{"}type:"fasooli:answer",correct:true{"}"}, "*")</code>
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {libraryGames.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => {
+                try {
+                  const base64 = f.dataUrl.split(",")[1];
+                  const html = decodeURIComponent(escape(atob(base64)));
+                  setSelectedGame({ id: f.id, name: f.name, html });
+                } catch (e) {
+                  alert("تعذّرت قراءة هذا الملف كصفحة HTML صحيحة.");
+                }
+              }}
+              className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+              style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+            >
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}>
+                <FileText size={18} color="#26423B" />
+              </div>
+              <p className="text-sm font-bold flex-1" style={{ color: INK }}>{f.name}</p>
+              <ChevronLeft size={16} color={MUTED} className="shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  if (bare) return content;
+  return (
+    <Modal title="الأدوات التفاعلية" onClose={() => {}} accent="magic" wide>
+      {content}
+    </Modal>
+  );
+}
+
 function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
   const [dateKey, setDateKey] = useState(todayKey());
 
@@ -7485,7 +7979,80 @@ function StudentQrModal({ cls, row, onSaveShareId, onClose }) {
   );
 }
 
-function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent, onSaveShareId }) {
+// يربط تقرير طالب (أو أي رصد بالفصل) بشاهد أداء وظيفي — إما ينشئ شاهدًا
+// جديدًا أو يرفق الصورة على شاهد موجود مسبقًا، فيصير محفوظًا دائمًا بتبويب
+// الشواهد كمرجع يرجع له المعلم لاحقًا.
+function LinkToShawahedModal({ cls, row, entries, shawahed, onLink, onClose }) {
+  const shawahedEntries = shawahed.entries || {};
+  const [catKey, setCatKey] = useState(SHAWAHED_CATEGORIES[0].key);
+  const [mode, setMode] = useState("new"); // new | existing
+  const [existingId, setExistingId] = useState("");
+  const [title, setTitle] = useState(`تقرير أداء — ${row.name}`);
+  const [notes, setNotes] = useState(`مرتبط بتقرير الطالب ${row.name} — ${cls.subject} (${cls.grade})`);
+  const [generating, setGenerating] = useState(false);
+
+  const cat = SHAWAHED_CATEGORIES.find((c) => c.key === catKey);
+  const existingForCat = shawahedEntries[catKey] || [];
+
+  const confirm = async () => {
+    setGenerating(true);
+    try {
+      const groups = groupEntries(entries);
+      let photoImageElement = null;
+      if (row.photo) { try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; } }
+      const { canvas } = await buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement });
+      const dataUrl = canvas.toDataURL("image/png");
+      onLink({ catKey, mode, existingId, title: title.trim(), notes: notes.trim(), photo: dataUrl });
+      onClose();
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <Modal title="ربط التقرير بشاهد" onClose={onClose} accent="magic">
+      <p className="text-xs mb-4" style={{ color: MUTED }}>
+        يُرفق نسخة من هذا التقرير كصورة داخل الشاهد المختار — يبقى محفوظًا دائمًا بتبويب الشواهد كمرجع ترجع له لاحقًا.
+      </p>
+      <Field label="المعيار (الفئة)">
+        <select value={catKey} onChange={(e) => { setCatKey(e.target.value); setExistingId(""); }} style={inputStyle}>
+          {SHAWAHED_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.title}</option>)}
+        </select>
+      </Field>
+      <div className="flex gap-2 mb-3">
+        <button onClick={() => setMode("new")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "new" ? INK : "transparent", color: mode === "new" ? "#fff" : MUTED, border: `1px solid ${mode === "new" ? INK : LINE}` }}>شاهد جديد</button>
+        <button onClick={() => setMode("existing")} disabled={existingForCat.length === 0} className="flex-1 text-xs font-semibold py-2 rounded-lg disabled:opacity-40" style={{ background: mode === "existing" ? INK : "transparent", color: mode === "existing" ? "#fff" : MUTED, border: `1px solid ${mode === "existing" ? INK : LINE}` }}>إضافة لشاهد موجود</button>
+      </div>
+      {mode === "new" ? (
+        <>
+          <Field label="عنوان الشاهد">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="ملاحظات (اختياري)">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle, minHeight: 60 }} />
+          </Field>
+        </>
+      ) : (
+        <Field label="اختر الشاهد">
+          <select value={existingId} onChange={(e) => setExistingId(e.target.value)} style={inputStyle}>
+            <option value="">اختر...</option>
+            {existingForCat.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
+          </select>
+        </Field>
+      )}
+      <button
+        disabled={generating || (mode === "existing" && !existingId) || (mode === "new" && !title.trim())}
+        onClick={confirm}
+        className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        {generating ? "جارٍ الإنشاء..." : "ربط الآن"}
+      </button>
+    </Modal>
+  );
+}
+
+function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent, onSaveShareId, shawahed, onLinkShawahed }) {
   const [editing, setEditing] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showTrash, setShowTrash] = useState(false);
@@ -7498,6 +8065,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [showRemedialPlan, setShowRemedialPlan] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [showLinkShawahed, setShowLinkShawahed] = useState(false);
 
   const addNote = () => {
     if (!noteText.trim()) return;
@@ -7544,6 +8112,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
     { key: "certificate", icon: Award, label: "شهادة تقدير", color: "#C97A2B", onClick: () => setShowCertificate(true) },
     { key: "share", icon: Share2, label: "مشاركة التقرير", color: "#5B6472", onClick: shareStudentReadOnly },
     { key: "qr", icon: QrCode, label: "رمز QR دائم", color: "#7A4E9E", onClick: () => setShowQr(true) },
+    { key: "linkShawahed", icon: FileCheck, label: "ربط بشاهد", color: "#0F6B5C", onClick: () => setShowLinkShawahed(true) },
     ...(entries.length > 0 ? [{ key: "deleteAll", icon: Trash2, label: "حذف كل التقرير", color: "#C0392B", onClick: () => setConfirmDeleteAll(true) }] : []),
   ];
 
@@ -7765,6 +8334,16 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
           row={row}
           onSaveShareId={(id) => onSaveShareId(row.id, id)}
           onClose={() => setShowQr(false)}
+        />
+      )}
+      {showLinkShawahed && (
+        <LinkToShawahedModal
+          cls={cls}
+          row={row}
+          entries={entries}
+          shawahed={shawahed}
+          onLink={onLinkShawahed}
+          onClose={() => setShowLinkShawahed(false)}
         />
       )}
       {confirmDeleteAll && (
@@ -8255,6 +8834,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             { key: "shawahed", label: "شواهد", icon: FileCheck },
             { key: "tests", label: "الاختبارات", icon: ListChecks },
             { key: "library", label: "المكتبة", icon: FolderOpen },
+            { key: "games", label: "الأدوات التفاعلية", icon: Gamepad2 },
             { key: "archive", label: "المؤرشفة", icon: Archive },
           ].map((t) => (
             <button
@@ -8426,8 +9006,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         <ShawahedHub
           bare
           shawahed={data.shawahed || {}}
+          teacherName={data.classes[0]?.teacher || ""}
           onUpdate={(next) => setData((d) => ({ ...d, shawahed: next }))}
-          onExport={(selectedKeys) => setShawahedPreview({
+          onExport={(selectedKeys, description) => setShawahedPreview({
             type: "shawahedReportV2",
             shawahed: data.shawahed || {},
             selectedKeys,
@@ -8438,6 +9019,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               logoImage: data.settings?.logoImage,
               teacherName: data.classes[0]?.teacher || "",
               principalName: data.settings?.principalName,
+              description,
             },
           })}
           onQuickPrint={(catKey) => setShawahedPreview({
@@ -8453,6 +9035,18 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               principalName: data.settings?.principalName,
             },
           })}
+          onShareReadOnly={(selectedKeys, description) => {
+            const html = buildReadOnlyShawahedHtml(data.shawahed || {}, selectedKeys, {
+              countryName: data.settings?.countryName,
+              ministryName: data.settings?.ministryName,
+              schoolName: data.settings?.schoolName,
+              teacherName: data.classes[0]?.teacher || "",
+              principalName: data.settings?.principalName,
+              description,
+            });
+            const blob = new Blob([html], { type: "text/html" });
+            shareOrDownloadFile(blob, "تقرير-شواهد.html", "text/html");
+          }}
         />
       )}
       {mainTab === "tests" && (
@@ -8476,6 +9070,14 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           onUpload={(item) => setData((d) => ({ ...d, library: [...(d.library || []), item] }))}
           onDelete={(id) => setData((d) => ({ ...d, library: (d.library || []).filter((x) => x.id !== id) }))}
           onAssign={(id, classId) => setData((d) => ({ ...d, library: (d.library || []).map((x) => (x.id === id ? { ...x, classId } : x)) }))}
+        />
+      )}
+      {mainTab === "games" && (
+        <GamesHub
+          bare
+          classes={data.classes}
+          library={data.library || []}
+          updateClassById={(classId, fn) => setData((d) => ({ ...d, classes: d.classes.map((c) => (c.id === classId ? fn(c) : c)) }))}
         />
       )}
       {mainTab === "archive" && (
@@ -8688,7 +9290,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
 // ---------- Class detail page ----------
 
-function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, isOwner, density, isOnline, syncStatus }) {
+function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, isOwner, density, isOnline, syncStatus, shawahed, onLinkShawahed }) {
   const [colModal, setColModal] = useState(null);
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -9200,11 +9802,19 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold hover:opacity-70" style={{ color: MUTED }}>
             <ArrowRight size={16} /> رجوع للفصول
           </button>
+          <AdditionalSubjectsBox
+            subjects={cls.additionalSubjects || []}
+            onAdd={(name) => updateClass((c) => ({ ...c, additionalSubjects: [...(c.additionalSubjects || []), name] }))}
+            onRemove={(idx) => updateClass((c) => ({ ...c, additionalSubjects: (c.additionalSubjects || []).filter((_, i) => i !== idx) }))}
+          />
           <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} />
         </div>
 
         <div className="rounded-xl px-2.5 py-1.5 mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5" style={{ background: "#fff", border: `1px solid ${LINE}`, borderInlineStart: `4px solid ${cls.color}` }}>
           <p className="text-sm font-bold flex items-center gap-1" style={{ color: INK }}>{cls.emoji && <span>{cls.emoji}</span>}{cls.subject}</p>
+          {(cls.additionalSubjects || []).map((s, i) => (
+            <span key={i} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: GOLD_LIGHT, color: "#26423B" }}>{s}</span>
+          ))}
           <p className="text-xs" style={{ color: MUTED }}>{cls.grade}</p>
           <p className="text-xs" style={{ color: MUTED }}>{cls.teacher}</p>
           <p className="text-xs" style={{ color: MUTED }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p>
@@ -9534,6 +10144,25 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onPrint={() => openPrintPreview({ type: "report", cls, row: reportRow, entries: reportEntries })}
           onPrintParent={() => openPrintPreview({ type: "parentReport", cls, row: reportRow, entries: reportEntries, meta: { schoolName, teacherName: cls.teacher } })}
           onSaveShareId={(rowId, shareId) => updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowId ? { ...r, shareId } : r)) }))}
+          shawahed={shawahed || {}}
+          onLinkShawahed={({ catKey, mode, existingId, title, notes, photo }) => {
+            const entries = shawahed?.entries || {};
+            if (mode === "existing" && existingId) {
+              onLinkShawahed({
+                ...shawahed,
+                entries: {
+                  ...entries,
+                  [catKey]: (entries[catKey] || []).map((e) => (e.id === existingId ? { ...e, photo } : e)),
+                },
+              });
+            } else {
+              const newEntry = { id: uid(), title, notes, photo, date: todayKey() };
+              onLinkShawahed({
+                ...shawahed,
+                entries: { ...entries, [catKey]: [...(entries[catKey] || []), newEntry] },
+              });
+            }
+          }}
         />
       )}
       {confirmAction && (
@@ -10140,7 +10769,7 @@ function AuthenticatedApp() {
     <>
       <PrintStyles />
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
