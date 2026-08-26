@@ -1464,13 +1464,10 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = "13px 'IBM Plex Sans Arabic', Tahoma, Arial";
 
-  // ---- header sizing ----
-  let headerH = 46; // top accent strip + breathing room
-  if (logoImageElement) headerH += 74; else headerH += 8;
-  if (countryName) headerH += 22;
-  if (ministryName) headerH += 20;
-  if (schoolName) headerH += 26;
-  headerH += 44; // report title
+  // ---- header sizing (٣ أعمدة: يمين الدولة/الوزارة، وسط الشعار، يسار المدرسة) ----
+  const headerRowH = 78;
+  let headerH = 26 + headerRowH + 20; // شريط أعلى + صف الترويسة + هامش
+  headerH += 44; // عنوان التقرير
   headerH += 12;
 
   // ---- description sizing ----
@@ -1481,7 +1478,7 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   const gap = 16;
   const cardW = (width - pad * 2 - gap) / 2;
   const cardImgH = 130;
-  const cardTextH = 76;
+  const cardTextH = 96;
   const cardH = cardImgH + cardTextH;
   const catHeaderH = 38;
 
@@ -1507,41 +1504,46 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   ctx.direction = "rtl";
   ctx.textBaseline = "middle";
 
-  // ---- clean header ----
+  // ---- clean header: يمين (الدولة/الوزارة) — وسط (الشعار) — يسار (المدرسة) ----
   ctx.fillStyle = DASH_GREEN;
   ctx.fillRect(0, 0, width, 6);
 
-  let hy = 34;
-  ctx.textAlign = "center";
+  const rowTop = 26;
+  const rowMid = rowTop + headerRowH / 2;
+
+  ctx.textAlign = "right";
+  if (countryName) {
+    ctx.font = "bold 14px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = INK;
+    ctx.fillText(countryName, width - pad, rowMid - 11);
+  }
+  if (ministryName) {
+    ctx.font = "12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = MUTED;
+    ctx.fillText(ministryName, width - pad, rowMid + 11);
+  }
+
+  ctx.textAlign = "left";
+  if (schoolName) {
+    ctx.font = "bold 14px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = DASH_GREEN;
+    const schoolLines = wrapCanvasText(measure, schoolName, 220).slice(0, 2);
+    let sy = rowMid - (schoolLines.length - 1) * 10;
+    schoolLines.forEach((ln) => { ctx.fillText(ln, pad, sy); sy += 20; });
+  }
+
   if (logoImageElement) {
     const s = 58;
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect((width - s) / 2, hy, s, s, 12);
+    ctx.roundRect((width - s) / 2, rowTop, s, s, 12);
     ctx.clip();
-    ctx.drawImage(logoImageElement, (width - s) / 2, hy, s, s);
+    ctx.drawImage(logoImageElement, (width - s) / 2, rowTop, s, s);
     ctx.restore();
-    hy += s + 16;
   }
-  if (countryName) {
-    ctx.font = "bold 15px 'IBM Plex Sans Arabic', Tahoma, Arial";
-    ctx.fillStyle = INK;
-    ctx.fillText(countryName, width / 2, hy);
-    hy += 22;
-  }
-  if (ministryName) {
-    ctx.font = "13px 'IBM Plex Sans Arabic', Tahoma, Arial";
-    ctx.fillStyle = MUTED;
-    ctx.fillText(ministryName, width / 2, hy);
-    hy += 20;
-  }
-  if (schoolName) {
-    ctx.font = "bold 15px 'IBM Plex Sans Arabic', Tahoma, Arial";
-    ctx.fillStyle = DASH_GREEN;
-    ctx.fillText(schoolName, width / 2, hy);
-    hy += 26;
-  }
-  hy += 14;
+
+  let hy = rowTop + headerRowH + 20;
+  ctx.textAlign = "center";
   ctx.font = "bold 22px 'IBM Plex Sans Arabic', Tahoma, Arial";
   ctx.fillStyle = INK;
   const reportTitle = cats.length === 1 ? cats[0].title : "سجل توثيق شواهد الأداء الوظيفي";
@@ -1628,15 +1630,17 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
         ctx.fillStyle = INK;
         ctx.font = "bold 13px 'IBM Plex Sans Arabic', Tahoma, Arial";
         const titleLines = wrapCanvasText(measure, entry.title, cardW - 24).slice(0, 2);
-        let ty = textY + 20;
-        titleLines.forEach((ln) => { ctx.fillText(ln, cx + cardW - 12, ty); ty += 18; });
+        let ty = textY + 18;
+        titleLines.forEach((ln) => { ctx.fillText(ln, cx + cardW - 12, ty); ty += 17; });
 
-        if (entry.notes) {
-          ctx.font = "11px 'IBM Plex Sans Arabic', Tahoma, Arial";
-          ctx.fillStyle = MUTED;
-          const noteLines = wrapCanvasText(measure, entry.notes, cardW - 24).slice(0, 1);
-          if (noteLines[0]) ctx.fillText(noteLines[0], cx + cardW - 12, ty);
-        }
+        ty += 4;
+        ctx.font = "11px 'IBM Plex Sans Arabic', Tahoma, Arial";
+        ctx.fillStyle = MUTED;
+        const descText = entry.notes && entry.notes.trim()
+          ? entry.notes.trim()
+          : `شاهد يوثّق "${entry.title}" ضمن معيار "${cat.title}"، ويعكس تطبيقًا فعليًا لهذا الجانب من الأداء الوظيفي داخل الفصل.`;
+        const noteLines = wrapCanvasText(measure, descText, cardW - 24).slice(0, 2);
+        noteLines.forEach((ln) => { ctx.fillText(ln, cx + cardW - 12, ty); ty += 15; });
 
         ctx.textAlign = "left";
         ctx.font = "10px 'IBM Plex Sans Arabic', Tahoma, Arial";
@@ -2009,6 +2013,27 @@ function PrintStyles() {
         100% { opacity: 1; transform: scale(1) translateY(0); }
       }
       .celebrate-in { animation: celebrateIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+      @keyframes confettiPop {
+        0% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+        50% { opacity: 1; }
+        100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1) rotate(var(--rot)); }
+      }
+      .confetti-bit { position: absolute; top: 50%; left: 50%; animation: confettiPop 0.9s ease-out forwards; }
+      @keyframes bigCheckIn {
+        0% { opacity: 0; transform: scale(0.3) rotate(-15deg); }
+        55% { opacity: 1; transform: scale(1.25) rotate(6deg); }
+        75% { transform: scale(0.92) rotate(-2deg); }
+        100% { opacity: 1; transform: scale(1) rotate(0deg); }
+      }
+      .big-check-in { animation: bigCheckIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+      @keyframes sadWobble {
+        0% { opacity: 0; transform: scale(0.5) rotate(0deg); }
+        30% { opacity: 1; transform: scale(1.1) rotate(-8deg); }
+        50% { transform: scale(1) rotate(8deg); }
+        70% { transform: scale(1) rotate(-4deg); }
+        100% { opacity: 1; transform: scale(1) rotate(0deg); }
+      }
+      .sad-wobble-in { animation: sadWobble 0.6s ease-out forwards; }
       .magic-shimmer { background-size: 220% 220% !important; animation: magicShimmer 3.5s ease infinite; }
       @keyframes magicShimmer {
         0% { background-position: 0% 50%; }
@@ -4803,59 +4828,6 @@ function libraryFileIcon(mimeType) {
 
 // شارة صغيرة تبين هل التطبيق متصل بالإنترنت فعليًا وهل آخر تعديل انحفظ
 // بالسحابة أو لسه بانتظار الاتصال — تطمينة سريعة خصوصًا بشبكة مدرسة ضعيفة.
-// صندوق صغير بأعلى صفحة الفصل يسمح بإضافة "مواد إضافية" للفصل نفسه — مفيد
-// لو المعلم يدرّس نفس مجموعة الطلاب أكثر من مادة (مثلًا لغتي + دراسات
-// إسلامية) ويبي يديرهم بجدول واحد بدل تكرار إنشاء فصل منفصل لكل مادة.
-function AdditionalSubjectsBox({ subjects, onAdd, onRemove }) {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-
-  const submit = () => {
-    if (!text.trim()) return;
-    onAdd(text.trim());
-    setText("");
-  };
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-full"
-        style={{ border: `1px solid ${LINE}`, color: "#26423B", background: subjects.length > 0 ? GOLD_LIGHT : "#fff" }}
-      >
-        <Plus size={13} />
-        {subjects.length > 0 ? `${subjects.length} مادة إضافية` : "مادة إضافية"}
-      </button>
-      {open && (
-        <div className="absolute z-30 top-full mt-1 rounded-xl shadow-lg p-3" style={{ background: "#fff", border: `1px solid ${LINE}`, width: 220, insetInlineStart: 0 }}>
-          <p className="text-xs font-bold mb-2" style={{ color: INK }}>مواد إضافية لهذا الفصل</p>
-          {subjects.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {subjects.map((s, i) => (
-                <span key={i} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full" style={{ background: GOLD_LIGHT, color: "#26423B" }}>
-                  {s}
-                  <button onClick={() => onRemove(i)}><X size={11} /></button>
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-1.5">
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              style={{ ...inputStyle, padding: "6px 10px", fontSize: 12 }}
-              placeholder="اسم المادة"
-              autoFocus
-            />
-            <button onClick={submit} className="text-xs font-bold px-2.5 rounded-lg text-white shrink-0" style={{ background: "#26423B" }}>إضافة</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SyncStatusBadge({ isOnline, syncStatus }) {
   let icon = Check, color = "#0F9D58", bg = "#E3F1EC", label = "محفوظ";
   if (!isOnline) { icon = WifiOff; color = "#C0392B"; bg = "#FBEAE7"; label = "غير متصل"; }
@@ -7208,28 +7180,57 @@ const BUILTIN_GAMES = [
 
 // انفجار علامة ✓ خضراء قصير فوق صف الطالب اللي حصل على نقطة لحظتها —
 // نفس أسلوب التأكيد البصري المطلوب.
-function GamePointBurst() {
+// تأثير احتفالي عند إجابة صحيحة: علامة ✓ كبيرة + قصاصات ملوّنة متطايرة —
+// أو وجه حزين بسيط لو كانت الإجابة خاطئة (بدون نقطة).
+function GamePointBurst({ kind = "correct" }) {
+  const confettiColors = ["#4ADE80", "#FBBF24", "#60A5FA", "#F472B6", "#A78BFA"];
   return (
-    <div
-      className="celebrate-in"
-      style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5, pointerEvents: "none" }}
-    >
-      <div className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg" style={{ background: "#4ADE80" }}>
-        <Check size={26} color="#fff" strokeWidth={3.5} />
-      </div>
+    <div style={{ position: "absolute", inset: 0, zIndex: 6, pointerEvents: "none", overflow: "visible" }}>
+      {kind === "correct" ? (
+        <>
+          {Array.from({ length: 10 }).map((_, i) => {
+            const angle = (i / 10) * 2 * Math.PI;
+            const dist = 46 + Math.random() * 18;
+            const tx = Math.cos(angle) * dist;
+            const ty = Math.sin(angle) * dist;
+            return (
+              <span
+                key={i}
+                className="confetti-bit"
+                style={{
+                  width: 7, height: 7, borderRadius: i % 2 ? "50%" : 2,
+                  background: confettiColors[i % confettiColors.length],
+                  "--tx": `${tx}px`, "--ty": `${ty}px`, "--rot": `${Math.round(Math.random() * 360)}deg`,
+                  animationDelay: `${i * 15}ms`,
+                }}
+              />
+            );
+          })}
+          <div className="big-check-in" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg" style={{ background: "#22C55E", boxShadow: "0 4px 16px rgba(34,197,94,0.5)" }}>
+              <Check size={30} color="#fff" strokeWidth={4} />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="sad-wobble-in" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg text-2xl" style={{ background: "#FBEAE7" }}>
+            😢
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// نافذة "الأدوات التفاعلية": تختار لعبة (جاهزة من التطبيق، أو رفعتها من
-// المكتبة كملف HTML)، تحدد "الطالب النشط" من قائمة الفصل، وأي إجابة صحيحة
-// باللعبة تضيف نقطة لعموده تلقائيًا مع تأكيد بصري فوري.
-// نافذة تشغيل اللعبة فعليًا بعد ربطها بفصل — تحدد "الطالب النشط"، وأي
-// إجابة صحيحة تضيف نقطة مباشرة بعمود "المشاركة" لذاك الطالب تلقائيًا
-// (يُنشأ العمود تلقائيًا أول مرة لو ما كان موجودًا بالفصل).
+// نافذة تشغيل اللعبة فعليًا بعد ربطها بفصل — يتحول "الطالب النشط" تلقائيًا
+// بشكل عشوائي بعد كل سؤال (إجابة صح أو خطأ)، وأي إجابة صحيحة تضيف نقطة
+// مباشرة بعمود "المشاركة" لذاك الطالب تلقائيًا (يُنشأ العمود تلقائيًا أول
+// مرة لو ما كان موجودًا بالفصل).
 function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
-  const [activeRowId, setActiveRowId] = useState(cls.rows[0]?.id || null);
-  const [flashRowId, setFlashRowId] = useState(null);
+  const [displayRows] = useState(() => shuffleArr(cls.rows));
+  const [activeRowId, setActiveRowId] = useState(() => displayRows[0]?.id || null);
+  const [flash, setFlash] = useState(null); // { rowId, kind }
 
   const ensureParticipationColumn = () => {
     const existing = cls.columns.find((c) => c.name === "المشاركة" && c.type === "counter");
@@ -7242,26 +7243,41 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
     return newId;
   };
 
+  const rotateToRandomStudent = (currentId) => {
+    const others = displayRows.filter((r) => r.id !== currentId);
+    const pool = others.length > 0 ? others : displayRows;
+    if (pool.length === 0) return;
+    setActiveRowId(pool[Math.floor(Math.random() * pool.length)].id);
+  };
+
   useEffect(() => {
     const handler = (e) => {
-      if (!e.data || e.data.type !== "fasooli:answer" || !e.data.correct) return;
+      if (!e.data || e.data.type !== "fasooli:answer") return;
       if (!activeRowId) return;
-      const colId = ensureParticipationColumn();
-      updateClass((c) => {
-        const col = c.columns.find((cc) => cc.id === colId) || { id: colId, name: "المشاركة", color: "#0F9D58" };
-        const key = `${activeRowId}:${colId}`;
-        const current = Number(c.cells[key]) || 0;
-        const next = current + 1;
-        const meta = nowMeta();
-        const entry = { id: uid(), colId, colName: col.name, colColor: col.color, value: String(next), ...meta };
-        return {
-          ...c,
-          cells: { ...c.cells, [key]: String(next) },
-          reports: { ...(c.reports || {}), [activeRowId]: [...(c.reports?.[activeRowId] || []), entry] },
-        };
-      });
-      setFlashRowId(activeRowId);
-      setTimeout(() => setFlashRowId(null), 900);
+      const rowId = activeRowId;
+      if (e.data.correct) {
+        const colId = ensureParticipationColumn();
+        updateClass((c) => {
+          const col = c.columns.find((cc) => cc.id === colId) || { id: colId, name: "المشاركة", color: "#0F9D58" };
+          const key = `${rowId}:${colId}`;
+          const current = Number(c.cells[key]) || 0;
+          const next = current + 1;
+          const meta = nowMeta();
+          const entry = { id: uid(), colId, colName: col.name, colColor: col.color, value: String(next), ...meta };
+          return {
+            ...c,
+            cells: { ...c.cells, [key]: String(next) },
+            reports: { ...(c.reports || {}), [rowId]: [...(c.reports?.[rowId] || []), entry] },
+          };
+        });
+        setFlash({ rowId, kind: "correct" });
+      } else {
+        setFlash({ rowId, kind: "wrong" });
+      }
+      setTimeout(() => {
+        setFlash(null);
+        rotateToRandomStudent(rowId);
+      }, 1100);
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
@@ -7274,10 +7290,10 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
     <Modal title={`${game.name} — ${cls.subject}`} onClose={onClose} onBack={onBack} accent="magic" xl>
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
         <div>
-          <p className="text-xs font-bold mb-2" style={{ color: INK }}>الطالب النشط (يستلم النقاط)</p>
+          <p className="text-xs font-bold mb-2" style={{ color: INK }}>الطالب النشط (يتغيّر عشوائيًا كل سؤال)</p>
           <p className="text-xs mb-2" style={{ color: MUTED }}>النقاط تُسجَّل بعمود "المشاركة"{participationCol ? "" : " (سيُنشأ تلقائيًا أول نقطة)"}</p>
           <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
-            {cls.rows.map((row) => {
+            {displayRows.map((row) => {
               const isActive = row.id === activeRowId;
               const pts = participationCol ? (cls.cells[`${row.id}:${participationCol.id}`] || 0) : 0;
               return (
@@ -7285,9 +7301,9 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
                   key={row.id}
                   onClick={() => setActiveRowId(row.id)}
                   className="relative w-full flex items-center gap-2 p-2.5 rounded-xl text-right transition-all"
-                  style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff" }}
+                  style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff", overflow: "visible" }}
                 >
-                  {flashRowId === row.id && <GamePointBurst />}
+                  {flash?.rowId === row.id && <GamePointBurst kind={flash.kind} />}
                   <span className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
                     {(row.name || "؟").trim().charAt(0)}
                   </span>
@@ -7397,10 +7413,34 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
       </div>
       <p className="text-xs font-bold mb-2" style={{ color: INK }}>ألعابك المرفوعة (من المكتبة)</p>
       {libraryGames.length === 0 ? (
-        <p className="text-xs text-center py-6" style={{ color: MUTED }}>
-          ارفع ملف HTML من تبويب "المكتبة" عشان تظهر هنا كلعبة قابلة للربط. أي لعبة ترفعها لازم تنادي عند الإجابة الصحيحة:
-          <br /><code style={{ direction: "ltr", display: "inline-block", marginTop: 6 }}>window.parent.postMessage({"{"}type:"fasooli:answer",correct:true{"}"}, "*")</code>
-        </p>
+        <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${LINE}` }}>
+          <div className="p-4" style={{ background: "#EAF3F0" }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Gamepad2 size={16} color="#26423B" />
+              <p className="text-sm font-bold" style={{ color: "#26423B" }}>اصنع لعبتك الخاصة</p>
+            </div>
+            <p className="text-xs" style={{ color: "#26423B" }}>
+              ارفع ملف HTML من تبويب "المكتبة" وسيظهر هنا تلقائيًا كلعبة قابلة للربط بأي فصل.
+            </p>
+          </div>
+          <div className="p-4" style={{ background: "#fff" }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: INK }}>الشرط الوحيد: نادِ هذا السطر عند كل إجابة صحيحة</p>
+            <div className="relative rounded-xl p-3" style={{ background: "#1E2A26", direction: "ltr", textAlign: "left" }}>
+              <code style={{ color: "#7DE3B3", fontSize: 11, fontFamily: "monospace", wordBreak: "break-all" }}>
+                window.parent.postMessage({"{"} type: "fasooli:answer", correct: true {"}"}, "*");
+              </code>
+              <button
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(`window.parent.postMessage({ type: "fasooli:answer", correct: true }, "*");`); } catch (e) { /* ignore */ }
+                }}
+                className="mt-2 flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
+              >
+                <ClipboardCopy size={12} /> نسخ السطر
+              </button>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="space-y-2">
           {libraryGames.map((f) => (
@@ -9802,19 +9842,11 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold hover:opacity-70" style={{ color: MUTED }}>
             <ArrowRight size={16} /> رجوع للفصول
           </button>
-          <AdditionalSubjectsBox
-            subjects={cls.additionalSubjects || []}
-            onAdd={(name) => updateClass((c) => ({ ...c, additionalSubjects: [...(c.additionalSubjects || []), name] }))}
-            onRemove={(idx) => updateClass((c) => ({ ...c, additionalSubjects: (c.additionalSubjects || []).filter((_, i) => i !== idx) }))}
-          />
           <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} />
         </div>
 
         <div className="rounded-xl px-2.5 py-1.5 mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5" style={{ background: "#fff", border: `1px solid ${LINE}`, borderInlineStart: `4px solid ${cls.color}` }}>
           <p className="text-sm font-bold flex items-center gap-1" style={{ color: INK }}>{cls.emoji && <span>{cls.emoji}</span>}{cls.subject}</p>
-          {(cls.additionalSubjects || []).map((s, i) => (
-            <span key={i} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: GOLD_LIGHT, color: "#26423B" }}>{s}</span>
-          ))}
           <p className="text-xs" style={{ color: MUTED }}>{cls.grade}</p>
           <p className="text-xs" style={{ color: MUTED }}>{cls.teacher}</p>
           <p className="text-xs" style={{ color: MUTED }}>{cls.yearHijri} هـ / {cls.yearGregorian} م</p>
