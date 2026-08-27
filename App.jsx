@@ -1464,6 +1464,18 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = "13px 'IBM Plex Sans Arabic', Tahoma, Arial";
 
+  // ---- الوصف العام: لازم يظهر دايمًا حتى لو الطلب جا من مسار (زي الطباعة
+  // السريعة لفئة وحدة) ما مرّ على نافذة اختيار الوصف — نولّد نص افتراضي
+  // هنا لضمان عدم بقاء التقرير بلا وصف إطلاقًا.
+  const totalEntriesCount = cats.reduce((s, c) => s + (entries[c.key]?.length || 0), 0);
+  const finalDescription = (description && description.trim())
+    ? description.trim()
+    : (cats.length === 1
+      ? `يوثّق هذا التقرير ${totalEntriesCount} شاهدًا على أداء ${teacherName || "المعلم/ـة"} فيما يخص معيار "${cats[0].title}"، ويُظهر التزامه/ـا التطبيقي بهذا الجانب من الأداء الوظيفي.`
+      : cats.length > 1
+      ? `يوثّق هذا التقرير ${totalEntriesCount} شاهدًا على الأداء الوظيفي لـ ${teacherName || "المعلم/ـة"}، موزّعة على ${cats.length} معايير مختلفة.`
+      : "");
+
   // ---- header sizing (٣ أعمدة: يمين الدولة/الوزارة، وسط الشعار، يسار المدرسة) ----
   const headerRowH = 78;
   let headerH = 26 + headerRowH + 20; // شريط أعلى + صف الترويسة + هامش
@@ -1471,7 +1483,7 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   headerH += 12;
 
   // ---- description sizing ----
-  const descLines = description && description.trim() ? wrapCanvasText(measure, description.trim(), width - pad * 2) : [];
+  const descLines = finalDescription ? wrapCanvasText(measure, finalDescription, width - pad * 2) : [];
   const descH = descLines.length ? descLines.length * 20 + 30 : 0;
 
   // ---- cards grid sizing (2 columns) ----
@@ -1622,6 +1634,15 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
           ctx.font = "bold 26px 'IBM Plex Sans Arabic', Tahoma, Arial";
           ctx.fillText("✓", cx + cardW / 2, pairY + cardImgH / 2);
         }
+        ctx.restore();
+
+        // شريط علوي ملوّن بلون المعيار فوق الصورة — يعطي إحساس أرسمي أوضح
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(cx, pairY, cardW, 4, [12, 12, 0, 0]);
+        ctx.clip();
+        ctx.fillStyle = cat.color;
+        ctx.fillRect(cx, pairY, cardW, 4);
         ctx.restore();
 
         // text area
@@ -1888,18 +1909,31 @@ function buildReadOnlyShawahedHtml(shawahed, selectedKeys, meta = {}) {
   const entries = shawahed.entries || {};
   const cats = SHAWAHED_CATEGORIES.filter((c) => selectedKeys.includes(c.key) && (entries[c.key] || []).length > 0);
   const reportTitle = cats.length === 1 ? cats[0].title : "سجل توثيق شواهد الأداء الوظيفي";
+  const totalEntriesCount = cats.reduce((s, c) => s + (entries[c.key]?.length || 0), 0);
+  const finalDescription = (description && description.trim())
+    ? description.trim()
+    : (cats.length === 1
+      ? `يوثّق هذا التقرير ${totalEntriesCount} شاهدًا على أداء ${teacherName || "المعلم/ـة"} فيما يخص معيار "${cats[0].title}"، ويُظهر التزامه/ـا التطبيقي بهذا الجانب من الأداء الوظيفي.`
+      : cats.length > 1
+      ? `يوثّق هذا التقرير ${totalEntriesCount} شاهدًا على الأداء الوظيفي لـ ${teacherName || "المعلم/ـة"}، موزّعة على ${cats.length} معايير مختلفة.`
+      : "");
 
   const catsHtml = cats.map((cat) => {
     const officialIndex = SHAWAHED_CATEGORIES.indexOf(cat) + 1;
-    const cardsHtml = (entries[cat.key] || []).map((e) => `
-      <div style="border:1px solid ${LINE};border-radius:12px;overflow:hidden;background:#fff;">
+    const cardsHtml = (entries[cat.key] || []).map((e) => {
+      const noteText = (e.notes && e.notes.trim())
+        ? e.notes.trim()
+        : `شاهد يوثّق "${e.title}" ضمن معيار "${cat.title}"، ويعكس تطبيقًا فعليًا لهذا الجانب من الأداء الوظيفي داخل الفصل.`;
+      return `
+      <div style="border:1px solid ${LINE};border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 2px 8px rgba(35,38,34,0.06);border-top:3px solid ${cat.color};">
         ${e.photo ? `<img src="${e.photo}" style="width:100%;height:150px;object-fit:cover;display:block;" />` : `<div style="width:100%;height:150px;background:${cat.color}12;display:flex;align-items:center;justify-content:center;color:${cat.color};font-size:26px;font-weight:bold;">✓</div>`}
-        <div style="padding:12px;">
-          <p style="margin:0 0 4px;font-weight:bold;font-size:13px;color:${INK};">${escapeHtml(e.title)}</p>
-          ${e.notes ? `<p style="margin:0 0 6px;font-size:11px;color:${MUTED};">${escapeHtml(e.notes)}</p>` : ""}
+        <div style="padding:14px;">
+          <p style="margin:0 0 6px;font-weight:bold;font-size:13px;color:${INK};">${escapeHtml(e.title)}</p>
+          <p style="margin:0 0 8px;font-size:11px;color:${MUTED};line-height:1.6;">${escapeHtml(noteText)}</p>
           <p style="margin:0;font-size:10px;color:${MUTED};text-align:left;">${escapeHtml(formatDateDisplay(e.date))}</p>
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     return `
       <div style="margin-bottom:28px;">
         <p style="font-weight:bold;font-size:15px;color:${cat.color};border-bottom:1px solid ${cat.color}33;padding-bottom:8px;margin-bottom:14px;">${officialIndex}. ${escapeHtml(cat.title)}</p>
@@ -1929,7 +1963,7 @@ function buildReadOnlyShawahedHtml(shawahed, selectedKeys, meta = {}) {
       <h1>${escapeHtml(reportTitle)}</h1>
       <div class="divider"></div>
     </div>
-    ${description && description.trim() ? `<p class="desc">${escapeHtml(description.trim())}</p>` : ""}
+    ${finalDescription ? `<p class="desc">${escapeHtml(finalDescription)}</p>` : ""}
     ${cats.length === 0 ? `<p style="text-align:center;color:${MUTED};">لا يوجد شواهد لعرضها.</p>` : catsHtml}
     <div style="display:flex;gap:16px;margin-top:28px;">
       <div style="flex:1;background:#FAF8F3;border:1px solid ${LINE};border-radius:12px;padding:16px;text-align:center;">
@@ -3020,14 +3054,27 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
                 <ExternalLink size={16} /> استيراد الأسماء من نور تلقائيًا
               </button>
               <p className="text-xs text-center mb-3" style={{ color: MUTED }}>أو ألصق الأسماء يدويًا بالمربع تحت</p>
-              <Field label="أسماء الصفوف (كل اسم في سطر)">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm font-medium" style={{ color: INK }}>أسماء الصفوف (كل اسم في سطر)</span>
+                {bulkText.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setBulkText("")}
+                    className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg hover:bg-black/5"
+                    style={{ color: "#9A3B2E" }}
+                  >
+                    <Eraser size={12} /> تفريغ الحقل
+                  </button>
+                )}
+              </div>
+              <div className="mb-4">
                 <textarea
                   style={{ ...inputStyle, minHeight: "140px", resize: "vertical" }}
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
                   placeholder={"محمد أحمد\nسارة خالد\nعبدالله فهد"}
                 />
-              </Field>
+              </div>
               <Field label="لون مشترك لهذه الصفوف">
                 <ColorSwatches value={bulkColor} onChange={setBulkColor} />
               </Field>
@@ -7288,40 +7335,38 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
 
   return (
     <Modal title={`${game.name} — ${cls.subject}`} onClose={onClose} onBack={onBack} accent="magic" xl>
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
-        <div>
-          <p className="text-xs font-bold mb-2" style={{ color: INK }}>الطالب النشط (يتغيّر عشوائيًا كل سؤال)</p>
-          <p className="text-xs mb-2" style={{ color: MUTED }}>النقاط تُسجَّل بعمود "المشاركة"{participationCol ? "" : " (سيُنشأ تلقائيًا أول نقطة)"}</p>
-          <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
-            {displayRows.map((row) => {
-              const isActive = row.id === activeRowId;
-              const pts = participationCol ? (cls.cells[`${row.id}:${participationCol.id}`] || 0) : 0;
-              return (
-                <button
-                  key={row.id}
-                  onClick={() => setActiveRowId(row.id)}
-                  className="relative w-full flex items-center gap-2 p-2.5 rounded-xl text-right transition-all"
-                  style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff", overflow: "visible" }}
-                >
-                  {flash?.rowId === row.id && <GamePointBurst kind={flash.kind} />}
-                  <span className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
-                    {(row.name || "؟").trim().charAt(0)}
-                  </span>
-                  <span className="flex-1 text-sm font-semibold truncate" style={{ color: INK }}>{row.name}</span>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: "#26423B", color: "#fff" }}>{pts}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, minHeight: 480 }}>
-          <iframe
-            title="لعبة"
-            srcDoc={game.html}
-            sandbox="allow-scripts"
-            style={{ width: "100%", height: 480, border: "none" }}
-          />
-        </div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-bold" style={{ color: INK }}>الطالب النشط (يتغيّر عشوائيًا كل سؤال)</p>
+        <p className="text-xs" style={{ color: MUTED }}>النقاط بعمود "المشاركة"</p>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-3" style={{ scrollSnapType: "x proximity" }}>
+        {displayRows.map((row) => {
+          const isActive = row.id === activeRowId;
+          const pts = participationCol ? (cls.cells[`${row.id}:${participationCol.id}`] || 0) : 0;
+          return (
+            <button
+              key={row.id}
+              onClick={() => setActiveRowId(row.id)}
+              className="relative flex flex-col items-center gap-1 shrink-0 p-2 rounded-xl transition-all"
+              style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff", width: 76, scrollSnapAlign: "start" }}
+            >
+              {flash?.rowId === row.id && <GamePointBurst kind={flash.kind} />}
+              <span className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
+                {(row.name || "؟").trim().charAt(0)}
+              </span>
+              <span className="text-[11px] font-semibold text-center leading-tight truncate w-full" style={{ color: INK }}>{row.name}</span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#26423B", color: "#fff" }}>{pts}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, minHeight: 480 }}>
+        <iframe
+          title="لعبة"
+          srcDoc={game.html}
+          sandbox="allow-scripts"
+          style={{ width: "100%", height: 480, border: "none" }}
+        />
       </div>
     </Modal>
   );
@@ -9062,19 +9107,28 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               description,
             },
           })}
-          onQuickPrint={(catKey) => setShawahedPreview({
-            type: "shawahedReportV2",
-            shawahed: data.shawahed || {},
-            selectedKeys: [catKey],
-            meta: {
-              countryName: data.settings?.countryName,
-              ministryName: data.settings?.ministryName,
-              schoolName: data.settings?.schoolName,
-              logoImage: data.settings?.logoImage,
-              teacherName: data.classes[0]?.teacher || "",
-              principalName: data.settings?.principalName,
-            },
-          })}
+          onQuickPrint={(catKey) => {
+            const cat = SHAWAHED_CATEGORIES.find((c) => c.key === catKey);
+            const count = (data.shawahed?.entries?.[catKey] || []).length;
+            const teacherName = data.classes[0]?.teacher || "";
+            const autoDesc = cat
+              ? `يوثّق هذا التقرير ${count} شاهدًا على أداء ${teacherName || "المعلم/ـة"} فيما يخص معيار "${cat.title}"، ويُظهر التزامه/ـا التطبيقي بهذا الجانب من الأداء الوظيفي.`
+              : "";
+            setShawahedPreview({
+              type: "shawahedReportV2",
+              shawahed: data.shawahed || {},
+              selectedKeys: [catKey],
+              meta: {
+                countryName: data.settings?.countryName,
+                ministryName: data.settings?.ministryName,
+                schoolName: data.settings?.schoolName,
+                logoImage: data.settings?.logoImage,
+                teacherName,
+                principalName: data.settings?.principalName,
+                description: autoDesc,
+              },
+            });
+          }}
           onShareReadOnly={(selectedKeys, description) => {
             const html = buildReadOnlyShawahedHtml(data.shawahed || {}, selectedKeys, {
               countryName: data.settings?.countryName,
