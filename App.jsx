@@ -7,7 +7,7 @@ import {
   Printer, Search, ArrowRight, X, Check, Minus, Hash, Type,
   ListChecks, FolderClock, BookOpen, FileText, RefreshCw, ClipboardList,
   Pin, PinOff, Copy, RotateCcw, FolderOpen, FileImage, FileSpreadsheet, ListOrdered,
-  Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange,
+  Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange, UserX,
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
@@ -760,6 +760,203 @@ async function buildParentReportCanvas({ cls, row, entries, meta = {} }) {
 }
 
 // Draws a simple decorative certificate of appreciation onto a canvas.
+// تقرير "برنامج" رسمي مفصّل — يطابق نموذج الإدارات التعليمية الشائع
+// (اسم البرنامج، مجاله، المنفّذون، الأهداف، خطوات التنفيذ، والشواهد بصور).
+// يُستخدم لما يكون للشاهد بيانات "program" مفصّلة (وليس مجرد صورة وملاحظة).
+async function buildProgramReportCanvas({ entry, cat, meta = {} }) {
+  const { countryName, ministryName, region, office, schoolName, logoImage } = meta;
+  const p = entry.program || {};
+  const width = 800;
+  const pad = 32;
+  const scale = 3;
+
+  let logoImageElement = null;
+  if (logoImage) { try { logoImageElement = await loadImage(logoImage); } catch (e) { logoImageElement = null; } }
+
+  const photos = (p.photos && p.photos.length ? p.photos : (entry.photo ? [entry.photo] : [])).slice(0, 4);
+  const photoImgs = [];
+  for (const src of photos) {
+    try { photoImgs.push(await loadImage(src)); } catch (e) { /* skip */ }
+  }
+
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = "12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+
+  // ---- sizing ----
+  const headerH = 90;
+  const bannerH = 44;
+  const gridGap = 10;
+  const boxH = 64;
+  const infoGridH = boxH * 3 + gridGap * 2 + 20;
+
+  const objectives = (p.objectives && p.objectives.length ? p.objectives : ["—"]);
+  const steps = (p.steps && p.steps.length ? p.steps : ["—"]);
+  const listBoxPad = 14;
+  const lineH = 19;
+  const objLines = objectives.length * lineH + 40;
+  const stepLines = steps.length * lineH + 40;
+  const listsH = Math.max(objLines, stepLines) + 16;
+
+  const shawahedHeaderH = photos.length > 0 ? 36 : 0;
+  const photoRowH = photos.length > 0 ? 150 : 0;
+  const photoRows = photos.length > 0 ? Math.ceil(photos.length / 2) : 0;
+  const shawahedH = shawahedHeaderH + photoRows * (photoRowH + gridGap);
+
+  const footerH = 30;
+  const height = headerH + bannerH + 20 + infoGridH + 16 + listsH + 16 + shawahedH + footerH + pad;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = Math.max(1, height) * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.direction = "rtl";
+  ctx.textBaseline = "middle";
+
+  // ---- header: نص إداري يمين + الشعار وسط ----
+  ctx.textAlign = "right";
+  ctx.font = "bold 13px 'IBM Plex Sans Arabic', Tahoma, Arial";
+  ctx.fillStyle = INK;
+  let hy = 26;
+  if (region) { ctx.fillText(`الإدارة العامة للتعليم بمنطقة ${region}`, width - pad, hy); hy += 20; }
+  else { ctx.fillText("الإدارة العامة للتعليم", width - pad, hy); hy += 20; }
+  ctx.font = "12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+  ctx.fillStyle = MUTED;
+  ctx.fillText(`مكتب التعليم بـ${office || "....."}`, width - pad, hy);
+
+  if (logoImageElement) {
+    const s = 52;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect((width - s) / 2, 18, s, s, 10);
+    ctx.clip();
+    ctx.drawImage(logoImageElement, (width - s) / 2, 18, s, s);
+    ctx.restore();
+  }
+  ctx.textAlign = "left";
+  ctx.font = "bold 11px 'IBM Plex Sans Arabic', Tahoma, Arial";
+  ctx.fillStyle = DASH_GREEN;
+  if (ministryName) ctx.fillText(ministryName, pad, 26);
+  if (countryName) { ctx.font = "10px 'IBM Plex Sans Arabic', Tahoma, Arial"; ctx.fillStyle = MUTED; ctx.fillText(countryName, pad, 44); }
+
+  let y = headerH;
+
+  // ---- banner: اسم المدرسة ----
+  ctx.fillStyle = DASH_GREEN;
+  ctx.fillRect(pad, y, width - pad * 2, bannerH);
+  ctx.textAlign = "center";
+  ctx.font = "bold 16px 'IBM Plex Sans Arabic', Tahoma, Arial";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(schoolName || "اسم المدرسة", width / 2, y + bannerH / 2);
+  y += bannerH + 20;
+
+  // ---- info grid: يمين (اسم البرنامج، المنفذون، المستفيدون) — يسار (مجال البرنامج، تاريخ التنفيذ، عدد المستفيدين) ----
+  const colW = (width - pad * 2 - gridGap) / 2;
+  const rightCol = [
+    { label: "اسم البرنامج", value: p.programName || entry.title },
+    { label: "المنفّذون", value: p.implementers || meta.teacherName || "" },
+    { label: "المستفيدون", value: p.beneficiaries || "جميع الطلاب" },
+  ];
+  const leftCol = [
+    { label: "مجال البرنامج", value: p.programField || cat.title },
+    { label: "تاريخ التنفيذ", value: p.executionDate || formatDateDisplay(entry.date) },
+    { label: "عدد المستفيدين", value: p.beneficiaryCount || "—" },
+  ];
+
+  const drawInfoBox = (x, boxY, w, h, label, value) => {
+    ctx.fillStyle = "#F7F3E8";
+    ctx.strokeStyle = "#E8DFC5";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, boxY, w, h, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.font = "bold 12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = DASH_GREEN;
+    ctx.fillText(`${label}:`, x + w - 12, boxY + 20);
+    ctx.font = "12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = INK;
+    const lines = wrapCanvasText(measure, String(value || "—"), w - 24).slice(0, 2);
+    let vy = boxY + 42;
+    lines.forEach((ln) => { ctx.fillText(ln, x + w - 12, vy); vy += 16; });
+  };
+
+  for (let i = 0; i < 3; i++) {
+    const rowY = y + i * (boxH + gridGap);
+    drawInfoBox(pad + colW + gridGap, rowY, colW, boxH, rightCol[i].label, rightCol[i].value);
+    drawInfoBox(pad, rowY, colW, boxH, leftCol[i].label, leftCol[i].value);
+  }
+  y += infoGridH;
+
+  // ---- الأهداف (يمين) + خطوات التنفيذ (يسار) ----
+  const listBoxH = listsH;
+  const drawListBox = (x, w, label, items) => {
+    ctx.fillStyle = "#F7F3E8";
+    ctx.strokeStyle = "#E8DFC5";
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, listBoxH, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.font = "bold 12px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = DASH_GREEN;
+    ctx.fillText(`${label}:`, x + w - 12, y + listBoxPad + 6);
+    ctx.font = "11px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = INK;
+    let iy = y + listBoxPad + 30;
+    items.forEach((item, idx) => {
+      const lines = wrapCanvasText(measure, `${idx + 1}. ${item}`, w - 24);
+      lines.forEach((ln) => { ctx.fillText(ln, x + w - 12, iy); iy += lineH; });
+    });
+  };
+  drawListBox(pad + colW + gridGap, colW, "الأهداف", objectives);
+  drawListBox(pad, colW, "خطوات التنفيذ", steps);
+  y += listBoxH + 16;
+
+  // ---- الشواهد ----
+  if (photos.length > 0) {
+    ctx.fillStyle = DASH_GREEN;
+    ctx.fillRect(pad, y, width - pad * 2, shawahedHeaderH);
+    ctx.textAlign = "center";
+    ctx.font = "bold 13px 'IBM Plex Sans Arabic', Tahoma, Arial";
+    ctx.fillStyle = "#fff";
+    ctx.fillText("الشواهد", width / 2, y + shawahedHeaderH / 2);
+    y += shawahedHeaderH;
+
+    const photoColW = (width - pad * 2 - gridGap) / 2;
+    for (let i = 0; i < photoImgs.length; i++) {
+      const ri = Math.floor(i / 2), ci = i % 2;
+      const px = pad + ci * (photoColW + gridGap);
+      const py = y + ri * (photoRowH + gridGap);
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(px, py, photoColW, photoRowH, 8);
+      ctx.clip();
+      const img = photoImgs[i];
+      const iw = img.width, ih = img.height, ir = iw / ih, tr = photoColW / photoRowH;
+      let sx, sy, sw, sh;
+      if (ir > tr) { sh = ih; sw = ih * tr; sx = (iw - sw) / 2; sy = 0; }
+      else { sw = iw; sh = iw / tr; sx = 0; sy = (ih - sh) / 2; }
+      ctx.drawImage(img, sx, sy, sw, sh, px, py, photoColW, photoRowH);
+      ctx.restore();
+      ctx.strokeStyle = LINE;
+      ctx.strokeRect(px, py, photoColW, photoRowH);
+    }
+    y += photoRows * (photoRowH + gridGap);
+  }
+
+  // ---- footer ----
+  ctx.textAlign = "center";
+  ctx.font = "10px 'IBM Plex Sans Arabic', Tahoma, Arial";
+  ctx.fillStyle = MUTED;
+  ctx.fillText("عبر تطبيق فصولي", width / 2, y + 18);
+
+  return { canvas, logicalWidth: width, logicalHeight: height };
+}
+
 function buildCertificateCanvas({ countryName, ministryName, schoolName, logoImageElement, title, studentName, reason, className, teacherName, principalName, date, accentColor }) {
   const width = 1000, height = 760, scale = 2;
   const canvas = document.createElement("canvas");
@@ -1298,6 +1495,22 @@ function jobToTable(job) {
     const rows = grouped.map((e) => [e.colName, `${e.day ? e.day + "، " : ""}${e.date || ""}`, e.time || "", e.value]);
     return { title: `تقرير ولي الأمر: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `تقرير-ولي-الأمر-${row.name}` };
   }
+  if (job.type === "programReport") {
+    const { entry, cat } = job;
+    const p = entry.program || {};
+    const headers = ["الحقل", "القيمة"];
+    const rows = [
+      ["اسم البرنامج", p.programName || entry.title],
+      ["مجال البرنامج", p.programField || cat.title],
+      ["المنفّذون", p.implementers || ""],
+      ["تاريخ التنفيذ", p.executionDate || formatDateDisplay(entry.date)],
+      ["المستفيدون", p.beneficiaries || ""],
+      ["عدد المستفيدين", p.beneficiaryCount || ""],
+      ...(p.objectives || []).map((o, i) => [`الهدف ${i + 1}`, o]),
+      ...(p.steps || []).map((s, i) => [`خطوة التنفيذ ${i + 1}`, s]),
+    ];
+    return { title: p.programName || entry.title, subtitle: cat.title, headers, rows, filename: `تقرير-برنامج-${entry.title}` };
+  }
   const { cls, row, entries } = job;
   const grouped = groupEntries(entries).flatMap((g) => g.items);
   const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
@@ -1724,6 +1937,10 @@ async function jobToCanvas(job) {
   if (job.type === "parentReport") {
     const { cls, row, entries, meta } = job;
     return buildParentReportCanvas({ cls, row, entries, meta: meta || {} });
+  }
+  if (job.type === "programReport") {
+    const { entry, cat, meta } = job;
+    return buildProgramReportCanvas({ entry, cat, meta: meta || {} });
   }
   if (job.type === "classFullReport") {
     const cls = job.cls;
@@ -4507,12 +4724,42 @@ function PeriodComparisonModal({ cls, onClose, onPrint }) {
   );
 }
 
-function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onClose }) {
+// محرر قائمة نصوص بسيط (إضافة/حذف/تعديل سطر) — يُستخدم للأهداف وخطوات
+// التنفيذ بتقرير البرنامج التفصيلي.
+function TextListEditor({ items, onChange, placeholder }) {
+  const update = (i, val) => onChange(items.map((it, ix) => (ix === i ? val : it)));
+  const remove = (i) => onChange(items.filter((_, ix) => ix !== i));
+  const add = () => onChange([...items, ""]);
+  return (
+    <div className="space-y-1.5">
+      {items.map((it, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <span className="text-xs font-bold w-4 shrink-0" style={{ color: MUTED }}>{i + 1}.</span>
+          <input value={it} onChange={(e) => update(i, e.target.value)} style={{ ...inputStyle, flex: 1, padding: "6px 10px" }} placeholder={placeholder} />
+          {items.length > 1 && <button type="button" onClick={() => remove(i)} className="p-1 rounded hover:bg-black/5 shrink-0"><X size={12} color={MUTED} /></button>}
+        </div>
+      ))}
+      <button type="button" onClick={add} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}><Plus size={12} /> إضافة سطر</button>
+    </div>
+  );
+}
+
+function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onPrintProgram, onClose }) {
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [showProgram, setShowProgram] = useState(false);
+  const [programField, setProgramField] = useState("");
+  const [implementers, setImplementers] = useState("");
+  const [executionDate, setExecutionDate] = useState("");
+  const [beneficiaries, setBeneficiaries] = useState("جميع الطلاب");
+  const [beneficiaryCount, setBeneficiaryCount] = useState("");
+  const [objectives, setObjectives] = useState([""]);
+  const [steps, setSteps] = useState([""]);
+  const [extraPhotos, setExtraPhotos] = useState([]);
   const photoInputRef = useRef(null);
+  const extraPhotosInputRef = useRef(null);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -4523,21 +4770,59 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
     e.target.value = "";
   };
 
-  const resetForm = () => { setTitle(""); setNotes(""); setPhoto(null); setEditingId(null); };
+  const handleExtraPhotosChange = (e) => {
+    const files = Array.from(e.target.files || []).slice(0, 4 - extraPhotos.length);
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => setExtraPhotos((prev) => [...prev, reader.result].slice(0, 4));
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const resetForm = () => {
+    setTitle(""); setNotes(""); setPhoto(null); setEditingId(null);
+    setShowProgram(false); setProgramField(""); setImplementers(""); setExecutionDate("");
+    setBeneficiaries("جميع الطلاب"); setBeneficiaryCount(""); setObjectives([""]); setSteps([""]); setExtraPhotos([]);
+  };
 
   const startEdit = (entry) => {
     setEditingId(entry.id);
     setTitle(entry.title);
     setNotes(entry.notes || "");
     setPhoto(entry.photo || null);
+    if (entry.program) {
+      setShowProgram(true);
+      setProgramField(entry.program.programField || "");
+      setImplementers(entry.program.implementers || "");
+      setExecutionDate(entry.program.executionDate || "");
+      setBeneficiaries(entry.program.beneficiaries || "جميع الطلاب");
+      setBeneficiaryCount(entry.program.beneficiaryCount || "");
+      setObjectives(entry.program.objectives?.length ? entry.program.objectives : [""]);
+      setSteps(entry.program.steps?.length ? entry.program.steps : [""]);
+      setExtraPhotos(entry.program.photos || []);
+    } else {
+      setShowProgram(false);
+    }
   };
 
   const submit = () => {
     if (!title.trim()) return;
+    const program = showProgram ? {
+      programName: title.trim(),
+      programField: programField.trim(),
+      implementers: implementers.trim(),
+      executionDate: executionDate.trim(),
+      beneficiaries: beneficiaries.trim(),
+      beneficiaryCount: beneficiaryCount.trim(),
+      objectives: objectives.map((o) => o.trim()).filter(Boolean),
+      steps: steps.map((s) => s.trim()).filter(Boolean),
+      photos: extraPhotos,
+    } : undefined;
     if (editingId) {
-      onEdit(editingId, { title: title.trim(), notes: notes.trim(), photo });
+      onEdit(editingId, { title: title.trim(), notes: notes.trim(), photo, program });
     } else {
-      onAdd({ id: uid(), title: title.trim(), notes: notes.trim(), photo, date: todayKey() });
+      onAdd({ id: uid(), title: title.trim(), notes: notes.trim(), photo, date: todayKey(), program });
     }
     resetForm();
   };
@@ -4573,6 +4858,50 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
             </button>
           )}
         </div>
+
+        <label className="flex items-center gap-2 text-xs font-semibold mb-2 mt-1" style={{ color: INK }}>
+          <input type="checkbox" checked={showProgram} onChange={(e) => setShowProgram(e.target.checked)} />
+          <ClipboardList size={13} color={category.color} /> إضافة كتقرير برنامج تفصيلي (نموذج إداري رسمي)
+        </label>
+
+        {showProgram && (
+          <div className="p-3 rounded-xl mb-2 space-y-2" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={programField} onChange={(e) => setProgramField(e.target.value)} placeholder="مجال البرنامج (مثال: النشاط الثقافي)" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
+              <input value={executionDate} onChange={(e) => setExecutionDate(e.target.value)} placeholder="تاريخ التنفيذ" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
+              <input value={implementers} onChange={(e) => setImplementers(e.target.value)} placeholder="المنفّذون (أسماء المعلمين)" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
+              <input value={beneficiaryCount} onChange={(e) => setBeneficiaryCount(e.target.value)} placeholder="عدد المستفيدين" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
+            </div>
+            <input value={beneficiaries} onChange={(e) => setBeneficiaries(e.target.value)} placeholder="المستفيدون" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
+            <div>
+              <p className="text-xs font-bold mb-1" style={{ color: DASH_GREEN }}>الأهداف</p>
+              <TextListEditor items={objectives} onChange={setObjectives} placeholder="هدف..." />
+            </div>
+            <div>
+              <p className="text-xs font-bold mb-1" style={{ color: DASH_GREEN }}>خطوات التنفيذ</p>
+              <TextListEditor items={steps} onChange={setSteps} placeholder="خطوة..." />
+            </div>
+            <div>
+              <p className="text-xs font-bold mb-1" style={{ color: DASH_GREEN }}>صور الشواهد (حتى ٤ صور)</p>
+              <div className="flex flex-wrap gap-2">
+                {extraPhotos.map((ph, i) => (
+                  <div key={i} className="relative">
+                    <img src={ph} alt="" className="w-14 h-14 rounded-lg object-cover" style={{ border: `1px solid ${LINE}` }} />
+                    <button onClick={() => setExtraPhotos(extraPhotos.filter((_, ix) => ix !== i))} className="absolute -top-1.5 -left-1.5 p-0.5 rounded-full" style={{ background: "#C0392B" }}><X size={10} color="#fff" /></button>
+                  </div>
+                ))}
+                {extraPhotos.length < 4 && (
+                  <>
+                    <input ref={extraPhotosInputRef} type="file" accept="image/*" multiple onChange={handleExtraPhotosChange} style={{ display: "none" }} />
+                    <button onClick={() => extraPhotosInputRef.current?.click()} className="w-14 h-14 rounded-lg flex items-center justify-center" style={{ border: `1px dashed ${LINE}` }}>
+                      <Plus size={16} color={MUTED} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         <button
           disabled={!title.trim()}
           onClick={submit}
@@ -4597,6 +4926,9 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                 <p className="text-[11px] mt-1" style={{ color: MUTED }}>{formatDateDisplay(e.date)}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                {e.program && (
+                  <button onClick={() => onPrintProgram(e)} title="طباعة كتقرير برنامج" className="p-1.5 rounded-lg hover:bg-black/5"><Printer size={14} color={category.color} /></button>
+                )}
                 <button onClick={() => startEdit(e)} title="تعديل" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
                 <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
                 <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
@@ -4998,7 +5330,7 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
   );
 }
 
-function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onShareReadOnly, teacherName, bare = false }) {
+function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onShareReadOnly, onPrintProgram, teacherName, bare = false }) {
   const [openCat, setOpenCat] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [showExportPicker, setShowExportPicker] = useState(false);
@@ -5114,6 +5446,7 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
           onEdit={(entryId, patch) => editEntry(openCat.key, entryId, patch)}
           onDelete={(id) => deleteEntry(openCat.key, id)}
           onArchive={(id) => archiveEntry(openCat.key, id)}
+          onPrintProgram={(entry) => onPrintProgram(entry, openCat)}
           onClose={() => setOpenCat(null)}
         />
       )}
@@ -5572,6 +5905,7 @@ function trashEntryLabel(entry) {
   if (entry.type === "row") return `صف: ${entry.data.row.name}`;
   if (entry.type === "column") return `عمود: ${entry.data.column.name}`;
   if (entry.type === "bulk") return `حذف شامل (${entry.data.columns.length} عمود، ${entry.data.rows.length} صف)`;
+  if (entry.type === "clearStudents") return `تفريغ كل الطلاب (${entry.data.rows.length} طالب، الأعمدة بقيت كما هي)`;
   if (entry.type === "bulkRows") return `حذف جماعي (${entry.data.items.length} طالب)`;
   if (entry.type === "class") return `فصل: ${entry.data.cls.subject} — ${entry.data.cls.grade}`;
   if (entry.type === "classesBulk") return `حذف جماعي (${entry.data.classes.length} فصل)`;
@@ -7130,7 +7464,11 @@ function RowColorRuleModal({ cls, onClose, onSave, onClear }) {
 
 // لعبة جاهزة مدمجة بالتطبيق كمثال حي — أسئلة اختيار من متعدد سريعة، تطبّق
 // نفس البروتوكول أعلاه بالضبط.
-const BUILTIN_GAME_QUIZ_HTML = `<!DOCTYPE html>
+// يبني صفحة لعبة "الأسئلة السريعة" ديناميكيًا حسب أي مجموعة أسئلة تُمرَّر
+// له — سواء من بنك أسئلة جاهز حسب المادة، أو أسئلة كتبها المعلم بنفسه.
+function buildQuizGameHtml(questions, gameTitle) {
+  const safeJson = JSON.stringify(questions).replace(/</g, "\\u003c").replace(/`/g, "\\`");
+  return `<!DOCTYPE html>
 <html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   * { box-sizing: border-box; }
@@ -7155,33 +7493,16 @@ const BUILTIN_GAME_QUIZ_HTML = `<!DOCTYPE html>
     <p class="feedback" id="feedback"></p>
   </div>
 <script>
-  const QUESTIONS = [
-    { q: "كم عدد أركان الإسلام؟", opts: ["ثلاثة", "أربعة", "خمسة", "ستة"], correct: 2 },
-    { q: "ما عاصمة المملكة العربية السعودية؟", opts: ["جدة", "الرياض", "الدمام", "مكة"], correct: 1 },
-    { q: "كم عدد أيام الأسبوع؟", opts: ["خمسة", "ستة", "سبعة", "ثمانية"], correct: 2 },
-    { q: "ما ناتج 7 × 6؟", opts: ["36", "42", "48", "45"], correct: 1 },
-    { q: "أين تقع قارة أفريقيا بالنسبة لآسيا؟", opts: ["شمالها", "جنوبها", "غربها", "شرقها"], correct: 2 },
-    { q: "كم عدد فصول السنة؟", opts: ["اثنان", "ثلاثة", "أربعة", "خمسة"], correct: 2 },
-    { q: "ما هو أكبر كوكب في المجموعة الشمسية؟", opts: ["الأرض", "المريخ", "المشتري", "زحل"], correct: 2 },
-    { q: "كم حرفًا في الأبجدية العربية؟", opts: ["26", "27", "28", "29"], correct: 2 },
-  ];
+  const QUESTIONS = ${safeJson};
   let idx = Math.floor(Math.random() * QUESTIONS.length);
-  let score = 0;
-  let qCount = 0;
-  let locked = false;
-
+  let score = 0, qCount = 0, locked = false;
   function shuffle(arr) {
     const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   }
-
   function render() {
-    locked = false;
-    qCount++;
+    locked = false; qCount++;
     const item = QUESTIONS[idx];
     document.getElementById("qnum").textContent = "سؤال " + qCount;
     document.getElementById("question").textContent = item.q;
@@ -7191,13 +7512,11 @@ const BUILTIN_GAME_QUIZ_HTML = `<!DOCTYPE html>
     const order = shuffle(item.opts.map((t, i) => ({ t, correct: i === item.correct })));
     order.forEach((o) => {
       const btn = document.createElement("button");
-      btn.className = "opt";
-      btn.textContent = o.t;
+      btn.className = "opt"; btn.textContent = o.t;
       btn.onclick = () => choose(btn, o.correct);
       optsDiv.appendChild(btn);
     });
   }
-
   function choose(btn, isCorrect) {
     if (locked) return;
     locked = true;
@@ -7206,12 +7525,455 @@ const BUILTIN_GAME_QUIZ_HTML = `<!DOCTYPE html>
     document.getElementById("feedback").style.color = isCorrect ? "#0F9D58" : "#C0392B";
     if (isCorrect) { score++; document.getElementById("score").textContent = "النقاط: " + score; }
     window.parent.postMessage({ type: "fasooli:answer", correct: isCorrect }, "*");
-    setTimeout(() => {
-      idx = Math.floor(Math.random() * QUESTIONS.length);
-      render();
-    }, 1400);
+    setTimeout(() => { idx = Math.floor(Math.random() * QUESTIONS.length); render(); }, 1400);
   }
+  render();
+</script>
+</body></html>`;
+}
 
+// بنوك أسئلة عامة جاهزة حسب المادة — أسئلة ثقافة عامة بأسلوب كل مادة، مو
+// محتوى مطابق حرفيًا للمنهج (ما نملك وصول لمحتوى الكتب الرسمية)، لكنها
+// نقطة بداية جاهزة تغني عن الكتابة من الصفر.
+const SUBJECT_QUESTION_BANKS = {
+  "لغتي الخالدة": [
+    { q: "أي مما يلي حرف من حروف الجر؟", opts: ["في", "قام", "كتاب", "جميل"], correct: 0 },
+    { q: "ما جمع كلمة \"قلم\"؟", opts: ["أقلام", "قلمون", "قلمين", "قلوم"], correct: 0 },
+    { q: "ما نوع الأسلوب في جملة \"ما أجمل السماء!\"؟", opts: ["أسلوب استفهام", "أسلوب تعجب", "أسلوب نهي", "أسلوب أمر"], correct: 1 },
+    { q: "ما مرادف كلمة \"سعيد\"؟", opts: ["حزين", "فرح", "غاضب", "خائف"], correct: 1 },
+    { q: "ما ضد كلمة \"كبير\"؟", opts: ["طويل", "صغير", "عريض", "قصير"], correct: 1 },
+    { q: "أي الكلمات التالية اسم؟", opts: ["يكتب", "مدرسة", "في", "هل"], correct: 1 },
+  ],
+  "الرياضيات": [
+    { q: "ما ناتج 8 × 7؟", opts: ["54", "56", "58", "64"], correct: 1 },
+    { q: "كم يساوي نصف العدد 90؟", opts: ["40", "45", "50", "35"], correct: 1 },
+    { q: "ما هو العدد الأولي من بين التالي؟", opts: ["9", "15", "17", "21"], correct: 2 },
+    { q: "كم ضلعًا للمثلث؟", opts: ["اثنان", "ثلاثة", "أربعة", "خمسة"], correct: 1 },
+    { q: "ما ناتج 144 ÷ 12؟", opts: ["10", "11", "12", "13"], correct: 2 },
+    { q: "أي الكسور التالية يساوي النصف؟", opts: ["1/3", "2/4", "1/5", "3/5"], correct: 1 },
+  ],
+  "العلوم": [
+    { q: "ما الغاز الذي يتنفسه الإنسان للحياة؟", opts: ["ثاني أكسيد الكربون", "الأكسجين", "النيتروجين", "الهيدروجين"], correct: 1 },
+    { q: "كم عدد حالات المادة الأساسية؟", opts: ["اثنتان", "ثلاث", "أربع", "خمس"], correct: 1 },
+    { q: "ما الكوكب الأقرب للشمس؟", opts: ["الأرض", "الزهرة", "عطارد", "المريخ"], correct: 2 },
+    { q: "أي الأعضاء مسؤول عن ضخ الدم؟", opts: ["الرئة", "القلب", "الكبد", "المعدة"], correct: 1 },
+    { q: "ما مصدر الطاقة الأساسي لكوكب الأرض؟", opts: ["القمر", "الشمس", "الرياح", "الماء"], correct: 1 },
+    { q: "ماذا نسمي عملية تحويل النبات لضوء الشمس إلى غذاء؟", opts: ["التبخر", "البناء الضوئي", "التنفس", "الترسيب"], correct: 1 },
+  ],
+  "التربية الإسلامية": [
+    { q: "كم عدد أركان الإسلام؟", opts: ["ثلاثة", "أربعة", "خمسة", "ستة"], correct: 2 },
+    { q: "كم عدد الصلوات المفروضة يوميًا؟", opts: ["ثلاث", "أربع", "خمس", "ست"], correct: 2 },
+    { q: "في أي شهر يصوم المسلمون؟", opts: ["شعبان", "رمضان", "شوال", "رجب"], correct: 1 },
+    { q: "ما هي أول سورة نزلت في القرآن الكريم؟", opts: ["الفاتحة", "العلق", "البقرة", "الإخلاص"], correct: 1 },
+    { q: "كم عدد أركان الإيمان؟", opts: ["أربعة", "خمسة", "ستة", "سبعة"], correct: 2 },
+    { q: "ما اسم المدينة التي هاجر إليها النبي ﷺ؟", opts: ["مكة", "المدينة المنورة", "الطائف", "جدة"], correct: 1 },
+  ],
+  "الدراسات الاجتماعية": [
+    { q: "ما عاصمة المملكة العربية السعودية؟", opts: ["جدة", "الرياض", "الدمام", "أبها"], correct: 1 },
+    { q: "كم عدد قارات العالم؟", opts: ["خمس", "ستة", "سبع", "ثمان"], correct: 2 },
+    { q: "أي البحار يحد المملكة من الغرب؟", opts: ["الخليج العربي", "البحر الأحمر", "بحر العرب", "المحيط الهندي"], correct: 1 },
+    { q: "ما أطول نهر في العالم؟", opts: ["الأمازون", "النيل", "دجلة", "الفرات"], correct: 1 },
+    { q: "كم عدد مناطق المملكة العربية السعودية؟", opts: ["١٠", "١١", "١٢", "١٣"], correct: 3 },
+    { q: "أي مما يلي من مصادر الدخل الرئيسية بالمملكة؟", opts: ["الزراعة فقط", "النفط", "الصيد", "السياحة فقط"], correct: 1 },
+  ],
+};
+
+// خطوة إعداد لعبة الأسئلة: اختيار مادة من بنك جاهز، أو كتابة أسئلة خاصة —
+// بشكل اختياري بالكامل، حسب رغبة المعلم.
+function QuizSetupModal({ onStart, onClose, onBack }) {
+  const [mode, setMode] = useState("bank"); // bank | custom
+  const [subject, setSubject] = useState(Object.keys(SUBJECT_QUESTION_BANKS)[0]);
+  const [customQuestions, setCustomQuestions] = useState([{ id: uid(), text: "", options: ["", ""], correct: 0 }]);
+
+  const addCustomQuestion = () => setCustomQuestions((qs) => [...qs, { id: uid(), text: "", options: ["", ""], correct: 0 }]);
+  const removeCustomQuestion = (id) => setCustomQuestions((qs) => qs.filter((q) => q.id !== id));
+  const updateQuestion = (id, patch) => setCustomQuestions((qs) => qs.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  const updateOption = (id, i, val) => setCustomQuestions((qs) => qs.map((q) => (q.id === id ? { ...q, options: q.options.map((o, oi) => (oi === i ? val : o)) } : q)));
+  const addOption = (id) => setCustomQuestions((qs) => qs.map((q) => (q.id === id ? { ...q, options: [...q.options, ""] } : q)));
+  const removeOption = (id, i) => setCustomQuestions((qs) => qs.map((q) => (q.id === id ? { ...q, options: q.options.filter((_, oi) => oi !== i), correct: q.correct === i ? 0 : q.correct } : q)));
+
+  const customValid = customQuestions.length > 0 && customQuestions.every((q) => q.text.trim() && q.options.length >= 2 && q.options.every((o) => o.trim()));
+
+  const start = () => {
+    if (mode === "bank") {
+      const questions = SUBJECT_QUESTION_BANKS[subject];
+      onStart({ name: `لعبة الأسئلة السريعة — ${subject}`, html: buildQuizGameHtml(questions) });
+    } else {
+      const questions = customQuestions.map((q) => ({ q: q.text.trim(), opts: q.options.map((o) => o.trim()), correct: q.correct }));
+      onStart({ name: "لعبة الأسئلة السريعة — أسئلتي الخاصة", html: buildQuizGameHtml(questions) });
+    }
+  };
+
+  return (
+    <Modal title="إعداد لعبة الأسئلة السريعة" onClose={onClose} onBack={onBack} accent="magic" wide>
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setMode("bank")} className="flex-1 text-sm font-semibold py-2.5 rounded-lg" style={{ background: mode === "bank" ? INK : "transparent", color: mode === "bank" ? "#fff" : MUTED, border: `1px solid ${mode === "bank" ? INK : LINE}` }}>بنك أسئلة جاهز حسب المادة</button>
+        <button onClick={() => setMode("custom")} className="flex-1 text-sm font-semibold py-2.5 rounded-lg" style={{ background: mode === "custom" ? INK : "transparent", color: mode === "custom" ? "#fff" : MUTED, border: `1px solid ${mode === "custom" ? INK : LINE}` }}>أكتب أسئلتي الخاصة</button>
+      </div>
+
+      {mode === "bank" ? (
+        <Field label="اختر المادة">
+          <select value={subject} onChange={(e) => setSubject(e.target.value)} style={inputStyle}>
+            {Object.keys(SUBJECT_QUESTION_BANKS).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <p className="text-xs mt-2" style={{ color: MUTED }}>
+            أسئلة ثقافة عامة بأسلوب هذي المادة (مو منسوخة من كتاب رسمي معيّن) — نقطة بداية سريعة تقدر تستبدلها بأسئلتك الخاصة بأي وقت.
+          </p>
+        </Field>
+      ) : (
+        <div className="space-y-3 mb-3 max-h-96 overflow-y-auto">
+          {customQuestions.map((q, qi) => (
+            <div key={q.id} className="p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold px-2 py-1 rounded-full shrink-0" style={{ background: "#F3F1E9", color: MUTED }}>س{qi + 1}</span>
+                <input style={{ ...inputStyle, flex: 1 }} value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} placeholder="نص السؤال" />
+                {customQuestions.length > 1 && <button onClick={() => removeCustomQuestion(q.id)} className="p-1.5 rounded hover:bg-black/5 shrink-0"><Trash2 size={14} color="#C0392B" /></button>}
+              </div>
+              <div className="space-y-1.5 mr-8">
+                {q.options.map((o, oi) => (
+                  <div key={oi} className="flex items-center gap-2">
+                    <input type="radio" name={`correct-${q.id}`} checked={q.correct === oi} onChange={() => updateQuestion(q.id, { correct: oi })} />
+                    <input style={{ ...inputStyle, flex: 1, padding: "6px 10px" }} value={o} onChange={(e) => updateOption(q.id, oi, e.target.value)} placeholder="خيار" />
+                    {q.options.length > 2 && <button onClick={() => removeOption(q.id, oi)} className="p-1 rounded hover:bg-black/5"><X size={12} color={MUTED} /></button>}
+                  </div>
+                ))}
+                <button onClick={() => addOption(q.id)} className="text-xs font-semibold flex items-center gap-1" style={{ color: "#26423B" }}><Plus size={12} /> إضافة خيار</button>
+              </div>
+            </div>
+          ))}
+          <button onClick={addCustomQuestion} className="text-sm font-semibold flex items-center gap-1" style={{ color: "#26423B" }}><Plus size={15} /> إضافة سؤال</button>
+        </div>
+      )}
+
+      <button
+        disabled={mode === "custom" && !customValid}
+        onClick={start}
+        className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        ابدأ اللعبة
+      </button>
+    </Modal>
+  );
+}
+
+// ---------- ٤ ألعاب إضافية جاهزة (تطبّق نفس بروتوكول postMessage) ----------
+
+const BUILTIN_GAME_TRUEFALSE_HTML = `<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, Arial, sans-serif; background: #FAF3EE; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #fff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 28px; width: 100%; max-width: 460px; text-align: center; }
+  .badge { display: inline-block; background: #C97A2B; color: #fff; font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 999px; margin-bottom: 16px; }
+  h1 { font-size: 20px; color: #232622; margin: 0 0 24px; line-height: 1.6; }
+  .row { display: flex; gap: 12px; }
+  button.opt { flex: 1; font-family: inherit; font-size: 16px; font-weight: bold; padding: 18px; border-radius: 14px; border: 2px solid #E4DFD2; background: #fff; cursor: pointer; }
+  button.opt.correct { background: #E3F1EC; border-color: #0F9D58; color: #0F9D58; }
+  button.opt.wrong { background: #FBEAE7; border-color: #C0392B; color: #C0392B; }
+  .feedback { margin-top: 16px; font-size: 14px; font-weight: bold; min-height: 20px; }
+  .score { position: absolute; top: 16px; left: 16px; font-size: 12px; color: #7A7768; }
+</style></head>
+<body>
+  <div class="score" id="score">النقاط: 0</div>
+  <div class="card">
+    <span class="badge" id="qnum">عبارة 1</span>
+    <h1 id="question"></h1>
+    <div class="row">
+      <button class="opt" id="btnTrue">✓ صح</button>
+      <button class="opt" id="btnFalse">✗ خطأ</button>
+    </div>
+    <p class="feedback" id="feedback"></p>
+  </div>
+<script>
+  const STATEMENTS = [
+    { q: "الشمس أكبر من الأرض بكثير.", correct: true },
+    { q: "عدد أيام السنة الميلادية 300 يوم.", correct: false },
+    { q: "الماء يتجمد عند درجة الصفر المئوي.", correct: true },
+    { q: "الفيل من الحيوانات الأليفة الصغيرة.", correct: false },
+    { q: "الرياض هي عاصمة المملكة العربية السعودية.", correct: true },
+    { q: "عدد أضلاع المربع خمسة.", correct: false },
+    { q: "النحل ينتج العسل.", correct: true },
+    { q: "الليل أطول من النهار طوال أيام السنة في كل مكان.", correct: false },
+  ];
+  let idx = Math.floor(Math.random() * STATEMENTS.length);
+  let score = 0, qCount = 0, locked = false;
+  function render() {
+    locked = false; qCount++;
+    document.getElementById("qnum").textContent = "عبارة " + qCount;
+    document.getElementById("question").textContent = STATEMENTS[idx].q;
+    document.getElementById("feedback").textContent = "";
+    document.getElementById("btnTrue").className = "opt";
+    document.getElementById("btnFalse").className = "opt";
+  }
+  function choose(answer) {
+    if (locked) return;
+    locked = true;
+    const isCorrect = answer === STATEMENTS[idx].correct;
+    document.getElementById(answer ? "btnTrue" : "btnFalse").className = "opt " + (isCorrect ? "correct" : "wrong");
+    document.getElementById("feedback").textContent = isCorrect ? "✓ إجابة صحيحة! 🎉" : "✗ إجابة خاطئة";
+    document.getElementById("feedback").style.color = isCorrect ? "#0F9D58" : "#C0392B";
+    if (isCorrect) { score++; document.getElementById("score").textContent = "النقاط: " + score; }
+    window.parent.postMessage({ type: "fasooli:answer", correct: isCorrect }, "*");
+    setTimeout(() => { idx = Math.floor(Math.random() * STATEMENTS.length); render(); }, 1200);
+  }
+  document.getElementById("btnTrue").onclick = () => choose(true);
+  document.getElementById("btnFalse").onclick = () => choose(false);
+  render();
+</script>
+</body></html>`;
+
+const BUILTIN_GAME_FILLBLANK_HTML = `<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, Arial, sans-serif; background: #EEF3FA; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #fff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 28px; width: 100%; max-width: 460px; text-align: center; }
+  .badge { display: inline-block; background: #2E7DA6; color: #fff; font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 999px; margin-bottom: 16px; }
+  h1 { font-size: 19px; color: #232622; margin: 0 0 24px; line-height: 1.7; }
+  .blank { display: inline-block; min-width: 60px; border-bottom: 3px solid #2E7DA6; color: #2E7DA6; font-weight: bold; }
+  .options { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  button.opt { font-family: inherit; font-size: 15px; padding: 10px 18px; border-radius: 999px; border: 2px solid #E4DFD2; background: #fff; cursor: pointer; }
+  button.opt.correct { background: #E3F1EC; border-color: #0F9D58; color: #0F9D58; font-weight: bold; }
+  button.opt.wrong { background: #FBEAE7; border-color: #C0392B; color: #C0392B; }
+  .feedback { margin-top: 16px; font-size: 14px; font-weight: bold; min-height: 20px; }
+  .score { position: absolute; top: 16px; left: 16px; font-size: 12px; color: #7A7768; }
+</style></head>
+<body>
+  <div class="score" id="score">النقاط: 0</div>
+  <div class="card">
+    <span class="badge" id="qnum">جملة 1</span>
+    <h1 id="question"></h1>
+    <div class="options" id="options"></div>
+    <p class="feedback" id="feedback"></p>
+  </div>
+<script>
+  const ITEMS = [
+    { before: "تشرق الشمس من جهة ", after: ".", opts: ["الشرق", "الغرب", "الشمال"], correct: 0 },
+    { before: "يتكوّن الأسبوع من ", after: " أيام.", opts: ["خمسة", "ستة", "سبعة"], correct: 2 },
+    { before: "كلمة يكتبُ فعل ", after: ".", opts: ["ماضٍ", "مضارع", "أمر"], correct: 1 },
+    { before: "أكبر كوكب في مجموعتنا الشمسية هو ", after: ".", opts: ["الأرض", "المشتري", "زحل"], correct: 1 },
+    { before: "الماء يغلي عند درجة حرارة ", after: " مئوية.", opts: ["50", "80", "100"], correct: 2 },
+    { before: "عاصمة المملكة العربية السعودية هي ", after: ".", opts: ["جدة", "الرياض", "الدمام"], correct: 1 },
+  ];
+  let idx = Math.floor(Math.random() * ITEMS.length);
+  let score = 0, qCount = 0, locked = false;
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function render() {
+    locked = false; qCount++;
+    const item = ITEMS[idx];
+    document.getElementById("qnum").textContent = "جملة " + qCount;
+    document.getElementById("question").innerHTML = item.before + '<span class="blank">___</span>' + item.after;
+    document.getElementById("feedback").textContent = "";
+    const optsDiv = document.getElementById("options");
+    optsDiv.innerHTML = "";
+    const order = shuffle(item.opts.map((t, i) => ({ t, correct: i === item.correct })));
+    order.forEach((o) => {
+      const btn = document.createElement("button");
+      btn.className = "opt"; btn.textContent = o.t;
+      btn.onclick = () => choose(btn, o.correct);
+      optsDiv.appendChild(btn);
+    });
+  }
+  function choose(btn, isCorrect) {
+    if (locked) return;
+    locked = true;
+    btn.classList.add(isCorrect ? "correct" : "wrong");
+    document.getElementById("feedback").textContent = isCorrect ? "✓ أحسنت! 🎉" : "✗ إجابة خاطئة";
+    document.getElementById("feedback").style.color = isCorrect ? "#0F9D58" : "#C0392B";
+    if (isCorrect) { score++; document.getElementById("score").textContent = "النقاط: " + score; }
+    window.parent.postMessage({ type: "fasooli:answer", correct: isCorrect }, "*");
+    setTimeout(() => { idx = Math.floor(Math.random() * ITEMS.length); render(); }, 1400);
+  }
+  render();
+</script>
+</body></html>`;
+
+const BUILTIN_GAME_MEMORY_HTML = `<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, Arial, sans-serif; background: #F3EEFA; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #fff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 24px; width: 100%; max-width: 440px; text-align: center; }
+  .badge { display: inline-block; background: #7A4E9E; color: #fff; font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 999px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tile { aspect-ratio: 1; border-radius: 10px; background: #7A4E9E; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: #fff; cursor: pointer; user-select: none; padding: 4px; text-align: center; }
+  .tile.flipped { background: #fff; border: 2px solid #7A4E9E; color: #232622; }
+  .tile.matched { background: #E3F1EC; border: 2px solid #0F9D58; color: #0F9D58; }
+  .feedback { margin-top: 16px; font-size: 14px; font-weight: bold; min-height: 20px; }
+  .score { position: absolute; top: 16px; left: 16px; font-size: 12px; color: #7A7768; }
+</style></head>
+<body>
+  <div class="score" id="score">أزواج: 0</div>
+  <div class="card">
+    <span class="badge">لعبة الذاكرة — طابق الأزواج</span>
+    <div class="grid" id="grid"></div>
+    <p class="feedback" id="feedback"></p>
+  </div>
+<script>
+  const PAIRS = [
+    ["واحد", "1"], ["اثنان", "2"], ["ثلاثة", "3"], ["أربعة", "4"],
+    ["خمسة", "5"], ["ستة", "6"], ["سبعة", "7"], ["ثمانية", "8"],
+  ];
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function buildDeck() {
+    const chosen = shuffle(PAIRS).slice(0, 6);
+    let cards = [];
+    chosen.forEach((p, i) => { cards.push({ id: i + "a", pairId: i, text: p[0] }); cards.push({ id: i + "b", pairId: i, text: p[1] }); });
+    return shuffle(cards);
+  }
+  let deck = buildDeck();
+  let flipped = [];
+  let matchedCount = 0;
+  let locked = false;
+
+  function render() {
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+    deck.forEach((card) => {
+      const el = document.createElement("div");
+      el.className = "tile";
+      el.textContent = "؟";
+      el.onclick = () => flip(card, el);
+      el.dataset.id = card.id;
+      grid.appendChild(el);
+    });
+  }
+  function flip(card, el) {
+    if (locked || el.classList.contains("matched") || el.classList.contains("flipped")) return;
+    el.classList.add("flipped");
+    el.textContent = card.text;
+    flipped.push({ card, el });
+    if (flipped.length === 2) {
+      locked = true;
+      const [a, b] = flipped;
+      if (a.card.pairId === b.card.pairId) {
+        setTimeout(() => {
+          a.el.classList.add("matched"); b.el.classList.add("matched");
+          matchedCount++;
+          document.getElementById("score").textContent = "أزواج: " + matchedCount;
+          document.getElementById("feedback").textContent = "✓ تطابق صحيح! 🎉";
+          document.getElementById("feedback").style.color = "#0F9D58";
+          window.parent.postMessage({ type: "fasooli:answer", correct: true }, "*");
+          flipped = []; locked = false;
+          if (matchedCount === 6) { document.getElementById("feedback").textContent = "🏆 أكملت كل الأزواج! لعبة جديدة..."; setTimeout(() => { deck = buildDeck(); matchedCount = 0; render(); document.getElementById("score").textContent = "أزواج: 0"; }, 1600); }
+        }, 400);
+      } else {
+        document.getElementById("feedback").textContent = "✗ غير متطابق";
+        document.getElementById("feedback").style.color = "#C0392B";
+        window.parent.postMessage({ type: "fasooli:answer", correct: false }, "*");
+        setTimeout(() => {
+          a.el.classList.remove("flipped"); a.el.textContent = "؟";
+          b.el.classList.remove("flipped"); b.el.textContent = "؟";
+          flipped = []; locked = false;
+        }, 900);
+      }
+    }
+  }
+  render();
+</script>
+</body></html>`;
+
+const BUILTIN_GAME_SPEEDROUND_HTML = `<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, Arial, sans-serif; background: #FDF1F1; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #fff; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 28px; width: 100%; max-width: 460px; text-align: center; }
+  .badge { display: inline-block; background: #C0392B; color: #fff; font-size: 12px; font-weight: bold; padding: 5px 14px; border-radius: 999px; margin-bottom: 12px; }
+  .timerbar { width: 100%; height: 8px; background: #F3E6E6; border-radius: 999px; overflow: hidden; margin-bottom: 18px; }
+  .timerfill { height: 100%; background: #C0392B; width: 100%; transition: width 0.1s linear; }
+  h1 { font-size: 19px; color: #232622; margin: 0 0 20px; line-height: 1.5; }
+  .options { display: flex; flex-direction: column; gap: 10px; }
+  button.opt { font-family: inherit; font-size: 15px; padding: 14px; border-radius: 12px; border: 2px solid #E4DFD2; background: #fff; cursor: pointer; }
+  button.opt.correct { background: #E3F1EC; border-color: #0F9D58; color: #0F9D58; font-weight: bold; }
+  button.opt.wrong { background: #FBEAE7; border-color: #C0392B; color: #C0392B; }
+  .feedback { margin-top: 16px; font-size: 14px; font-weight: bold; min-height: 20px; }
+  .score { position: absolute; top: 16px; left: 16px; font-size: 12px; color: #7A7768; }
+</style></head>
+<body>
+  <div class="score" id="score">النقاط: 0</div>
+  <div class="card">
+    <span class="badge" id="qnum">تحدي 1 — ٨ ثواني</span>
+    <div class="timerbar"><div class="timerfill" id="timerfill"></div></div>
+    <h1 id="question"></h1>
+    <div class="options" id="options"></div>
+    <p class="feedback" id="feedback"></p>
+  </div>
+<script>
+  const QUESTIONS = [
+    { q: "ما ناتج 6 + 7؟", opts: ["12", "13", "14", "11"], correct: 1 },
+    { q: "عاصمة مصر؟", opts: ["الإسكندرية", "القاهرة", "الأقصر", "أسوان"], correct: 1 },
+    { q: "كم شهرًا بالسنة؟", opts: ["10", "11", "12", "13"], correct: 2 },
+    { q: "لون السماء الصافية؟", opts: ["أخضر", "أزرق", "أحمر", "أصفر"], correct: 1 },
+    { q: "ما ناتج 9 × 3؟", opts: ["24", "27", "30", "21"], correct: 1 },
+    { q: "كم عدد أيام الأسبوع؟", opts: ["6", "7", "8", "5"], correct: 1 },
+  ];
+  let idx = Math.floor(Math.random() * QUESTIONS.length);
+  let score = 0, qCount = 0, locked = false, timerInterval = null;
+  const DURATION = 8000;
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function startTimer() {
+    const start = Date.now();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const pct = Math.max(0, 100 - (elapsed / DURATION) * 100);
+      document.getElementById("timerfill").style.width = pct + "%";
+      if (elapsed >= DURATION) { clearInterval(timerInterval); timeUp(); }
+    }, 80);
+  }
+  function timeUp() {
+    if (locked) return;
+    locked = true;
+    document.getElementById("feedback").textContent = "⏱️ انتهى الوقت!";
+    document.getElementById("feedback").style.color = "#C0392B";
+    window.parent.postMessage({ type: "fasooli:answer", correct: false }, "*");
+    setTimeout(next, 1200);
+  }
+  function render() {
+    locked = false; qCount++;
+    const item = QUESTIONS[idx];
+    document.getElementById("qnum").textContent = "تحدي " + qCount + " — ٨ ثواني";
+    document.getElementById("question").textContent = item.q;
+    document.getElementById("feedback").textContent = "";
+    document.getElementById("timerfill").style.width = "100%";
+    const optsDiv = document.getElementById("options");
+    optsDiv.innerHTML = "";
+    const order = shuffle(item.opts.map((t, i) => ({ t, correct: i === item.correct })));
+    order.forEach((o) => {
+      const btn = document.createElement("button");
+      btn.className = "opt"; btn.textContent = o.t;
+      btn.onclick = () => choose(btn, o.correct);
+      optsDiv.appendChild(btn);
+    });
+    startTimer();
+  }
+  function choose(btn, isCorrect) {
+    if (locked) return;
+    locked = true;
+    clearInterval(timerInterval);
+    btn.classList.add(isCorrect ? "correct" : "wrong");
+    document.getElementById("feedback").textContent = isCorrect ? "✓ سريع وصحيح! 🎉" : "✗ إجابة خاطئة";
+    document.getElementById("feedback").style.color = isCorrect ? "#0F9D58" : "#C0392B";
+    if (isCorrect) { score++; document.getElementById("score").textContent = "النقاط: " + score; }
+    window.parent.postMessage({ type: "fasooli:answer", correct: isCorrect }, "*");
+    setTimeout(next, 1200);
+  }
+  function next() { idx = Math.floor(Math.random() * QUESTIONS.length); render(); }
   render();
 </script>
 </body></html>`;
@@ -7220,8 +7982,32 @@ const BUILTIN_GAMES = [
   {
     id: "builtin-quiz",
     name: "لعبة الأسئلة السريعة",
-    description: "أسئلة اختيار من متعدد جاهزة — كل إجابة صحيحة تسجّل نقطة للطالب النشط تلقائيًا.",
-    html: BUILTIN_GAME_QUIZ_HTML,
+    description: "أسئلة اختيار من متعدد — بنك جاهز حسب المادة، أو اكتب أسئلتك الخاصة.",
+    needsSetup: true,
+  },
+  {
+    id: "builtin-truefalse",
+    name: "لعبة صح أو خطأ",
+    description: "عبارات سريعة يحدد الطالب هل هي صحيحة أو خاطئة.",
+    html: BUILTIN_GAME_TRUEFALSE_HTML,
+  },
+  {
+    id: "builtin-fillblank",
+    name: "أكمل الجملة",
+    description: "جملة ناقصة واختيار الكلمة الصحيحة لإكمالها.",
+    html: BUILTIN_GAME_FILLBLANK_HTML,
+  },
+  {
+    id: "builtin-memory",
+    name: "لعبة الذاكرة",
+    description: "طابق الأزواج المتشابهة (أرقام وكلماتها) — كل تطابق صحيح نقطة.",
+    html: BUILTIN_GAME_MEMORY_HTML,
+  },
+  {
+    id: "builtin-speedround",
+    name: "التحدي السريع",
+    description: "أسئلة بعدّاد زمني ٨ ثوانٍ لكل سؤال — إثارة أكبر بالسرعة.",
+    html: BUILTIN_GAME_SPEEDROUND_HTML,
   },
 ];
 
@@ -7408,8 +8194,67 @@ function GameClassPickerModal({ classes, onSelect, onClose, onBack }) {
 function GamesHub({ classes, library, updateClassById, bare = false }) {
   const [selectedGame, setSelectedGame] = useState(null);
   const [linkedClassId, setLinkedClassId] = useState(null);
+  const [standalone, setStandalone] = useState(false);
+  const [showQuizSetup, setShowQuizSetup] = useState(false);
+  const [pendingLibraryGame, setPendingLibraryGame] = useState(null);
 
   const libraryGames = (library || []).filter((f) => (f.mimeType || "").includes("html") || (f.name || "").toLowerCase().endsWith(".html"));
+
+  const resetAll = () => { setSelectedGame(null); setLinkedClassId(null); setStandalone(false); };
+
+  if (showQuizSetup) {
+    return (
+      <QuizSetupModal
+        onStart={(game) => { setSelectedGame(game); setShowQuizSetup(false); }}
+        onClose={() => setShowQuizSetup(false)}
+        onBack={() => setShowQuizSetup(false)}
+      />
+    );
+  }
+
+  if (pendingLibraryGame) {
+    return (
+      <Modal title={pendingLibraryGame.name} onClose={() => setPendingLibraryGame(null)} onBack={() => setPendingLibraryGame(null)} accent="magic">
+        <p className="text-sm mb-4" style={{ color: MUTED }}>
+          هذي لعبة رفعتها بنفسك — ما أقدر أضمن ربطها التلقائي بأسماء الطلاب لأني مو مطّلع على كودها الداخلي. اختر كيف تبي تشغّلها:
+        </p>
+        <div className="space-y-2">
+          <button
+            onClick={() => { setSelectedGame(pendingLibraryGame); setStandalone(false); setPendingLibraryGame(null); }}
+            className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+            style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+          >
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#EAF3F0" }}><Users size={18} color="#26423B" /></div>
+            <div className="flex-1">
+              <p className="text-sm font-bold" style={{ color: INK }}>ربط بفصل (تسجيل نقاط تلقائي)</p>
+              <p className="text-xs" style={{ color: MUTED }}>يعمل فقط لو اللعبة فعليًا تستخدم بروتوكول postMessage الموضّح بالأسفل.</p>
+            </div>
+          </button>
+          <button
+            onClick={() => { setSelectedGame(pendingLibraryGame); setStandalone(true); setPendingLibraryGame(null); }}
+            className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+            style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+          >
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}><Gamepad2 size={18} color={MUTED} /></div>
+            <div className="flex-1">
+              <p className="text-sm font-bold" style={{ color: INK }}>تشغيل مباشرة بدون ربط</p>
+              <p className="text-xs" style={{ color: MUTED }}>يفتح اللعبة فقط للعرض/اللعب، بدون تسجيل أي نقاط بجدول الفصل.</p>
+            </div>
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (selectedGame && standalone) {
+    return (
+      <Modal title={selectedGame.name} onClose={resetAll} accent="magic" xl>
+        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, minHeight: 480 }}>
+          <iframe title="لعبة" srcDoc={selectedGame.html} sandbox="allow-scripts" style={{ width: "100%", height: 480, border: "none" }} />
+        </div>
+      </Modal>
+    );
+  }
 
   if (selectedGame && linkedClassId) {
     const cls = classes.find((c) => c.id === linkedClassId);
@@ -7420,7 +8265,7 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
         updateClass={(fn) => updateClassById(linkedClassId, fn)}
         game={selectedGame}
         onBack={() => setLinkedClassId(null)}
-        onClose={() => { setSelectedGame(null); setLinkedClassId(null); }}
+        onClose={resetAll}
       />
     );
   }
@@ -7431,7 +8276,7 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
         classes={classes}
         onSelect={(classId) => setLinkedClassId(classId)}
         onBack={() => setSelectedGame(null)}
-        onClose={() => setSelectedGame(null)}
+        onClose={resetAll}
       />
     );
   }
@@ -7441,10 +8286,10 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
       <p className="text-xs mb-4" style={{ color: MUTED }}>
         اختر لعبة، اربطها بفصل، وابدأ اللعب — أي إجابة صحيحة تضيف نقطة مباشرة لعمود "المشاركة" للطالب النشط.
       </p>
-      <p className="text-xs font-bold mb-2" style={{ color: INK }}>ألعاب جاهزة</p>
+      <p className="text-xs font-bold mb-2" style={{ color: INK }}>ألعاب جاهزة (٥)</p>
       <div className="space-y-2 mb-5">
         {BUILTIN_GAMES.map((g) => (
-          <button key={g.id} onClick={() => setSelectedGame(g)} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+          <button key={g.id} onClick={() => (g.needsSetup ? setShowQuizSetup(true) : setSelectedGame(g))} className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#EAF3F0" }}>
               <Gamepad2 size={18} color="#26423B" />
             </div>
@@ -7465,11 +8310,11 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
               <p className="text-sm font-bold" style={{ color: "#26423B" }}>اصنع لعبتك الخاصة</p>
             </div>
             <p className="text-xs" style={{ color: "#26423B" }}>
-              ارفع ملف HTML من تبويب "المكتبة" وسيظهر هنا تلقائيًا كلعبة قابلة للربط بأي فصل.
+              ارفع ملف HTML من تبويب "المكتبة" وسيظهر هنا تلقائيًا. تقدر تشغّلها مباشرة بدون ربط بفصل، أو تربطها لو تطبّق بروتوكول تسجيل النقاط بالأسفل.
             </p>
           </div>
           <div className="p-4" style={{ background: "#fff" }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: INK }}>الشرط الوحيد: نادِ هذا السطر عند كل إجابة صحيحة</p>
+            <p className="text-xs font-semibold mb-2" style={{ color: INK }}>لو تبي ربطها بنقاط تلقائية، نادِ هذا السطر عند كل إجابة صحيحة (اختياري)</p>
             <div className="relative rounded-xl p-3" style={{ background: "#1E2A26", direction: "ltr", textAlign: "left" }}>
               <code style={{ color: "#7DE3B3", fontSize: 11, fontFamily: "monospace", wordBreak: "break-all" }}>
                 window.parent.postMessage({"{"} type: "fasooli:answer", correct: true {"}"}, "*");
@@ -7495,7 +8340,7 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
                 try {
                   const base64 = f.dataUrl.split(",")[1];
                   const html = decodeURIComponent(escape(atob(base64)));
-                  setSelectedGame({ id: f.id, name: f.name, html });
+                  setPendingLibraryGame({ id: f.id, name: f.name, html });
                 } catch (e) {
                   alert("تعذّرت قراءة هذا الملف كصفحة HTML صحيحة.");
                 }
@@ -9141,6 +9986,20 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             const blob = new Blob([html], { type: "text/html" });
             shareOrDownloadFile(blob, "تقرير-شواهد.html", "text/html");
           }}
+          onPrintProgram={(entry, cat) => setShawahedPreview({
+            type: "programReport",
+            entry,
+            cat,
+            meta: {
+              countryName: data.settings?.countryName,
+              ministryName: data.settings?.ministryName,
+              schoolName: data.settings?.schoolName,
+              logoImage: data.settings?.logoImage,
+              teacherName: data.classes[0]?.teacher || "",
+              region: data.settings?.region,
+              office: data.settings?.office,
+            },
+          })}
         />
       )}
       {mainTab === "tests" && (
@@ -9672,6 +10531,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const quickDeleteRow = (row) => setConfirmAction({ type: "deleteRow", row });
 
   const deleteAll = () => setConfirmAction({ type: "deleteAll" });
+  const clearAllStudents = () => setConfirmAction({ type: "clearStudents" });
 
   const runConfirmedAction = () => {
     if (!confirmAction) return;
@@ -9715,6 +10575,18 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       }, 450);
       return;
     }
+    if (confirmAction.type === "clearStudents") {
+      setConfirmAction(null);
+      setTableFading(true);
+      setTimeout(() => {
+        updateClass((c) => {
+          const next = { ...c, rows: [], cells: {}, reports: {} };
+          return pushTrash(next, { id: uid(), type: "clearStudents", when: nowMeta(), data: { rows: c.rows, cells: c.cells, reports: c.reports } });
+        });
+        setTableFading(false);
+      }, 450);
+      return;
+    }
     setConfirmAction(null);
   };
 
@@ -9738,6 +10610,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         next.cells = { ...next.cells, ...entry.data.cells };
       } else if (entry.type === "bulk") {
         next.columns = entry.data.columns;
+        next.rows = entry.data.rows;
+        next.cells = entry.data.cells;
+        next.reports = entry.data.reports;
+      } else if (entry.type === "clearStudents") {
         next.rows = entry.data.rows;
         next.cells = entry.data.cells;
         next.reports = entry.data.reports;
@@ -9954,6 +10830,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={RotateCcw} label="تراجع" disabled={examLocked} onClick={restoreLatest} />
           <IconBtn icon={FolderOpen} label="استعادة" disabled={examLocked} onClick={() => setShowTrash(true)} />
           <IconBtn icon={Trash2} label="حذف الكل" tone="danger" disabled={examLocked} onClick={deleteAll} />
+          <IconBtn icon={UserX} label="تفريغ الطلاب (يبقي الأعمدة)" tone="danger" disabled={examLocked} onClick={clearAllStudents} />
           <IconBtn
             icon={examLocked ? Unlock : Lock}
             label={examLocked ? "إنهاء وضع الاختبار" : "وضع الاختبار"}
@@ -10255,12 +11132,15 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         <ConfirmDialog
           title={
             confirmAction.type === "deleteAll" ? "حذف كل بيانات الفصل"
+            : confirmAction.type === "clearStudents" ? "تفريغ جميع الطلاب"
             : confirmAction.type === "deleteColumn" ? "حذف العمود"
             : "حذف الصف"
           }
           message={
             confirmAction.type === "deleteAll"
               ? "سيتم حذف جميع الأعمدة والصفوف وبيانات الرصد في هذا الفصل. متابعة؟"
+              : confirmAction.type === "clearStudents"
+              ? `سيتم حذف جميع الطلاب الحاليين (${cls.rows.length}) وكل رصدهم، بينما تبقى الأعمدة كما هي بدون تغيير — مناسب لو تبي تعيد استخدام نفس الفصل بطلاب جدد. يمكن استعادة الطلاب المحذوفين لاحقًا من سلة المحذوفات. متابعة؟`
               : confirmAction.type === "deleteColumn"
               ? `سيتم حذف العمود "${confirmAction.column.name}" وكل ما رُصد فيه. يمكن استعادته لاحقًا من سلة المحذوفات. متابعة؟`
               : `سيتم حذف الصف "${confirmAction.row.name}" بكل بياناته نهائيًا. يمكن استعادته لاحقًا من سلة المحذوفات. متابعة؟`
