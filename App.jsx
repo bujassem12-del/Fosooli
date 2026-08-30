@@ -8252,29 +8252,42 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
 function GameClassPickerModal({ classes, onSelect, onClose, onBack }) {
   const activeClasses = classes.filter((c) => !c.archived);
   return (
-    <Modal title="اربط اللعبة بفصل" onClose={onClose} onBack={onBack} accent="magic">
-      {activeClasses.length === 0 ? (
-        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد فصول بعد.</p>
-      ) : (
-        <div className="space-y-2">
-          {activeClasses.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onSelect(c.id)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
-              style={{ border: `1px solid ${LINE}`, background: "#fff" }}
-            >
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate" style={{ color: INK }}>{c.subject}</p>
-                <p className="text-xs" style={{ color: MUTED }}>{c.grade} • {c.rows.length} طالب</p>
+    <div className="fixed inset-0 flex flex-col" style={{ background: "rgba(25,28,25,0.55)", zIndex: 60 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full mx-auto mt-auto mb-auto sm:mt-16" style={{ maxWidth: 460 }}>
+        <div className="rounded-2xl overflow-hidden" style={{ background: PAPER, border: `1px solid ${LINE}`, maxHeight: "80dvh", display: "flex", flexDirection: "column" }}>
+          <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
+            <div className="flex items-center gap-2">
+              {onBack && <button onClick={onBack} className="p-1 rounded-lg hover:bg-white/10"><ArrowRight size={18} color="#fff" /></button>}
+              <h3 className="font-bold text-base" style={{ color: "#fff" }}>اربط اللعبة بفصل</h3>
+            </div>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10"><X size={20} color="#fff" /></button>
+          </div>
+          <div className="p-4 overflow-y-auto">
+            {activeClasses.length === 0 ? (
+              <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد فصول بعد.</p>
+            ) : (
+              <div className="space-y-2">
+                {activeClasses.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => onSelect(c.id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl text-right hover:bg-black/5"
+                    style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: INK }}>{c.subject}</p>
+                      <p className="text-xs" style={{ color: MUTED }}>{c.grade} • {c.rows.length} طالب</p>
+                    </div>
+                    <ChevronLeft size={16} color={MUTED} />
+                  </button>
+                ))}
               </div>
-              <ChevronLeft size={16} color={MUTED} />
-            </button>
-          ))}
+            )}
+          </div>
         </div>
-      )}
-    </Modal>
+      </div>
+    </div>
   );
 }
 
