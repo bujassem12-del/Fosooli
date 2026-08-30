@@ -4745,46 +4745,12 @@ function TextListEditor({ items, onChange, placeholder }) {
 }
 
 function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onMove, onShareReadOnlyEntry, onPrintProgram, onClose }) {
-  const [title, setTitle] = useState("");
-  const [notes, setNotes] = useState("");
-  const [photo, setPhoto] = useState(null);
-  const [editingId, setEditingId] = useState(null);
   const [expandedEntryId, setExpandedEntryId] = useState(null);
+  const [renamingEntry, setRenamingEntry] = useState(null);
   const attachInputRef = useRef(null);
-  const [showProgram, setShowProgram] = useState(false);
-  const [programField, setProgramField] = useState("");
-  const [implementers, setImplementers] = useState("");
-  const [executionDate, setExecutionDate] = useState("");
-  const [beneficiaries, setBeneficiaries] = useState("جميع الطلاب");
-  const [beneficiaryCount, setBeneficiaryCount] = useState("");
-  const [objectives, setObjectives] = useState([""]);
-  const [steps, setSteps] = useState([""]);
-  const [extraPhotos, setExtraPhotos] = useState([]);
-  const photoInputRef = useRef(null);
-  const extraPhotosInputRef = useRef(null);
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setPhoto(reader.result);
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const handleExtraPhotosChange = (e) => {
-    const files = Array.from(e.target.files || []).slice(0, 4 - extraPhotos.length);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => setExtraPhotos((prev) => [...prev, reader.result].slice(0, 4));
-      reader.readAsDataURL(file);
-    });
-    e.target.value = "";
-  };
-
-  // إرفاق ملف مباشرة على شاهد موجود (بدون الحاجة لفتح وضع التعديل) — يتصرف
-  // مثل مجلد صغير لكل شاهد تقدر تحط فيه أي ملف (وورد، PDF، صور...) وتشاركه
-  // لاحقًا زي ملفات Google Drive.
+  // إرفاق ملف إضافي على شاهد موجود — كل شاهد يتصرف كمجلد صغير تحط فيه أي
+  // عدد من الملفات (صور، PDF، وورد...) وتشاركها لاحقًا زي ملفات Google Drive.
   const handleAttachFile = (entryId, e) => {
     const files = Array.from(e.target.files || []);
     files.forEach((file) => {
@@ -4829,8 +4795,8 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
     }
   };
 
-  // رفع تقرير/ملف جاهز مباشرة كشاهد جديد بضغطة واحدة — بدل تعبئة النموذج
-  // يدويًا، تختار الملف وهو يُنشئ الشاهد ويُرفقه تلقائيًا.
+  // كل شاهد جديد = ملف ترفعه مباشرة، بدون أي نموذج أو حقول تعبّيها —
+  // العنوان يُؤخذ تلقائيًا من اسم الملف (وتقدر تعيد تسميته لاحقًا بضغطة).
   const quickReportInputRef = useRef(null);
   const handleQuickReportUpload = (e) => {
     const file = e.target.files?.[0];
@@ -4849,146 +4815,16 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
     e.target.value = "";
   };
 
-  const resetForm = () => {
-    setTitle(""); setNotes(""); setPhoto(null); setEditingId(null);
-    setShowProgram(false); setProgramField(""); setImplementers(""); setExecutionDate("");
-    setBeneficiaries("جميع الطلاب"); setBeneficiaryCount(""); setObjectives([""]); setSteps([""]); setExtraPhotos([]);
-  };
-
-  const startEdit = (entry) => {
-    setEditingId(entry.id);
-    setTitle(entry.title);
-    setNotes(entry.notes || "");
-    setPhoto(entry.photo || null);
-    if (entry.program) {
-      setShowProgram(true);
-      setProgramField(entry.program.programField || "");
-      setImplementers(entry.program.implementers || "");
-      setExecutionDate(entry.program.executionDate || "");
-      setBeneficiaries(entry.program.beneficiaries || "جميع الطلاب");
-      setBeneficiaryCount(entry.program.beneficiaryCount || "");
-      setObjectives(entry.program.objectives?.length ? entry.program.objectives : [""]);
-      setSteps(entry.program.steps?.length ? entry.program.steps : [""]);
-      setExtraPhotos(entry.program.photos || []);
-    } else {
-      setShowProgram(false);
-    }
-  };
-
-  const submit = () => {
-    if (!title.trim()) return;
-    const program = showProgram ? {
-      programName: title.trim(),
-      programField: programField.trim(),
-      implementers: implementers.trim(),
-      executionDate: executionDate.trim(),
-      beneficiaries: beneficiaries.trim(),
-      beneficiaryCount: beneficiaryCount.trim(),
-      objectives: objectives.map((o) => o.trim()).filter(Boolean),
-      steps: steps.map((s) => s.trim()).filter(Boolean),
-      photos: extraPhotos,
-    } : undefined;
-    if (editingId) {
-      onEdit(editingId, { title: title.trim(), notes: notes.trim(), photo, program });
-    } else {
-      onAdd({ id: uid(), title: title.trim(), notes: notes.trim(), photo, date: todayKey(), program });
-    }
-    resetForm();
-  };
-
   return (
     <Modal title={category.title} onClose={onClose} accent="magic" wide>
       <input ref={quickReportInputRef} type="file" onChange={handleQuickReportUpload} style={{ display: "none" }} />
       <button
         onClick={() => quickReportInputRef.current?.click()}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-3 transition-all hover:brightness-110"
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-4 transition-all hover:brightness-110"
         style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
       >
-        <Paperclip size={16} /> رفع تقرير أو ملف جاهز كشاهد جديد مباشرة
+        <Paperclip size={16} /> رفع صورة أو ملف (PDF، وورد...) كشاهد جديد
       </button>
-      <p className="text-xs text-center mb-4" style={{ color: MUTED }}>— أو أضف شاهدًا يدويًا بالتفصيل بالأسفل —</p>
-      <div className="rounded-xl p-3 mb-4" style={{ background: `${category.color}10`, border: `1px solid ${category.color}40` }}>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-bold" style={{ color: category.color }}>{editingId ? "تعديل الشاهد" : "إضافة شاهد جديد"}</p>
-          {editingId && (
-            <button onClick={resetForm} className="text-xs font-semibold" style={{ color: MUTED }}>إلغاء التعديل</button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {category.suggestions.map((s) => (
-            <button key={s} onClick={() => setTitle(s)} className="text-xs px-2.5 py-1 rounded-full hover:opacity-80" style={{ background: "#fff", border: `1px solid ${LINE}`, color: INK }}>
-              {s}
-            </button>
-          ))}
-        </div>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان الشاهد" style={{ ...inputStyle, marginBottom: 8 }} />
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ملاحظات إضافية (اختياري)" style={{ ...inputStyle, minHeight: 60, resize: "vertical", marginBottom: 8 }} />
-        <div className="flex items-center gap-2 mb-2">
-          <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
-          {photo ? (
-            <div className="relative">
-              <img src={photo} alt="" className="w-14 h-14 rounded-lg object-cover dark-mode-img-fix" style={{ border: `1px solid ${LINE}` }} />
-              <button onClick={() => setPhoto(null)} className="absolute -top-1.5 -left-1.5 p-0.5 rounded-full" style={{ background: "#C0392B" }}><X size={10} color="#fff" /></button>
-            </div>
-          ) : (
-            <button onClick={() => photoInputRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold" style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}>
-              <Camera size={14} color={category.color} /> إرفاق صورة (اختياري)
-            </button>
-          )}
-        </div>
-
-        <label className="flex items-center gap-2 text-xs font-semibold mb-2 mt-1" style={{ color: INK }}>
-          <input type="checkbox" checked={showProgram} onChange={(e) => setShowProgram(e.target.checked)} />
-          <ClipboardList size={13} color={category.color} /> إضافة كتقرير برنامج تفصيلي (نموذج إداري رسمي)
-        </label>
-
-        {showProgram && (
-          <div className="p-3 rounded-xl mb-2 space-y-2" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-            <div className="grid grid-cols-2 gap-2">
-              <input value={programField} onChange={(e) => setProgramField(e.target.value)} placeholder="مجال البرنامج (مثال: النشاط الثقافي)" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
-              <input value={executionDate} onChange={(e) => setExecutionDate(e.target.value)} placeholder="تاريخ التنفيذ" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
-              <input value={implementers} onChange={(e) => setImplementers(e.target.value)} placeholder="المنفّذون (أسماء المعلمين)" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
-              <input value={beneficiaryCount} onChange={(e) => setBeneficiaryCount(e.target.value)} placeholder="عدد المستفيدين" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
-            </div>
-            <input value={beneficiaries} onChange={(e) => setBeneficiaries(e.target.value)} placeholder="المستفيدون" style={{ ...inputStyle, padding: "8px 10px", fontSize: 12 }} />
-            <div>
-              <p className="text-xs font-bold mb-1" style={{ color: DASH_GREEN }}>الأهداف</p>
-              <TextListEditor items={objectives} onChange={setObjectives} placeholder="هدف..." />
-            </div>
-            <div>
-              <p className="text-xs font-bold mb-1" style={{ color: DASH_GREEN }}>خطوات التنفيذ</p>
-              <TextListEditor items={steps} onChange={setSteps} placeholder="خطوة..." />
-            </div>
-            <div>
-              <p className="text-xs font-bold mb-1" style={{ color: DASH_GREEN }}>صور الشواهد (حتى ٤ صور)</p>
-              <div className="flex flex-wrap gap-2">
-                {extraPhotos.map((ph, i) => (
-                  <div key={i} className="relative">
-                    <img src={ph} alt="" className="w-14 h-14 rounded-lg object-cover" style={{ border: `1px solid ${LINE}` }} />
-                    <button onClick={() => setExtraPhotos(extraPhotos.filter((_, ix) => ix !== i))} className="absolute -top-1.5 -left-1.5 p-0.5 rounded-full" style={{ background: "#C0392B" }}><X size={10} color="#fff" /></button>
-                  </div>
-                ))}
-                {extraPhotos.length < 4 && (
-                  <>
-                    <input ref={extraPhotosInputRef} type="file" accept="image/*" multiple onChange={handleExtraPhotosChange} style={{ display: "none" }} />
-                    <button onClick={() => extraPhotosInputRef.current?.click()} className="w-14 h-14 rounded-lg flex items-center justify-center" style={{ border: `1px dashed ${LINE}` }}>
-                      <Plus size={16} color={MUTED} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        <button
-          disabled={!title.trim()}
-          onClick={submit}
-          className="w-full py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
-          style={{ background: category.color }}
-        >
-          {editingId ? "حفظ التعديل" : "إضافة"}
-        </button>
-      </div>
 
       <p className="text-xs font-bold mb-2" style={{ color: MUTED }}>الشواهد المضافة ({entries.length})</p>
       {entries.length === 0 ? (
@@ -4999,7 +4835,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
             const isExpanded = expandedEntryId === e.id;
             const attachments = e.attachments || [];
             return (
-              <div key={e.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${editingId === e.id ? category.color : LINE}`, background: "#fff" }}>
+              <div key={e.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
                 <div className="flex items-start gap-3 p-3">
                   {e.photo && <img src={e.photo} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
                   <div className="flex-1 min-w-0">
@@ -5024,7 +4860,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                     {e.program && (
                       <button onClick={() => onPrintProgram(e)} title="طباعة كتقرير برنامج" className="p-1.5 rounded-lg hover:bg-black/5"><Printer size={14} color={category.color} /></button>
                     )}
-                    <button onClick={() => startEdit(e)} title="تعديل" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
+                    <button onClick={() => setRenamingEntry(e)} title="إعادة تسمية" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
                     <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
                     <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
                   </div>
@@ -5062,6 +4898,34 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
           })}
         </div>
       )}
+      {renamingEntry && (
+        <RenameShahedModal
+          entry={renamingEntry}
+          onClose={() => setRenamingEntry(null)}
+          onSave={(newTitle) => { onEdit(renamingEntry.id, { title: newTitle }); setRenamingEntry(null); }}
+        />
+      )}
+    </Modal>
+  );
+}
+
+// نافذة صغيرة لإعادة تسمية شاهد — بديل خفيف عن نموذج التعديل الكامل، بما
+// إن الشاهد الآن مجرد ملف مرفوع بدون بيانات إضافية للتعديل عليها.
+function RenameShahedModal({ entry, onClose, onSave }) {
+  const [title, setTitle] = useState(entry.title);
+  return (
+    <Modal title="إعادة تسمية الشاهد" onClose={onClose} accent="magic">
+      <Field label="الاسم">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} autoFocus />
+      </Field>
+      <button
+        disabled={!title.trim()}
+        onClick={() => onSave(title.trim())}
+        className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        حفظ
+      </button>
     </Modal>
   );
 }
