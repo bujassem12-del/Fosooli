@@ -7,7 +7,7 @@ import {
   Printer, Search, ArrowRight, X, Check, Minus, Hash, Type,
   ListChecks, FolderClock, BookOpen, FileText, RefreshCw, ClipboardList,
   Pin, PinOff, Copy, RotateCcw, FolderOpen, FileImage, FileSpreadsheet, ListOrdered,
-  Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange, UserX,
+  Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange, UserX, Paperclip,
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
@@ -4749,6 +4749,8 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [expandedEntryId, setExpandedEntryId] = useState(null);
+  const attachInputRef = useRef(null);
   const [showProgram, setShowProgram] = useState(false);
   const [programField, setProgramField] = useState("");
   const [implementers, setImplementers] = useState("");
@@ -4778,6 +4780,34 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
       reader.readAsDataURL(file);
     });
     e.target.value = "";
+  };
+
+  // إرفاق ملف مباشرة على شاهد موجود (بدون الحاجة لفتح وضع التعديل) — يتصرف
+  // مثل مجلد صغير لكل شاهد تقدر تحط فيه أي ملف (وورد، PDF، صور...) وتشاركه
+  // لاحقًا زي ملفات Google Drive.
+  const handleAttachFile = (entryId, e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((file) => {
+      if (file.size > 15 * 1024 * 1024) {
+        alert(`الملف "${file.name}" كبير جدًا (أكبر من ١٥ ميجا) — يُفضّل ملفات أصغر.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const entry = entries.find((x) => x.id === entryId);
+        if (!entry) return;
+        const newAttachment = { id: uid(), name: file.name, mimeType: file.type, dataUrl: reader.result, uploadedAt: todayKey() };
+        onEdit(entryId, { attachments: [...(entry.attachments || []), newAttachment] });
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const handleRemoveAttachment = (entryId, attachmentId) => {
+    const entry = entries.find((x) => x.id === entryId);
+    if (!entry) return;
+    onEdit(entryId, { attachments: (entry.attachments || []).filter((a) => a.id !== attachmentId) });
   };
 
   const resetForm = () => {
@@ -4917,24 +4947,67 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
         <p className="text-sm text-center py-8" style={{ color: MUTED }}>لا يوجد شواهد بهذي الفئة بعد.</p>
       ) : (
         <div className="space-y-2">
-          {entries.map((e) => (
-            <div key={e.id} className="flex items-start gap-3 p-3 rounded-xl" style={{ border: `1px solid ${editingId === e.id ? category.color : LINE}`, background: "#fff" }}>
-              {e.photo && <img src={e.photo} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
-                {e.notes && <p className="text-xs mt-0.5" style={{ color: MUTED }}>{e.notes}</p>}
-                <p className="text-[11px] mt-1" style={{ color: MUTED }}>{formatDateDisplay(e.date)}</p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {e.program && (
-                  <button onClick={() => onPrintProgram(e)} title="طباعة كتقرير برنامج" className="p-1.5 rounded-lg hover:bg-black/5"><Printer size={14} color={category.color} /></button>
+          {entries.map((e) => {
+            const isExpanded = expandedEntryId === e.id;
+            const attachments = e.attachments || [];
+            return (
+              <div key={e.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${editingId === e.id ? category.color : LINE}`, background: "#fff" }}>
+                <div className="flex items-start gap-3 p-3">
+                  {e.photo && <img src={e.photo} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 dark-mode-img-fix" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: INK }}>{e.title}</p>
+                    {e.notes && <p className="text-xs mt-0.5" style={{ color: MUTED }}>{e.notes}</p>}
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-[11px]" style={{ color: MUTED }}>{formatDateDisplay(e.date)}</p>
+                      <button
+                        onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}
+                        className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                        style={{ background: attachments.length ? `${category.color}15` : "#F3F1E9", color: attachments.length ? category.color : MUTED }}
+                      >
+                        <Paperclip size={10} /> {attachments.length > 0 ? `${attachments.length} ملف مرفق` : "إضافة ملفات"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {e.program && (
+                      <button onClick={() => onPrintProgram(e)} title="طباعة كتقرير برنامج" className="p-1.5 rounded-lg hover:bg-black/5"><Printer size={14} color={category.color} /></button>
+                    )}
+                    <button onClick={() => startEdit(e)} title="تعديل" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
+                    <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
+                    <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-1" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF8F3" }}>
+                    <p className="text-xs font-bold mt-2 mb-2" style={{ color: INK }}>الملفات المرفقة — مثل مجلد Google Drive صغير لهذا الشاهد</p>
+                    {attachments.length > 0 && (
+                      <div className="space-y-1.5 mb-2">
+                        {attachments.map((a) => {
+                          const Icon = libraryFileIcon(a.mimeType);
+                          return (
+                            <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+                              <Icon size={16} color={category.color} className="shrink-0" />
+                              <span className="flex-1 text-xs truncate" style={{ color: INK }}>{a.name}</span>
+                              <a href={a.dataUrl} download={a.name} title="تنزيل/مشاركة" className="p-1 rounded hover:bg-black/5 shrink-0"><ImageDown size={13} color={MUTED} /></a>
+                              <button onClick={() => handleRemoveAttachment(e.id, a.id)} title="حذف الملف" className="p-1 rounded hover:bg-black/5 shrink-0"><X size={13} color="#C0392B" /></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <input ref={attachInputRef} type="file" multiple onChange={(ev) => handleAttachFile(e.id, ev)} style={{ display: "none" }} />
+                    <button
+                      onClick={() => attachInputRef.current?.click()}
+                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                      style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}
+                    >
+                      <Plus size={13} /> إضافة ملف (أي نوع)
+                    </button>
+                  </div>
                 )}
-                <button onClick={() => startEdit(e)} title="تعديل" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
-                <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
-                <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Modal>
@@ -8119,42 +8192,59 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
 
   const participationCol = cls.columns.find((c) => c.name === "المشاركة" && c.type === "counter");
 
+  // هذي الشاشة تحديدًا مبنية كطبقة ثابتة تملأ الشاشة كاملة بترتيب عمودي
+  // (رأس مضغوط + شريط الطلاب + اللعبة تاخذ الباقي) بدل الاعتماد على تمرير
+  // الصفحة — لأن اللمس داخل الـ iframe لا ينقل حركة التمرير للصفحة اللي
+  // ورا، وكان يخلي شريط الطلاب "يختفي" على الجوال بدون أي طريقة ترجعه.
   return (
-    <Modal title={`${game.name} — ${cls.subject}`} onClose={onClose} onBack={onBack} accent="magic" xl>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-bold" style={{ color: INK }}>الطالب النشط (يتغيّر عشوائيًا كل سؤال)</p>
-        <p className="text-xs" style={{ color: MUTED }}>النقاط بعمود "المشاركة"</p>
+    <div className="fixed inset-0 flex flex-col" style={{ background: PAPER, zIndex: 60, height: "100dvh" }}>
+      <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
+        <div className="flex items-center gap-2 min-w-0">
+          {onBack && (
+            <button onClick={onBack} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><ArrowRight size={18} color="#fff" /></button>
+          )}
+          <h3 className="font-bold text-sm truncate" style={{ color: "#fff" }}>{game.name} — {cls.subject}</h3>
+        </div>
+        <button onClick={onClose} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><X size={20} color="#fff" /></button>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-3" style={{ scrollSnapType: "x proximity" }}>
-        {displayRows.map((row) => {
-          const isActive = row.id === activeRowId;
-          const pts = participationCol ? (cls.cells[`${row.id}:${participationCol.id}`] || 0) : 0;
-          return (
-            <button
-              key={row.id}
-              onClick={() => setActiveRowId(row.id)}
-              className="relative flex flex-col items-center gap-1 shrink-0 p-2 rounded-xl transition-all"
-              style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff", width: 76, scrollSnapAlign: "start" }}
-            >
-              {flash?.rowId === row.id && <GamePointBurst kind={flash.kind} />}
-              <span className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
-                {(row.name || "؟").trim().charAt(0)}
-              </span>
-              <span className="text-[11px] font-semibold text-center leading-tight truncate w-full" style={{ color: INK }}>{row.name}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#26423B", color: "#fff" }}>{pts}</span>
-            </button>
-          );
-        })}
+
+      <div className="shrink-0 px-3 py-2" style={{ background: "#fff", borderBottom: `1px solid ${LINE}` }}>
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-xs font-bold" style={{ color: INK }}>الطالب النشط (يتغيّر عشوائيًا كل سؤال)</p>
+          <p className="text-[11px]" style={{ color: MUTED }}>النقاط بعمود "المشاركة"</p>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x proximity" }}>
+          {displayRows.map((row) => {
+            const isActive = row.id === activeRowId;
+            const pts = participationCol ? (cls.cells[`${row.id}:${participationCol.id}`] || 0) : 0;
+            return (
+              <button
+                key={row.id}
+                onClick={() => setActiveRowId(row.id)}
+                className="relative flex flex-col items-center gap-1 shrink-0 p-2 rounded-xl transition-all"
+                style={{ border: `2px solid ${isActive ? "#0F9D58" : LINE}`, background: isActive ? "#E3F1EC" : "#fff", width: 72, scrollSnapAlign: "start" }}
+              >
+                {flash?.rowId === row.id && <GamePointBurst kind={flash.kind} />}
+                <span className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
+                  {(row.name || "؟").trim().charAt(0)}
+                </span>
+                <span className="text-[10px] font-semibold text-center leading-tight truncate w-full" style={{ color: INK }}>{row.name}</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#26423B", color: "#fff" }}>{pts}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, minHeight: 480 }}>
+
+      <div className="flex-1 min-h-0">
         <iframe
           title="لعبة"
           srcDoc={game.html}
           sandbox="allow-scripts"
-          style={{ width: "100%", height: 480, border: "none" }}
+          style={{ width: "100%", height: "100%", border: "none", display: "block" }}
         />
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -8248,11 +8338,15 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
 
   if (selectedGame && standalone) {
     return (
-      <Modal title={selectedGame.name} onClose={resetAll} accent="magic" xl>
-        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, minHeight: 480 }}>
-          <iframe title="لعبة" srcDoc={selectedGame.html} sandbox="allow-scripts" style={{ width: "100%", height: 480, border: "none" }} />
+      <div className="fixed inset-0 flex flex-col" style={{ background: PAPER, zIndex: 60, height: "100dvh" }}>
+        <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
+          <h3 className="font-bold text-sm truncate" style={{ color: "#fff" }}>{selectedGame.name}</h3>
+          <button onClick={resetAll} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><X size={20} color="#fff" /></button>
         </div>
-      </Modal>
+        <div className="flex-1 min-h-0">
+          <iframe title="لعبة" srcDoc={selectedGame.html} sandbox="allow-scripts" style={{ width: "100%", height: "100%", border: "none", display: "block" }} />
+        </div>
+      </div>
     );
   }
 
