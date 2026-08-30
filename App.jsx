@@ -1729,7 +1729,7 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   const gap = 16;
   const cardW = (width - pad * 2 - gap) / 2;
   const cardImgH = 130;
-  const cardTextH = 96;
+  const cardTextH = 132;
   const cardH = cardImgH + cardTextH;
   const catHeaderH = 38;
 
@@ -1893,7 +1893,7 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
         let ty = textY + 18;
         titleLines.forEach((ln) => { ctx.fillText(ln, cx + cardW - 12, ty); ty += 17; });
 
-        ty += 4;
+        ty += 6;
         ctx.font = "11px 'IBM Plex Sans Arabic', Tahoma, Arial";
         ctx.fillStyle = MUTED;
         const descText = entry.notes && entry.notes.trim()
@@ -1902,10 +1902,11 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
         const noteLines = wrapCanvasText(measure, descText, cardW - 24).slice(0, 2);
         noteLines.forEach((ln) => { ctx.fillText(ln, cx + cardW - 12, ty); ty += 15; });
 
+        ty += 10;
         ctx.textAlign = "left";
         ctx.font = "10px 'IBM Plex Sans Arabic', Tahoma, Arial";
         ctx.fillStyle = MUTED;
-        ctx.fillText(formatDateDisplay(entry.date), cx + 12, textY + cardTextH - 12);
+        ctx.fillText(formatDateDisplay(entry.date), cx + 12, ty);
       }
       y += cardH + gap;
     }
@@ -4849,7 +4850,7 @@ function TextListEditor({ items, onChange, placeholder }) {
   );
 }
 
-function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onMove, onShareReadOnlyEntry, onPrintProgram, onClose }) {
+function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onMove, onShareReadOnlyEntry, onPrintProgram, onClose, readOnly = false }) {
   const [expandedEntryId, setExpandedEntryId] = useState(null);
   const [openFolderId, setOpenFolderId] = useState(null);
   const [addingFolderFor, setAddingFolderFor] = useState(null);
@@ -4867,8 +4868,8 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
   const handleAttachFile = (entryId, e) => {
     const files = Array.from(e.target.files || []);
     files.forEach((file) => {
-      if (file.size > 15 * 1024 * 1024) {
-        alert(`الملف "${file.name}" كبير جدًا (أكبر من ١٥ ميجا) — يُفضّل ملفات أصغر.`);
+      if (file.size > 30 * 1024 * 1024) {
+        alert(`الملف "${file.name}" كبير جدًا (أكبر من ٣٠ ميجا) — يُفضّل ملفات أصغر.`);
         return;
       }
       const reader = new FileReader();
@@ -4908,8 +4909,8 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
   const handleAddFileToFolder = (entryId, folderId, e) => {
     const files = Array.from(e.target.files || []);
     files.forEach((file) => {
-      if (file.size > 15 * 1024 * 1024) {
-        alert(`الملف "${file.name}" كبير جدًا (أكبر من ١٥ ميجا) — يُفضّل ملفات أصغر.`);
+      if (file.size > 30 * 1024 * 1024) {
+        alert(`الملف "${file.name}" كبير جدًا (أكبر من ٣٠ ميجا) — يُفضّل ملفات أصغر.`);
         return;
       }
       const reader = new FileReader();
@@ -4968,8 +4969,8 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
   const handleQuickReportUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      alert("الملف كبير جدًا (أكبر من ١٥ ميجا) — يُفضّل ملف أصغر.");
+    if (file.size > 30 * 1024 * 1024) {
+      alert("الملف كبير جدًا (أكبر من ٣٠ ميجا) — يُفضّل ملف أصغر.");
       e.target.value = "";
       return;
     }
@@ -4984,14 +4985,18 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
 
   return (
     <Modal title={category.title} onClose={onClose} accent="magic" wide>
-      <input ref={quickReportInputRef} type="file" onChange={handleQuickReportUpload} style={{ display: "none" }} />
-      <button
-        onClick={() => quickReportInputRef.current?.click()}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-4 transition-all hover:brightness-110"
-        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
-      >
-        <Paperclip size={16} /> رفع صورة أو ملف (PDF، وورد...) كشاهد جديد
-      </button>
+      {!readOnly && (
+        <>
+          <input ref={quickReportInputRef} type="file" onChange={handleQuickReportUpload} style={{ display: "none" }} />
+          <button
+            onClick={() => quickReportInputRef.current?.click()}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-4 transition-all hover:brightness-110"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+          >
+            <Paperclip size={16} /> رفع صورة أو ملف (PDF، وورد...) كشاهد جديد
+          </button>
+        </>
+      )}
 
       <p className="text-xs font-bold mb-2" style={{ color: MUTED }}>الشواهد المضافة ({entries.length})</p>
       {entries.length === 0 ? (
@@ -5022,18 +5027,20 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                       </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => onMove(e.id, -1)} disabled={i === 0} title="نقل لأعلى" className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-30"><ChevronUp size={14} color={MUTED} /></button>
-                    <button onClick={() => onMove(e.id, 1)} disabled={i === entries.length - 1} title="نقل لأسفل" className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-30"><ChevronDown size={14} color={MUTED} /></button>
-                    <button onClick={() => shareEntryRaw(e)} title="مشاركة" className="p-1.5 rounded-lg hover:bg-black/5"><Share2 size={14} color={MUTED} /></button>
-                    <button onClick={() => onShareReadOnlyEntry(e)} title="مشاركة للقراءة فقط" className="p-1.5 rounded-lg hover:bg-black/5"><Link2 size={14} color={MUTED} /></button>
-                    {e.program && (
-                      <button onClick={() => onPrintProgram(e)} title="طباعة كتقرير برنامج" className="p-1.5 rounded-lg hover:bg-black/5"><Printer size={14} color={category.color} /></button>
-                    )}
-                    <button onClick={() => setRenamingEntry(e)} title="إعادة تسمية" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
-                    <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
-                    <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => onMove(e.id, -1)} disabled={i === 0} title="نقل لأعلى" className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-30"><ChevronUp size={14} color={MUTED} /></button>
+                      <button onClick={() => onMove(e.id, 1)} disabled={i === entries.length - 1} title="نقل لأسفل" className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-30"><ChevronDown size={14} color={MUTED} /></button>
+                      <button onClick={() => shareEntryRaw(e)} title="مشاركة" className="p-1.5 rounded-lg hover:bg-black/5"><Share2 size={14} color={MUTED} /></button>
+                      <button onClick={() => onShareReadOnlyEntry(e)} title="مشاركة للقراءة فقط" className="p-1.5 rounded-lg hover:bg-black/5"><Link2 size={14} color={MUTED} /></button>
+                      {e.program && (
+                        <button onClick={() => onPrintProgram(e)} title="طباعة كتقرير برنامج" className="p-1.5 rounded-lg hover:bg-black/5"><Printer size={14} color={category.color} /></button>
+                      )}
+                      <button onClick={() => setRenamingEntry(e)} title="إعادة تسمية" className="p-1.5 rounded-lg hover:bg-black/5"><Pencil size={14} color={MUTED} /></button>
+                      <button onClick={() => onArchive(e.id)} title="أرشفة" className="p-1.5 rounded-lg hover:bg-black/5"><Archive size={14} color={MUTED} /></button>
+                      <button onClick={() => onDelete(e.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5"><Trash2 size={14} color="#C0392B" /></button>
+                    </div>
+                  )}
                 </div>
                 {isExpanded && (
                   <div className="px-3 pb-3 pt-2" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF8F3" }}>
@@ -5041,33 +5048,35 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                       <>
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-xs font-bold" style={{ color: INK }}>محتويات الشاهد</p>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => setAddingFolderFor(e.id)}
-                              className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg"
-                              style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}
-                            >
-                              <FolderOpen size={12} color="#D9A441" /> مجلد جديد
-                            </button>
-                            <input ref={attachInputRef} type="file" multiple onChange={(ev) => handleAttachFile(e.id, ev)} style={{ display: "none" }} />
-                            <button
-                              onClick={() => attachInputRef.current?.click()}
-                              className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-white"
-                              style={{ background: category.color }}
-                            >
-                              <Plus size={12} /> رفع ملف
-                            </button>
-                          </div>
+                          {!readOnly && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setAddingFolderFor(e.id)}
+                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg"
+                                style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}
+                              >
+                                <FolderOpen size={12} color="#D9A441" /> مجلد جديد
+                              </button>
+                              <input ref={attachInputRef} type="file" multiple onChange={(ev) => handleAttachFile(e.id, ev)} style={{ display: "none" }} />
+                              <button
+                                onClick={() => attachInputRef.current?.click()}
+                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-white"
+                                style={{ background: category.color }}
+                              >
+                                <Plus size={12} /> رفع ملف
+                              </button>
+                            </div>
+                          )}
                         </div>
                         {folders.length === 0 && attachments.length === 0 ? (
                           <p className="text-xs text-center py-6" style={{ color: MUTED }}>لا يوجد ملفات أو مجلدات بعد.</p>
                         ) : (
                           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                             {folders.map((f) => (
-                              <DriveItemCard key={f.id} kind="folder" name={`${f.name} (${f.files.length})`} color="#D9A441" onClick={() => setOpenFolderId(f.id)} onDelete={() => handleDeleteFolder(e.id, f.id)} />
+                              <DriveItemCard key={f.id} kind="folder" name={`${f.name} (${f.files.length})`} color="#D9A441" onClick={() => setOpenFolderId(f.id)} onDelete={readOnly ? null : () => handleDeleteFolder(e.id, f.id)} />
                             ))}
                             {attachments.map((a) => (
-                              <DriveItemCard key={a.id} kind="file" name={a.name} mimeType={a.mimeType} dataUrl={a.dataUrl} color={category.color} onClick={() => openFile(a)} onDelete={() => handleRemoveAttachment(e.id, a.id)} />
+                              <DriveItemCard key={a.id} kind="file" name={a.name} mimeType={a.mimeType} dataUrl={a.dataUrl} color={category.color} onClick={() => openFile(a)} onDelete={readOnly ? null : () => handleRemoveAttachment(e.id, a.id)} />
                             ))}
                           </div>
                         )}
@@ -5078,21 +5087,25 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                           <button onClick={() => setOpenFolderId(null)} className="flex items-center gap-1 text-xs font-bold" style={{ color: INK }}>
                             <ArrowRight size={14} /> {openFolder.name}
                           </button>
-                          <input ref={folderFileInputRef} type="file" multiple onChange={(ev) => handleAddFileToFolder(e.id, openFolder.id, ev)} style={{ display: "none" }} />
-                          <button
-                            onClick={() => folderFileInputRef.current?.click()}
-                            className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-white"
-                            style={{ background: category.color }}
-                          >
-                            <Plus size={12} /> رفع ملف
-                          </button>
+                          {!readOnly && (
+                            <>
+                              <input ref={folderFileInputRef} type="file" multiple onChange={(ev) => handleAddFileToFolder(e.id, openFolder.id, ev)} style={{ display: "none" }} />
+                              <button
+                                onClick={() => folderFileInputRef.current?.click()}
+                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-white"
+                                style={{ background: category.color }}
+                              >
+                                <Plus size={12} /> رفع ملف
+                              </button>
+                            </>
+                          )}
                         </div>
                         {openFolder.files.length === 0 ? (
                           <p className="text-xs text-center py-6" style={{ color: MUTED }}>المجلد فارغ — ارفع أول ملف له.</p>
                         ) : (
                           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                             {openFolder.files.map((f) => (
-                              <DriveItemCard key={f.id} kind="file" name={f.name} mimeType={f.mimeType} dataUrl={f.dataUrl} color={category.color} onClick={() => openFile(f)} onDelete={() => handleRemoveFileFromFolder(e.id, openFolder.id, f.id)} />
+                              <DriveItemCard key={f.id} kind="file" name={f.name} mimeType={f.mimeType} dataUrl={f.dataUrl} color={category.color} onClick={() => openFile(f)} onDelete={readOnly ? null : () => handleRemoveFileFromFolder(e.id, openFolder.id, f.id)} />
                             ))}
                           </div>
                         )}
@@ -5614,7 +5627,7 @@ function ShawahedCategoryEditModal({ initial, onClose, onSave }) {
   );
 }
 
-function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onShareReadOnly, onShareReadOnlyOne, onPrintProgram, teacherName, bare = false }) {
+function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onShareReadOnly, onShareReadOnlyOne, onPrintProgram, teacherName, bare = false, readOnly = false }) {
   const [openCat, setOpenCat] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [showExportPicker, setShowExportPicker] = useState(false);
@@ -5629,6 +5642,7 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
   const archivedEntries = shawahed.archivedEntries || {};
   const allCategories = getAllShawahedCategories(shawahed);
   const totalCount = allCategories.reduce((sum, c) => sum + (entries[c.key]?.length || 0), 0);
+  const storageBytes = calculateShawahedStorageBytes(shawahed);
 
   const addEntry = (catKey, entry) => {
     onUpdate({ ...shawahed, entries: { ...entries, [catKey]: [...(entries[catKey] || []), entry] } });
@@ -5704,17 +5718,27 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
 
   const content = (
     <>
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="flex-1 min-w-[140px]">
-          <p className="text-xl font-extrabold" style={{ color: INK }}>{totalCount}</p>
-          <p className="text-xs" style={{ color: MUTED }}>شاهد موثّق بكل الفئات</p>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="rounded-2xl p-4" style={{ background: `linear-gradient(135deg, ${DASH_GREEN}, ${DASH_GREEN_DARK})` }}>
+          <p className="text-3xl font-extrabold" style={{ color: "#fff" }}>{totalCount}</p>
+          <p className="text-xs mt-1" style={{ color: GOLD_LIGHT }}>شاهد موثّق بكل الفئات</p>
         </div>
-        <IconBtn icon={Plus} label="إضافة فئة" onClick={() => setShowAddCategory(true)} />
-        <IconBtn icon={Target} label="تحديد أهداف" onClick={() => setShowGoals(true)} />
-        <IconBtn icon={Archive} label="الأرشيف" onClick={() => setShowArchive(true)} />
-        <IconBtn icon={Printer} label="طباعة" onClick={() => setShowExportPicker(true)} />
-        <IconBtn icon={Share2} label="مشاركة" magic onClick={() => setShowShareChoice(true)} />
+        {!readOnly && (
+          <div className="rounded-2xl p-4" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+            <p className="text-3xl font-extrabold" style={{ color: DASH_GREEN }}>{formatStorageSize(storageBytes)}</p>
+            <p className="text-xs mt-1" style={{ color: MUTED }}>المساحة المستخدمة (صور وملفات)</p>
+          </div>
+        )}
       </div>
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <IconBtn icon={Plus} label="إضافة فئة" onClick={() => setShowAddCategory(true)} />
+          <IconBtn icon={Target} label="تحديد أهداف" onClick={() => setShowGoals(true)} />
+          <IconBtn icon={Archive} label="الأرشيف" onClick={() => setShowArchive(true)} />
+          <IconBtn icon={Printer} label="طباعة" onClick={() => setShowExportPicker(true)} />
+          <IconBtn icon={Share2} label="مشاركة" magic onClick={() => setShowShareChoice(true)} />
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {allCategories.map((cat, i) => {
           const count = entries[cat.key]?.length || 0;
@@ -5747,21 +5771,23 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
                   </div>
                 )}
               </button>
-              <div className="flex items-center gap-0.5 px-2.5 py-2" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF9F5" }}>
-                <button onClick={() => moveCategory(cat.key, -1)} disabled={i === 0} title="نقل لأعلى" className="p-1.5 rounded-lg hover:bg-white disabled:opacity-25 transition-colors"><ChevronUp size={13} color={MUTED} /></button>
-                <button onClick={() => moveCategory(cat.key, 1)} disabled={i === allCategories.length - 1} title="نقل لأسفل" className="p-1.5 rounded-lg hover:bg-white disabled:opacity-25 transition-colors"><ChevronDown size={13} color={MUTED} /></button>
-                <span className="flex-1" />
-                {count > 0 && (
-                  <button onClick={() => onQuickPrint && onQuickPrint(cat.key)} title="طباعة" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Printer size={13} color={MUTED} /></button>
-                )}
-                <button onClick={() => onShareReadOnly([cat.key], "")} title="مشاركة للقراءة فقط" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Link2 size={13} color={MUTED} /></button>
-                {isCustom && (
-                  <>
-                    <button onClick={() => setEditingCategory(cat)} title="تعديل" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Pencil size={13} color={MUTED} /></button>
-                    <button onClick={() => setConfirmDeleteCategory(cat)} title="حذف الفئة" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Trash2 size={13} color="#C0392B" /></button>
-                  </>
-                )}
-              </div>
+              {!readOnly && (
+                <div className="flex items-center gap-0.5 px-2.5 py-2" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF9F5" }}>
+                  <button onClick={() => moveCategory(cat.key, -1)} disabled={i === 0} title="نقل لأعلى" className="p-1.5 rounded-lg hover:bg-white disabled:opacity-25 transition-colors"><ChevronUp size={13} color={MUTED} /></button>
+                  <button onClick={() => moveCategory(cat.key, 1)} disabled={i === allCategories.length - 1} title="نقل لأسفل" className="p-1.5 rounded-lg hover:bg-white disabled:opacity-25 transition-colors"><ChevronDown size={13} color={MUTED} /></button>
+                  <span className="flex-1" />
+                  {count > 0 && (
+                    <button onClick={() => onQuickPrint && onQuickPrint(cat.key)} title="طباعة" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Printer size={13} color={MUTED} /></button>
+                  )}
+                  <button onClick={() => onShareReadOnly([cat.key], "")} title="مشاركة للقراءة فقط" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Link2 size={13} color={MUTED} /></button>
+                  {isCustom && (
+                    <>
+                      <button onClick={() => setEditingCategory(cat)} title="تعديل" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Pencil size={13} color={MUTED} /></button>
+                      <button onClick={() => setConfirmDeleteCategory(cat)} title="حذف الفئة" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Trash2 size={13} color="#C0392B" /></button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -5831,6 +5857,7 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
 
       {openCat && (
         <ShawahedCategoryModal
+          readOnly={readOnly}
           category={openCat}
           entries={entries[openCat.key] || []}
           onAdd={(entry) => addEntry(openCat.key, entry)}
@@ -5838,8 +5865,8 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
           onDelete={(id) => deleteEntry(openCat.key, id)}
           onArchive={(id) => archiveEntry(openCat.key, id)}
           onMove={(entryId, direction) => moveEntry(openCat.key, entryId, direction)}
-          onShareReadOnlyEntry={(entry) => onShareReadOnlyOne(entry, openCat)}
-          onPrintProgram={(entry) => onPrintProgram(entry, openCat)}
+          onShareReadOnlyEntry={(entry) => onShareReadOnlyOne && onShareReadOnlyOne(entry, openCat)}
+          onPrintProgram={(entry) => onPrintProgram && onPrintProgram(entry, openCat)}
           onClose={() => setOpenCat(null)}
         />
       )}
@@ -6354,6 +6381,33 @@ function collectAllShawahedFiles(shawahed, selectedKeys) {
     });
   });
   return files;
+}
+
+// يحسب المساحة الفعلية (تقريبًا) اللي تشغلها كل ملفات وصور الشواهد —
+// تُخزَّن كنص Base64 داخل بياناتك، فحجم النص تقريبًا = ٤/٣ الحجم الحقيقي.
+function calculateShawahedStorageBytes(shawahed) {
+  const entries = shawahed.entries || {};
+  let bytes = 0;
+  const addDataUrl = (url) => {
+    if (!url) return;
+    const comma = url.indexOf(",");
+    const b64Len = comma >= 0 ? url.length - comma - 1 : url.length;
+    bytes += Math.round(b64Len * 0.75);
+  };
+  Object.values(entries).forEach((list) => {
+    (list || []).forEach((entry) => {
+      addDataUrl(entry.photo);
+      (entry.attachments || []).forEach((a) => addDataUrl(a.dataUrl));
+      (entry.folders || []).forEach((f) => (f.files || []).forEach((a) => addDataUrl(a.dataUrl)));
+    });
+  });
+  return bytes;
+}
+
+function formatStorageSize(bytes) {
+  if (bytes < 1024) return `${bytes} بايت`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} كيلوبايت`;
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} ميجابايت`;
 }
 
 
@@ -9296,9 +9350,67 @@ function buildSharedReportUrl(shareId) {
   return `${window.location.origin}${window.location.pathname}?shared=${shareId}`;
 }
 
+// ينشئ (أو يعيد استخدام) رابط دائم لتصفح كل الشواهد للقراءة فقط — نفس
+// الرابط يبقى شغّالًا ويتحدّث تلقائيًا مع أي تعديل لاحق على الشواهد، لأنه
+// يقرأ البيانات الحيّة وقت الفتح، مو لقطة ثابتة.
+async function publishShawahedShare() {
+  const { data: authData } = await supabase.auth.getUser();
+  const teacherId = authData?.user?.id;
+  if (!teacherId) throw new Error("يجب تسجيل الدخول أولًا.");
+  const { data, error } = await supabase
+    .from("shared_shawahed")
+    .insert({ teacher_id: teacherId })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+function buildSharedShawahedUrl(shareId) {
+  return `${window.location.origin}${window.location.pathname}?shawahed=${shareId}`;
+}
+
 // نافذة توليد رمز QR دائم لتقرير طالب — أول مرة تُنشئ سطر مشاركة وتحفظ
 // معرّفه بالطالب نفسه (row.shareId) حتى لا يتكرر إنشاء رابط جديد كل مرة؛
 // المرات اللي بعدها تعيد استخدام نفس الرابط والرمز.
+// نافذة صغيرة تعرض رابط مشاركة الشواهد التفاعلي — تحدّث مع أي تعديل لاحق
+// (مو لقطة ثابتة)، مع زر نسخ وزر مشاركة عبر قائمة الجهاز.
+function ShawahedShareLinkModal({ link, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch (e) { /* ignore */ }
+  };
+  const shareLink = async () => {
+    try {
+      if (navigator.share) await navigator.share({ url: link, title: "شواهد الأداء الوظيفي" });
+      else copyLink();
+    } catch (e) { /* user cancelled */ }
+  };
+  return (
+    <Modal title="رابط مشاركة الشواهد" onClose={onClose} accent="magic">
+      <div className="p-3 rounded-xl mb-4 flex items-start gap-2" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
+        <Info size={15} color="#26423B" className="shrink-0 mt-0.5" />
+        <p className="text-xs" style={{ color: "#26423B" }}>
+          هذا رابط دائم يتصفّح فيه المستلم كل فئات الشواهد ومجلداتها وملفاتها فعليًا (بدون تسجيل دخول)، ويتحدّث تلقائيًا مع أي إضافة لاحقة منك — بدون تعديل، للقراءة فقط.
+        </p>
+      </div>
+      <div className="flex items-center gap-2 p-2 rounded-lg mb-3" style={{ border: `1px solid ${LINE}`, background: "#F8F7F2" }}>
+        <span className="flex-1 text-xs truncate" style={{ color: MUTED, direction: "ltr", textAlign: "left" }}>{link}</span>
+        <button onClick={copyLink} className="text-xs font-bold px-2.5 py-1 rounded-lg text-white shrink-0" style={{ background: "#26423B" }}>
+          {copied ? "تم النسخ ✓" : "نسخ"}
+        </button>
+      </div>
+      <button
+        onClick={shareLink}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        <Share2 size={16} /> مشاركة الرابط
+      </button>
+    </Modal>
+  );
+}
+
 function StudentQrModal({ cls, row, onSaveShareId, onClose }) {
   const [state, setState] = useState(row.shareId ? "ready" : "loading");
   const [shareId, setShareId] = useState(row.shareId || null);
@@ -9986,6 +10098,25 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
   const [showSettings, setShowSettings] = useState(false);
   const [showTodayActivity, setShowTodayActivity] = useState(false);
   const [shawahedPreview, setShawahedPreview] = useState(null);
+  const [shawahedShareLink, setShawahedShareLink] = useState(null);
+  const [shawahedShareLoading, setShawahedShareLoading] = useState(false);
+
+  // يعيد استخدام نفس رابط المشاركة لو سبق إنشاؤه، بدل ما يولّد رابط جديد
+  // كل مرة (يحفظ المعرّف بإعدادات حسابك).
+  const getOrCreateShawahedShareId = async () => {
+    if (data.settings?.shawahedShareId) return data.settings.shawahedShareId;
+    setShawahedShareLoading(true);
+    try {
+      const id = await publishShawahedShare();
+      setData((d) => ({ ...d, settings: { ...(d.settings || {}), shawahedShareId: id } }));
+      return id;
+    } catch (e) {
+      alert("تعذّر إنشاء رابط المشاركة — تأكد من إعداد قاعدة البيانات (راجع ملف shawahed-sharing-setup.sql).");
+      return null;
+    } finally {
+      setShawahedShareLoading(false);
+    }
+  };
   const [showGradeSheetFlow, setShowGradeSheetFlow] = useState(false);
   const [gradeSheetClassId, setGradeSheetClassId] = useState(null);
   const [gradeSheetPreview, setGradeSheetPreview] = useState(null);
@@ -10435,17 +10566,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               },
             });
           }}
-          onShareReadOnly={(selectedKeys, description) => {
-            const html = buildReadOnlyShawahedHtml(data.shawahed || {}, selectedKeys, {
-              countryName: data.settings?.countryName,
-              ministryName: data.settings?.ministryName,
-              schoolName: data.settings?.schoolName,
-              teacherName: data.classes[0]?.teacher || "",
-              principalName: data.settings?.principalName,
-              description,
-            });
-            const blob = new Blob([html], { type: "text/html" });
-            shareOrDownloadFile(blob, "تقرير-شواهد.html", "text/html");
+          onShareReadOnly={async () => {
+            const id = await getOrCreateShawahedShareId();
+            if (id) setShawahedShareLink(buildSharedShawahedUrl(id));
           }}
           onPrintProgram={(entry, cat) => setShawahedPreview({
             type: "programReport",
@@ -10461,20 +10584,22 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               office: data.settings?.office,
             },
           })}
-          onShareReadOnlyOne={(entry, cat) => {
-            const fakeShawahed = { entries: { [cat.key]: [entry] } };
-            const html = buildReadOnlyShawahedHtml(fakeShawahed, [cat.key], {
-              countryName: data.settings?.countryName,
-              ministryName: data.settings?.ministryName,
-              schoolName: data.settings?.schoolName,
-              teacherName: data.classes[0]?.teacher || "",
-              principalName: data.settings?.principalName,
-              description: "",
-            });
-            const blob = new Blob([html], { type: "text/html" });
-            shareOrDownloadFile(blob, `شاهد-${entry.title}.html`, "text/html");
+          onShareReadOnlyOne={async () => {
+            const id = await getOrCreateShawahedShareId();
+            if (id) setShawahedShareLink(buildSharedShawahedUrl(id));
           }}
         />
+      )}
+      {shawahedShareLoading && (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "rgba(25,28,25,0.4)", zIndex: 70 }}>
+          <div className="bg-white rounded-2xl px-6 py-5 flex items-center gap-3">
+            <RefreshCw size={18} color="#26423B" className="animate-spin" />
+            <p className="text-sm font-semibold" style={{ color: INK }}>جارٍ تجهيز رابط المشاركة...</p>
+          </div>
+        </div>
+      )}
+      {shawahedShareLink && (
+        <ShawahedShareLinkModal link={shawahedShareLink} onClose={() => setShawahedShareLink(null)} />
       )}
       {mainTab === "tests" && (
         <TestsListModal
@@ -11904,12 +12029,73 @@ export class ErrorBoundary extends React.Component {
 export default function App() {
   // توجيه بسيط: لو الرابط فيه ?shared=معرّف، نعرض تقرير طالب عام للقراءة
   // فقط (بدون تسجيل دخول) — هذا هو الرابط اللي يُشفَّر برمز QR بتقرير
-  // الطالب. أي رابط عادي (بدون هذي الوسيطة) يذهب للتطبيق الكامل كالمعتاد.
+  // الطالب. ولو فيه ?shawahed=معرّف، نعرض متصفّح شواهد تفاعلي للقراءة فقط.
+  // أي رابط عادي (بدون هذي الوسائط) يذهب للتطبيق الكامل كالمعتاد.
   const sharedId = (() => {
     try { return new URLSearchParams(window.location.search).get("shared"); } catch (e) { return null; }
   })();
+  const sharedShawahedId = (() => {
+    try { return new URLSearchParams(window.location.search).get("shawahed"); } catch (e) { return null; }
+  })();
   if (sharedId) return <SharedReportView shareId={sharedId} />;
+  if (sharedShawahedId) return <SharedShawahedView shareId={sharedShawahedId} />;
   return <AuthenticatedApp />;
+}
+
+// عرض عام تفاعلي (للقراءة فقط) لكامل مجلدات الشواهد — يفتح بدون تسجيل
+// دخول، ويسمح بتصفح الفئات والشواهد والمجلدات والملفات فعليًا (مو مجرد
+// صفحة ثابتة)، تمامًا زي متصفح فصولي نفسه بس بدون أزرار تعديل. يستدعي
+// دالة قاعدة بيانات مقيّدة تُرجع بيانات الشواهد فقط، مو كامل حساب المعلم.
+function SharedShawahedView({ shareId }) {
+  const [state, setState] = useState("loading");
+  const [payload, setPayload] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc("get_shared_shawahed", { p_share_id: shareId });
+        if (error || !data) { setState("error"); return; }
+        setPayload(data);
+        setState("ready");
+      } catch (e) {
+        setState("error");
+      }
+    })();
+  }, [shareId]);
+
+  if (state === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER }}>
+        <RefreshCw size={22} color={MUTED} className="animate-spin" />
+      </div>
+    );
+  }
+  if (state === "error" || !payload) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: PAPER, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
+        <div className="text-center">
+          <p className="text-sm font-bold mb-1" style={{ color: "#C0392B" }}>تعذّر عرض الشواهد</p>
+          <p className="text-xs" style={{ color: MUTED }}>الرابط قد يكون غير صحيح، أو أُلغي من طرف المعلم.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div dir="rtl" style={{ background: PAPER, minHeight: "100vh", fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
+      <div className="px-4 py-3 flex items-center gap-2" style={{ background: DASH_GREEN }}>
+        <FileCheck size={18} color="#fff" />
+        <div>
+          <p className="text-sm font-bold" style={{ color: "#fff" }}>شواهد الأداء الوظيفي</p>
+          {payload.teacherName && <p className="text-xs" style={{ color: GOLD_LIGHT }}>{payload.teacherName}{payload.schoolName ? ` — ${payload.schoolName}` : ""}</p>}
+        </div>
+        <span className="mr-auto text-[10px] px-2 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.15)", color: "#fff" }}>عرض للقراءة فقط</span>
+      </div>
+      <div className="max-w-5xl mx-auto p-4">
+        <ShawahedHub shawahed={payload.shawahed || {}} readOnly bare />
+      </div>
+    </div>
+  );
 }
 
 // عرض عام للقراءة فقط لتقرير طالب واحد — يُفتح من رابط/رمز QR بدون تسجيل
