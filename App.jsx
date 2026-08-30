@@ -1275,6 +1275,32 @@ async function shareOrDownloadFile(blob, filename, mime) {
   downloadBlob(blob, filename);
 }
 
+// "مشاركة مباشرة": يشارك الملفات الحقيقية نفسها دفعة واحدة عبر قائمة
+// مشاركة الجهاز (فيديعطي المستلم نسخته الخاصة القابلة للتعديل)، بدل صفحة
+// عرض ثابتة. يرجع لتنزيل الملفات وحدة وحدة لو المتصفح ما يدعم مشاركة عدة
+// ملفات دفعة واحدة.
+async function shareMultipleFilesRaw(items) {
+  if (items.length === 0) return { ok: false, reason: "empty" };
+  try {
+    const files = await Promise.all(items.map(async (it) => {
+      const blob = await (await fetch(it.dataUrl)).blob();
+      return new File([blob], it.name, { type: it.mimeType || blob.type });
+    }));
+    if (isTouchPrimary() && navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: "شواهد" });
+      return { ok: true, mode: "share" };
+    }
+    // لا يدعم مشاركة عدة ملفات دفعة وحدة — نزّل كل ملف على حدة
+    for (const f of files) {
+      downloadBlob(f, f.name);
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    return { ok: true, mode: "download" };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
 // Builds a minimal, valid single-page PDF that simply embeds a JPEG image.
 // This avoids needing any PDF library or embedded font (which can't render
 // Arabic without a font file) — the "text" is really the canvas rendering,
@@ -2135,12 +2161,33 @@ function buildReadOnlyShawahedHtml(shawahed, selectedKeys, meta = {}) {
       ? `يوثّق هذا التقرير ${totalEntriesCount} شاهدًا على الأداء الوظيفي لـ ${teacherName || "المعلم/ـة"}، موزّعة على ${cats.length} معايير مختلفة.`
       : "");
 
+  const fileTileHtml = (f, color) => {
+    const isImg = (f.mimeType || "").startsWith("image/");
+    return `<div style="border:1px solid ${LINE};border-radius:8px;overflow:hidden;background:#fff;">
+      ${isImg
+        ? `<img src="${f.dataUrl}" style="width:100%;height:64px;object-fit:cover;display:block;" />`
+        : `<div style="width:100%;height:64px;background:${color}10;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>`}
+      <p style="margin:0;padding:4px 6px;font-size:9px;color:${MUTED};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(f.name)}</p>
+    </div>`;
+  };
+
   const catsHtml = cats.map((cat) => {
     const officialIndex = cats.indexOf(cat) + 1;
     const cardsHtml = (entries[cat.key] || []).map((e) => {
       const noteText = (e.notes && e.notes.trim())
         ? e.notes.trim()
         : `شاهد يوثّق "${e.title}" ضمن معيار "${cat.title}"، ويعكس تطبيقًا فعليًا لهذا الجانب من الأداء الوظيفي داخل الفصل.`;
+      const rootFiles = e.attachments || [];
+      const folders = e.folders || [];
+      const filesGridHtml = (rootFiles.length > 0 || folders.length > 0) ? `
+        <div style="padding:0 14px 14px;">
+          ${rootFiles.length > 0 ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;${folders.length ? "margin-bottom:10px;" : ""}">${rootFiles.map((f) => fileTileHtml(f, cat.color)).join("")}</div>` : ""}
+          ${folders.map((f) => `
+            <div style="margin-bottom:10px;">
+              <p style="margin:0 0 6px;font-size:10px;font-weight:bold;color:${cat.color};">📁 ${escapeHtml(f.name)}</p>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">${(f.files || []).map((ff) => fileTileHtml(ff, cat.color)).join("")}</div>
+            </div>`).join("")}
+        </div>` : "";
       return `
       <div style="border:1px solid ${LINE};border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 2px 8px rgba(35,38,34,0.06);border-top:3px solid ${cat.color};">
         ${e.photo ? `<img src="${e.photo}" style="width:100%;height:150px;object-fit:cover;display:block;" />` : `<div style="width:100%;height:150px;background:${cat.color}12;display:flex;align-items:center;justify-content:center;color:${cat.color};font-size:26px;font-weight:bold;">✓</div>`}
@@ -2149,6 +2196,7 @@ function buildReadOnlyShawahedHtml(shawahed, selectedKeys, meta = {}) {
           <p style="margin:0 0 8px;font-size:11px;color:${MUTED};line-height:1.6;">${escapeHtml(noteText)}</p>
           <p style="margin:0;font-size:10px;color:${MUTED};text-align:left;">${escapeHtml(formatDateDisplay(e.date))}</p>
         </div>
+        ${filesGridHtml}
       </div>`;
     }).join("");
     return `
@@ -4935,7 +4983,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
   };
 
   return (
-    <BottomSheetModal title={category.title} onClose={onClose}>
+    <Modal title={category.title} onClose={onClose} accent="magic" wide>
       <input ref={quickReportInputRef} type="file" onChange={handleQuickReportUpload} style={{ display: "none" }} />
       <button
         onClick={() => quickReportInputRef.current?.click()}
@@ -5070,7 +5118,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
           onCreate={(name) => handleAddFolder(addingFolderFor, name)}
         />
       )}
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
@@ -5506,6 +5554,43 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
 }
 
 // نافذة إضافة/تعديل فئة شواهد خاصة بالمعلم (فوق المعايير الرسمية الـ١٢).
+// نافذة اختيار طريقة المشاركة: "مباشرة" (تشارك الملفات الحقيقية نفسها،
+// قابلة للتعديل عند المستلم بتطبيقه الخاص)، أو "للقراءة فقط" (رابط صفحة
+// تعرض كل مجلدات الشواهد للاطلاع بدون إمكانية تعديل).
+function ShawahedShareChoiceModal({ onClose, onShareRaw, onShareReadOnly, sharing }) {
+  return (
+    <Modal title="مشاركة الشواهد" onClose={onClose} accent="magic">
+      <button
+        disabled={sharing}
+        onClick={onShareRaw}
+        className="w-full flex items-start gap-3 p-4 rounded-xl text-right mb-3 disabled:opacity-60"
+        style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+      >
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EAF3F0" }}>
+          <Share2 size={18} color="#26423B" />
+        </div>
+        <div>
+          <p className="text-sm font-bold" style={{ color: INK }}>{sharing ? "جارٍ التجهيز..." : "مشاركة مباشرة"}</p>
+          <p className="text-xs mt-0.5" style={{ color: MUTED }}>يشارك الملفات الحقيقية نفسها (صور، PDF، وورد...) — يفتحها المستلم بتطبيقه الخاص ويقدر يحفظ وين نسخته يعدّل عليها.</p>
+        </div>
+      </button>
+      <button
+        onClick={onShareReadOnly}
+        className="w-full flex items-start gap-3 p-4 rounded-xl text-right"
+        style={{ border: `1px solid ${LINE}`, background: "#fff" }}
+      >
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}>
+          <Link2 size={18} color={MUTED} />
+        </div>
+        <div>
+          <p className="text-sm font-bold" style={{ color: INK }}>مشاركة للقراءة فقط</p>
+          <p className="text-xs mt-0.5" style={{ color: MUTED }}>رابط صفحة يفتح كل مجلدات الشواهد للاطلاع فقط (مناسب لإرساله للإدارة) — بدون إمكانية تعديل.</p>
+        </div>
+      </button>
+    </Modal>
+  );
+}
+
 function ShawahedCategoryEditModal({ initial, onClose, onSave }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [color, setColor] = useState(initial?.color || COLORS[0].hex);
@@ -5535,6 +5620,8 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
   const [showExportPicker, setShowExportPicker] = useState(false);
   const [showGoals, setShowGoals] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showShareChoice, setShowShareChoice] = useState(false);
+  const [sharingRaw, setSharingRaw] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const entries = shawahed.entries || {};
@@ -5617,14 +5704,18 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
 
   const content = (
     <>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <p className="text-xs font-semibold flex-1" style={{ color: MUTED }}>{totalCount} شاهد بكل الفئات</p>
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex-1 min-w-[140px]">
+          <p className="text-xl font-extrabold" style={{ color: INK }}>{totalCount}</p>
+          <p className="text-xs" style={{ color: MUTED }}>شاهد موثّق بكل الفئات</p>
+        </div>
         <IconBtn icon={Plus} label="إضافة فئة" onClick={() => setShowAddCategory(true)} />
         <IconBtn icon={Target} label="تحديد أهداف" onClick={() => setShowGoals(true)} />
         <IconBtn icon={Archive} label="الأرشيف" onClick={() => setShowArchive(true)} />
-        <IconBtn icon={FileText} label="طباعة / مشاركة" magic onClick={() => setShowExportPicker(true)} />
+        <IconBtn icon={Printer} label="طباعة" onClick={() => setShowExportPicker(true)} />
+        <IconBtn icon={Share2} label="مشاركة" magic onClick={() => setShowShareChoice(true)} />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {allCategories.map((cat, i) => {
           const count = entries[cat.key]?.length || 0;
           const goal = Number(goals[cat.key]) || 0;
@@ -5633,37 +5724,41 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
           return (
             <div
               key={cat.key}
-              className="text-right rounded-2xl p-4 hover:-translate-y-0.5 transition-all"
-              style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(35,38,34,0.06)" }}
+              className="text-right rounded-2xl overflow-hidden transition-all hover:-translate-y-0.5"
+              style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 2px 10px rgba(35,38,34,0.05)" }}
             >
-              <button onClick={() => setOpenCat(cat)} className="w-full text-right">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white" style={{ background: cat.color }}>{count}</span>
-                  <FileCheck size={16} color={cat.color} />
+              <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${cat.color}, ${cat.color}55)` }} />
+              <button onClick={() => setOpenCat(cat)} className="w-full text-right p-4 pb-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center font-extrabold text-white text-lg" style={{ background: `linear-gradient(135deg, ${cat.color}, ${cat.color}CC)`, boxShadow: `0 4px 12px ${cat.color}45` }}>{count}</div>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${cat.color}12` }}>
+                    <FileCheck size={15} color={cat.color} />
+                  </div>
                 </div>
-                <p className="text-sm font-semibold leading-snug mb-2" style={{ color: INK }}>{cat.title}</p>
+                <p className="text-sm font-bold leading-snug mb-2" style={{ color: INK }}>{cat.title}</p>
                 {pct !== null && (
-                  <div className="mb-2">
+                  <div>
                     <div className="w-full h-1.5 rounded-full overflow-hidden mb-1" style={{ background: "#F0EFE9" }}>
                       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 100 ? "#0F9D58" : cat.color }} />
                     </div>
-                    <p className="text-[11px]" style={{ color: pct >= 100 ? "#0F9D58" : MUTED }}>
+                    <p className="text-[11px] font-medium" style={{ color: pct >= 100 ? "#0F9D58" : MUTED }}>
                       {pct >= 100 ? "✓ اكتمل الهدف" : `${count} من ${goal} (${pct}٪)`}
                     </p>
                   </div>
                 )}
               </button>
-              <div className="flex items-center gap-1 pt-2 mt-1" style={{ borderTop: `1px solid ${LINE}` }}>
-                <button onClick={() => moveCategory(cat.key, -1)} disabled={i === 0} title="نقل لأعلى" className="p-1 rounded hover:bg-black/5 disabled:opacity-30"><ChevronUp size={13} color={MUTED} /></button>
-                <button onClick={() => moveCategory(cat.key, 1)} disabled={i === allCategories.length - 1} title="نقل لأسفل" className="p-1 rounded hover:bg-black/5 disabled:opacity-30"><ChevronDown size={13} color={MUTED} /></button>
+              <div className="flex items-center gap-0.5 px-2.5 py-2" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF9F5" }}>
+                <button onClick={() => moveCategory(cat.key, -1)} disabled={i === 0} title="نقل لأعلى" className="p-1.5 rounded-lg hover:bg-white disabled:opacity-25 transition-colors"><ChevronUp size={13} color={MUTED} /></button>
+                <button onClick={() => moveCategory(cat.key, 1)} disabled={i === allCategories.length - 1} title="نقل لأسفل" className="p-1.5 rounded-lg hover:bg-white disabled:opacity-25 transition-colors"><ChevronDown size={13} color={MUTED} /></button>
+                <span className="flex-1" />
                 {count > 0 && (
-                  <button onClick={() => onQuickPrint && onQuickPrint(cat.key)} title="مشاركة" className="p-1 rounded hover:bg-black/5"><Share2 size={13} color={MUTED} /></button>
+                  <button onClick={() => onQuickPrint && onQuickPrint(cat.key)} title="طباعة" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Printer size={13} color={MUTED} /></button>
                 )}
-                <button onClick={() => onShareReadOnly([cat.key], "")} title="مشاركة للقراءة فقط" className="p-1 rounded hover:bg-black/5"><Link2 size={13} color={MUTED} /></button>
+                <button onClick={() => onShareReadOnly([cat.key], "")} title="مشاركة للقراءة فقط" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Link2 size={13} color={MUTED} /></button>
                 {isCustom && (
                   <>
-                    <button onClick={() => setEditingCategory(cat)} title="تعديل" className="p-1 rounded hover:bg-black/5"><Pencil size={13} color={MUTED} /></button>
-                    <button onClick={() => setConfirmDeleteCategory(cat)} title="حذف الفئة" className="p-1 rounded hover:bg-black/5"><Trash2 size={13} color="#C0392B" /></button>
+                    <button onClick={() => setEditingCategory(cat)} title="تعديل" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Pencil size={13} color={MUTED} /></button>
+                    <button onClick={() => setConfirmDeleteCategory(cat)} title="حذف الفئة" className="p-1.5 rounded-lg hover:bg-white transition-colors"><Trash2 size={13} color="#C0392B" /></button>
                   </>
                 )}
               </div>
@@ -5706,6 +5801,31 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
           onClose={() => setShowExportPicker(false)}
           onConfirm={(keys, description) => { setShowExportPicker(false); onExport(keys, description); }}
           onShareReadOnly={(keys, description) => { setShowExportPicker(false); onShareReadOnly(keys, description); }}
+        />
+      )}
+
+      {showShareChoice && (
+        <ShawahedShareChoiceModal
+          sharing={sharingRaw}
+          onClose={() => setShowShareChoice(false)}
+          onShareRaw={async () => {
+            setSharingRaw(true);
+            const keysWithContent = allCategories.filter((c) => (entries[c.key] || []).length > 0).map((c) => c.key);
+            const files = collectAllShawahedFiles(shawahed, keysWithContent);
+            if (files.length === 0) {
+              alert("لا يوجد ملفات لمشاركتها بعد.");
+            } else {
+              const res = await shareMultipleFilesRaw(files);
+              if (!res.ok && res.reason !== "empty") alert("تعذّرت المشاركة المباشرة — جرّب مشاركة القراءة فقط بدلًا منها.");
+            }
+            setSharingRaw(false);
+            setShowShareChoice(false);
+          }}
+          onShareReadOnly={() => {
+            const keysWithContent = allCategories.filter((c) => (entries[c.key] || []).length > 0).map((c) => c.key);
+            setShowShareChoice(false);
+            onShareReadOnly(keysWithContent, "");
+          }}
         />
       )}
 
@@ -6218,6 +6338,22 @@ function getAllShawahedCategories(shawahed) {
 
 function isCustomShawahedCategory(shawahed, key) {
   return (shawahed.customCategories || []).some((c) => c.key === key);
+}
+
+// يجمع كل الملفات الحقيقية (الصور والمرفقات، بما فيها اللي داخل مجلدات)
+// عبر فئات محددة (أو كل الفئات) — يُستخدم لمشاركة "مباشرة" تشارك الملفات
+// نفسها دفعة واحدة.
+function collectAllShawahedFiles(shawahed, selectedKeys) {
+  const entries = shawahed.entries || {};
+  const files = [];
+  selectedKeys.forEach((key) => {
+    (entries[key] || []).forEach((entry) => {
+      (entry.attachments || []).forEach((a) => files.push(a));
+      (entry.folders || []).forEach((f) => (f.files || []).forEach((a) => files.push(a)));
+      if (entry.photo) files.push({ name: `${entry.title}.png`, mimeType: "image/png", dataUrl: entry.photo });
+    });
+  });
+  return files;
 }
 
 
