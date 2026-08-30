@@ -2285,6 +2285,11 @@ function PrintStyles() {
         100% { opacity: 1; transform: scale(1) rotate(0deg); }
       }
       .sad-wobble-in { animation: sadWobble 0.6s ease-out forwards; }
+      @keyframes sheetSlideUp {
+        0% { transform: translateY(100%); }
+        100% { transform: translateY(0); }
+      }
+      .sheet-slide-up { animation: sheetSlideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
       .magic-shimmer { background-size: 220% 220% !important; animation: magicShimmer 3.5s ease infinite; }
       @keyframes magicShimmer {
         0% { background-position: 0% 50%; }
@@ -4726,6 +4731,58 @@ function PeriodComparisonModal({ cls, onClose, onPrint }) {
 
 // محرر قائمة نصوص بسيط (إضافة/حذف/تعديل سطر) — يُستخدم للأهداف وخطوات
 // التنفيذ بتقرير البرنامج التفصيلي.
+// نافذة "ورقة سفلية" (Bottom Sheet) تنزلق من أسفل الشاشة بدل الظهور بوسطها
+// — مناسبة لشاشات المحتوى الطويلة (زي فتح شاهد فيه ملفات ومجلدات).
+function BottomSheetModal({ title, onClose, onBack, children }) {
+  return (
+    <div className="fixed inset-0 flex flex-col justify-end" style={{ background: "rgba(25,28,25,0.55)", zIndex: 55 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="sheet-slide-up rounded-t-3xl overflow-hidden mx-auto w-full" style={{ background: PAPER, maxWidth: 720, maxHeight: "92dvh", display: "flex", flexDirection: "column" }}>
+        <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
+          <div className="flex items-center gap-2 min-w-0">
+            {onBack && <button onClick={onBack} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><ArrowRight size={18} color="#fff" /></button>}
+            <h3 className="font-bold text-base truncate" style={{ color: "#fff" }}>{title}</h3>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><X size={20} color="#fff" /></button>
+        </div>
+        <div className="overflow-y-auto p-5" style={{ flex: 1 }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// بطاقة عرض ملف أو مجلد بأسلوب Google Drive: صور تظهر كمصغّرة فعلية،
+// الملفات الثانية تظهر كأيقونة نوع الملف + اسمه، المجلدات كأيقونة مجلد —
+// كلها بطاقات مربّعة بشبكة، مو أسطر نصية أو روابط.
+function DriveItemCard({ kind, name, mimeType, dataUrl, color, onClick, onDelete }) {
+  const isImage = kind === "file" && (mimeType || "").startsWith("image/");
+  const Icon = kind === "folder" ? FolderOpen : libraryFileIcon(mimeType);
+  return (
+    <div className="relative group">
+      <button onClick={onClick} className="w-full flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-black/5 transition-colors" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+        <div className="w-full aspect-square rounded-lg flex items-center justify-center overflow-hidden" style={{ background: isImage ? "#F3F1E9" : `${color}12` }}>
+          {isImage ? (
+            <img src={dataUrl} alt="" className="w-full h-full object-cover dark-mode-img-fix" />
+          ) : (
+            <Icon size={28} color={kind === "folder" ? "#D9A441" : color} />
+          )}
+        </div>
+        <span className="text-[11px] font-medium text-center leading-tight truncate w-full" style={{ color: INK }}>{name}</span>
+      </button>
+      {onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow"
+          style={{ background: "#C0392B" }}
+        >
+          <X size={11} color="#fff" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TextListEditor({ items, onChange, placeholder }) {
   const update = (i, val) => onChange(items.map((it, ix) => (ix === i ? val : it)));
   const remove = (i) => onChange(items.filter((_, ix) => ix !== i));
@@ -4746,11 +4803,19 @@ function TextListEditor({ items, onChange, placeholder }) {
 
 function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onArchive, onMove, onShareReadOnlyEntry, onPrintProgram, onClose }) {
   const [expandedEntryId, setExpandedEntryId] = useState(null);
+  const [openFolderId, setOpenFolderId] = useState(null);
+  const [addingFolderFor, setAddingFolderFor] = useState(null);
   const [renamingEntry, setRenamingEntry] = useState(null);
   const attachInputRef = useRef(null);
+  const folderFileInputRef = useRef(null);
 
-  // إرفاق ملف إضافي على شاهد موجود — كل شاهد يتصرف كمجلد صغير تحط فيه أي
-  // عدد من الملفات (صور، PDF، وورد...) وتشاركها لاحقًا زي ملفات Google Drive.
+  const openEntry = (entryId) => {
+    setExpandedEntryId(expandedEntryId === entryId ? null : entryId);
+    setOpenFolderId(null);
+  };
+
+  // إرفاق ملف بالمستوى الرئيسي لشاهد (خارج أي مجلد) — كل شاهد يتصرف
+  // كمساحة صغيرة من نوع Google Drive: ملفات ومجلدات بداخله.
   const handleAttachFile = (entryId, e) => {
     const files = Array.from(e.target.files || []);
     files.forEach((file) => {
@@ -4774,6 +4839,60 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
     const entry = entries.find((x) => x.id === entryId);
     if (!entry) return;
     onEdit(entryId, { attachments: (entry.attachments || []).filter((a) => a.id !== attachmentId) });
+  };
+
+  // إنشاء مجلد جديد داخل شاهد — لتنظيم الملفات بداخله زي أي تطبيق تخزين سحابي.
+  const handleAddFolder = (entryId, name) => {
+    const entry = entries.find((x) => x.id === entryId);
+    if (!entry) return;
+    const newFolder = { id: uid(), name, files: [] };
+    onEdit(entryId, { folders: [...(entry.folders || []), newFolder] });
+    setAddingFolderFor(null);
+  };
+
+  const handleDeleteFolder = (entryId, folderId) => {
+    const entry = entries.find((x) => x.id === entryId);
+    if (!entry) return;
+    onEdit(entryId, { folders: (entry.folders || []).filter((f) => f.id !== folderId) });
+    setOpenFolderId(null);
+  };
+
+  const handleAddFileToFolder = (entryId, folderId, e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((file) => {
+      if (file.size > 15 * 1024 * 1024) {
+        alert(`الملف "${file.name}" كبير جدًا (أكبر من ١٥ ميجا) — يُفضّل ملفات أصغر.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const entry = entries.find((x) => x.id === entryId);
+        if (!entry) return;
+        const newFile = { id: uid(), name: file.name, mimeType: file.type, dataUrl: reader.result, uploadedAt: todayKey() };
+        const folders = (entry.folders || []).map((f) => (f.id === folderId ? { ...f, files: [...f.files, newFile] } : f));
+        onEdit(entryId, { folders });
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const handleRemoveFileFromFolder = (entryId, folderId, fileId) => {
+    const entry = entries.find((x) => x.id === entryId);
+    if (!entry) return;
+    const folders = (entry.folders || []).map((f) => (f.id === folderId ? { ...f, files: f.files.filter((x) => x.id !== fileId) } : f));
+    onEdit(entryId, { folders });
+  };
+
+  // فتح/تنزيل/مشاركة أي ملف أو صورة داخل شاهد أو مجلد — عبر قائمة المشاركة
+  // الفعلية للجهاز، بدل مجرد رابط نصي.
+  const openFile = async (file) => {
+    try {
+      const blob = await (await fetch(file.dataUrl)).blob();
+      await shareOrDownloadFile(blob, file.name, file.mimeType || blob.type);
+    } catch (err) {
+      window.open(file.dataUrl, "_blank");
+    }
   };
 
   // مشاركة "خام" (الملف/الصورة نفسها عبر قائمة المشاركة بالجهاز) — مختلفة
@@ -4816,7 +4935,7 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
   };
 
   return (
-    <Modal title={category.title} onClose={onClose} accent="magic" wide>
+    <BottomSheetModal title={category.title} onClose={onClose}>
       <input ref={quickReportInputRef} type="file" onChange={handleQuickReportUpload} style={{ display: "none" }} />
       <button
         onClick={() => quickReportInputRef.current?.click()}
@@ -4834,6 +4953,9 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
           {entries.map((e, i) => {
             const isExpanded = expandedEntryId === e.id;
             const attachments = e.attachments || [];
+            const folders = e.folders || [];
+            const totalItems = attachments.length + folders.length;
+            const openFolder = isExpanded ? folders.find((f) => f.id === openFolderId) : null;
             return (
               <div key={e.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
                 <div className="flex items-start gap-3 p-3">
@@ -4844,11 +4966,11 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[11px]" style={{ color: MUTED }}>{formatDateDisplay(e.date)}</p>
                       <button
-                        onClick={() => setExpandedEntryId(isExpanded ? null : e.id)}
+                        onClick={() => openEntry(e.id)}
                         className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{ background: attachments.length ? `${category.color}15` : "#F3F1E9", color: attachments.length ? category.color : MUTED }}
+                        style={{ background: totalItems ? `${category.color}15` : "#F3F1E9", color: totalItems ? category.color : MUTED }}
                       >
-                        <Paperclip size={10} /> {attachments.length > 0 ? `${attachments.length} ملف مرفق` : "إضافة ملفات"}
+                        <FolderOpen size={10} /> {totalItems > 0 ? `${totalItems} عنصر` : "فتح المحتويات"}
                       </button>
                     </div>
                   </div>
@@ -4866,31 +4988,68 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="px-3 pb-3 pt-1" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF8F3" }}>
-                    <p className="text-xs font-bold mt-2 mb-2" style={{ color: INK }}>الملفات المرفقة — مثل مجلد Google Drive صغير لهذا الشاهد</p>
-                    {attachments.length > 0 && (
-                      <div className="space-y-1.5 mb-2">
-                        {attachments.map((a) => {
-                          const Icon = libraryFileIcon(a.mimeType);
-                          return (
-                            <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-                              <Icon size={16} color={category.color} className="shrink-0" />
-                              <span className="flex-1 text-xs truncate" style={{ color: INK }}>{a.name}</span>
-                              <a href={a.dataUrl} download={a.name} title="تنزيل/مشاركة" className="p-1 rounded hover:bg-black/5 shrink-0"><ImageDown size={13} color={MUTED} /></a>
-                              <button onClick={() => handleRemoveAttachment(e.id, a.id)} title="حذف الملف" className="p-1 rounded hover:bg-black/5 shrink-0"><X size={13} color="#C0392B" /></button>
-                            </div>
-                          );
-                        })}
-                      </div>
+                  <div className="px-3 pb-3 pt-2" style={{ borderTop: `1px solid ${LINE}`, background: "#FAF8F3" }}>
+                    {!openFolder ? (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-bold" style={{ color: INK }}>محتويات الشاهد</p>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setAddingFolderFor(e.id)}
+                              className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg"
+                              style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}
+                            >
+                              <FolderOpen size={12} color="#D9A441" /> مجلد جديد
+                            </button>
+                            <input ref={attachInputRef} type="file" multiple onChange={(ev) => handleAttachFile(e.id, ev)} style={{ display: "none" }} />
+                            <button
+                              onClick={() => attachInputRef.current?.click()}
+                              className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-white"
+                              style={{ background: category.color }}
+                            >
+                              <Plus size={12} /> رفع ملف
+                            </button>
+                          </div>
+                        </div>
+                        {folders.length === 0 && attachments.length === 0 ? (
+                          <p className="text-xs text-center py-6" style={{ color: MUTED }}>لا يوجد ملفات أو مجلدات بعد.</p>
+                        ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                            {folders.map((f) => (
+                              <DriveItemCard key={f.id} kind="folder" name={`${f.name} (${f.files.length})`} color="#D9A441" onClick={() => setOpenFolderId(f.id)} onDelete={() => handleDeleteFolder(e.id, f.id)} />
+                            ))}
+                            {attachments.map((a) => (
+                              <DriveItemCard key={a.id} kind="file" name={a.name} mimeType={a.mimeType} dataUrl={a.dataUrl} color={category.color} onClick={() => openFile(a)} onDelete={() => handleRemoveAttachment(e.id, a.id)} />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <button onClick={() => setOpenFolderId(null)} className="flex items-center gap-1 text-xs font-bold" style={{ color: INK }}>
+                            <ArrowRight size={14} /> {openFolder.name}
+                          </button>
+                          <input ref={folderFileInputRef} type="file" multiple onChange={(ev) => handleAddFileToFolder(e.id, openFolder.id, ev)} style={{ display: "none" }} />
+                          <button
+                            onClick={() => folderFileInputRef.current?.click()}
+                            className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-white"
+                            style={{ background: category.color }}
+                          >
+                            <Plus size={12} /> رفع ملف
+                          </button>
+                        </div>
+                        {openFolder.files.length === 0 ? (
+                          <p className="text-xs text-center py-6" style={{ color: MUTED }}>المجلد فارغ — ارفع أول ملف له.</p>
+                        ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                            {openFolder.files.map((f) => (
+                              <DriveItemCard key={f.id} kind="file" name={f.name} mimeType={f.mimeType} dataUrl={f.dataUrl} color={category.color} onClick={() => openFile(f)} onDelete={() => handleRemoveFileFromFolder(e.id, openFolder.id, f.id)} />
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
-                    <input ref={attachInputRef} type="file" multiple onChange={(ev) => handleAttachFile(e.id, ev)} style={{ display: "none" }} />
-                    <button
-                      onClick={() => attachInputRef.current?.click()}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
-                      style={{ border: `1px solid ${LINE}`, background: "#fff", color: INK }}
-                    >
-                      <Plus size={13} /> إضافة ملف (أي نوع)
-                    </button>
                   </div>
                 )}
               </div>
@@ -4905,6 +5064,32 @@ function ShawahedCategoryModal({ category, entries, onAdd, onEdit, onDelete, onA
           onSave={(newTitle) => { onEdit(renamingEntry.id, { title: newTitle }); setRenamingEntry(null); }}
         />
       )}
+      {addingFolderFor && (
+        <NewFolderModal
+          onClose={() => setAddingFolderFor(null)}
+          onCreate={(name) => handleAddFolder(addingFolderFor, name)}
+        />
+      )}
+    </BottomSheetModal>
+  );
+}
+
+// نافذة صغيرة لتسمية مجلد جديد داخل شاهد.
+function NewFolderModal({ onClose, onCreate }) {
+  const [name, setName] = useState("");
+  return (
+    <Modal title="مجلد جديد" onClose={onClose} accent="magic">
+      <Field label="اسم المجلد">
+        <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="مثال: صور إضافية" autoFocus />
+      </Field>
+      <button
+        disabled={!name.trim()}
+        onClick={() => onCreate(name.trim())}
+        className="w-full py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+      >
+        إنشاء المجلد
+      </button>
     </Modal>
   );
 }
