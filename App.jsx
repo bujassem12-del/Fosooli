@@ -7,7 +7,7 @@ import {
   Printer, Search, ArrowRight, X, Check, Minus, Hash, Type,
   ListChecks, FolderClock, BookOpen, FileText, RefreshCw, ClipboardList,
   Pin, PinOff, Copy, RotateCcw, FolderOpen, FileImage, FileSpreadsheet, ListOrdered,
-  Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange, UserX, Paperclip, Link2,
+  Share2, Calendar, CalendarCheck, Newspaper, Eraser, CalendarRange, UserX, Paperclip, Link2, ShieldAlert,
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
@@ -9558,7 +9558,7 @@ function LinkToShawahedModal({ cls, row, entries, shawahed, onLink, onClose }) {
   );
 }
 
-function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent, onSaveShareId, shawahed, onLinkShawahed }) {
+function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent, onSaveShareId, shawahed, onLinkShawahed, titleOverride }) {
   const [editing, setEditing] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showTrash, setShowTrash] = useState(false);
@@ -9623,7 +9623,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
   ];
 
   return (
-    <Modal title={`تقرير الطالب — ${row.name}`} onClose={onClose} onBack={onBack} lg>
+    <Modal title={titleOverride ? `${titleOverride} — ${row.name}` : `تقرير الطالب — ${row.name}`} onClose={onClose} onBack={onBack} lg>
       <div className="rounded-2xl p-4 mb-3" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
         <div className="flex flex-wrap items-center gap-4 mb-3">
           {row.photo ? (
@@ -10854,6 +10854,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [showBoard, setShowBoard] = useState(false);
   const [reportRowId, setReportRowId] = useState(null);
+  const [behaviorReportRowId, setBehaviorReportRowId] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { type: 'deleteRow'|'deleteAll', row? }
   const [animatingRowId, setAnimatingRowId] = useState(null);
   const [animatingColId, setAnimatingColId] = useState(null);
@@ -10871,6 +10872,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
+  const [showBehaviorReportPicker, setShowBehaviorReportPicker] = useState(false);
   const [showGradeSheet, setShowGradeSheet] = useState(false);
   const [showPeriodComparison, setShowPeriodComparison] = useState(false);
   const [showExamMode, setShowExamMode] = useState(false);
@@ -11340,6 +11342,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
   const reportRow = reportRowId ? cls.rows.find((r) => r.id === reportRowId) : null;
   const reportEntries = reportRowId ? cls.reports?.[reportRowId] || [] : [];
+  const behaviorColumnIds = cls.columns.filter((c) => c.behaviorFlag).map((c) => c.id);
+  const behaviorReportRow = behaviorReportRowId ? cls.rows.find((r) => r.id === behaviorReportRowId) : null;
+  const behaviorReportEntries = behaviorReportRowId ? (cls.reports?.[behaviorReportRowId] || []).filter((e) => behaviorColumnIds.includes(e.colId)) : [];
 
   const NUM_W = 48;
   const NAME_W = 180;
@@ -11427,6 +11432,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" disabled={examLocked} onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" disabled={examLocked} onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
+          <IconBtn icon={ShieldAlert} label="تقرير السلوك" tone="danger" onClick={() => setShowBehaviorReportPicker(true)} />
           <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
           <IconBtn icon={FileSpreadsheet} label="كشف رصد درجات" magic onClick={() => setShowGradeSheet(true)} />
           <IconBtn icon={BarChart3} label="مقارنة أداء بين فترتين" onClick={() => setShowPeriodComparison(true)} />
@@ -11731,6 +11737,52 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           }}
         />
       )}
+      {behaviorReportRow && (
+        <ReportModal
+          cls={cls}
+          row={behaviorReportRow}
+          entries={behaviorReportEntries}
+          reportTrash={cls.reportTrash?.[behaviorReportRow.id] || []}
+          schoolName={schoolName}
+          principalName={principalName}
+          countryName={countryName}
+          ministryName={ministryName}
+          logoImage={logoImage}
+          titleOverride="تقرير السلوك"
+          onClose={() => setBehaviorReportRowId(null)}
+          onBack={() => { setBehaviorReportRowId(null); setShowBehaviorReportPicker(true); }}
+          onEditEntry={(entryId, value) => updateReportEntryValue(behaviorReportRow.id, entryId, value)}
+          onDeleteEntry={(entryId) => removeReportEntry(behaviorReportRow.id, entryId)}
+          onDeleteCategory={(colId) => removeReportCategory(behaviorReportRow.id, colId)}
+          onDeleteAllEntries={() => removeAllReportEntries(behaviorReportRow.id)}
+          onAddNote={(entry) => addManualReportNote(behaviorReportRow.id, entry)}
+          onRestoreLatest={() => restoreLatestReportEntry(behaviorReportRow.id)}
+          onRestoreEntry={(trashId) => restoreReportEntryFromTrash(behaviorReportRow.id, trashId)}
+          onClearTrash={() => clearReportTrash(behaviorReportRow.id)}
+          onPrint={() => openPrintPreview({ type: "report", cls, row: behaviorReportRow, entries: behaviorReportEntries })}
+          onPrintParent={() => openPrintPreview({ type: "parentReport", cls, row: behaviorReportRow, entries: behaviorReportEntries, meta: { schoolName, teacherName: cls.teacher } })}
+          onSaveShareId={(rowId, shareId) => updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowId ? { ...r, shareId } : r)) }))}
+          shawahed={shawahed || {}}
+          onLinkShawahed={({ catKey, mode, existingId, title, notes, photo }) => {
+            const entries = shawahed?.entries || {};
+            if (mode === "existing" && existingId) {
+              onLinkShawahed({
+                ...shawahed,
+                entries: {
+                  ...entries,
+                  [catKey]: (entries[catKey] || []).map((e) => (e.id === existingId ? { ...e, photo } : e)),
+                },
+              });
+            } else {
+              const newEntry = { id: uid(), title, notes, photo, date: todayKey() };
+              onLinkShawahed({
+                ...shawahed,
+                entries: { ...entries, [catKey]: [...(entries[catKey] || []), newEntry] },
+              });
+            }
+          }}
+        />
+      )}
       {confirmAction && (
         <ConfirmDialog
           title={
@@ -11851,6 +11903,13 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           rows={cls.rows}
           onSelect={(rowId) => { setReportRowId(rowId); setShowReportPicker(false); }}
           onClose={() => setShowReportPicker(false)}
+        />
+      )}
+      {showBehaviorReportPicker && (
+        <StudentPickerModal
+          rows={cls.rows}
+          onSelect={(rowId) => { setBehaviorReportRowId(rowId); setShowBehaviorReportPicker(false); }}
+          onClose={() => setShowBehaviorReportPicker(false)}
         />
       )}
       {showGradeSheet && (
