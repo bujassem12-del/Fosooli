@@ -5473,20 +5473,30 @@ function libraryFileIcon(mimeType) {
 
 // شارة صغيرة تبين هل التطبيق متصل بالإنترنت فعليًا وهل آخر تعديل انحفظ
 // بالسحابة أو لسه بانتظار الاتصال — تطمينة سريعة خصوصًا بشبكة مدرسة ضعيفة.
-function SyncStatusBadge({ isOnline, syncStatus }) {
+function SyncStatusBadge({ isOnline, syncStatus, onRetry }) {
   let icon = Check, color = "#0F9D58", bg = "#E3F1EC", label = "محفوظ";
   if (!isOnline) { icon = WifiOff; color = "#C0392B"; bg = "#FBEAE7"; label = "غير متصل"; }
   else if (syncStatus === "saving") { icon = RefreshCw; color = "#C97A2B"; bg = "#FCEFE2"; label = "جارٍ الحفظ..."; }
   else if (syncStatus === "error") { icon = AlertTriangle; color = "#C0392B"; bg = "#FBEAE7"; label = "تعذّر الحفظ"; }
   const Icon = icon;
+  const showRetry = isOnline && syncStatus === "error" && onRetry;
   return (
     <div
-      title={isOnline ? (syncStatus === "saving" ? "جارٍ حفظ آخر تعديل بالسحابة..." : syncStatus === "error" ? "تعذّر حفظ آخر تعديل — تحقق من الاتصال" : "كل تعديلاتك محفوظة بالسحابة") : "لا يوجد اتصال بالإنترنت — تعديلاتك محفوظة بجهازك بس حاليًا وبتُرفع تلقائيًا لما يرجع الاتصال"}
+      title={isOnline ? (syncStatus === "saving" ? "جارٍ حفظ آخر تعديل بالسحابة..." : syncStatus === "error" ? "تعذّر حفظ آخر تعديل — اضغط لإعادة المحاولة" : "كل تعديلاتك محفوظة بالسحابة") : "لا يوجد اتصال بالإنترنت — تعديلاتك محفوظة بجهازك بس حاليًا وبتُرفع تلقائيًا لما يرجع الاتصال"}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0"
       style={{ background: bg, color }}
     >
       <Icon size={12} className={syncStatus === "saving" && isOnline ? "animate-spin" : ""} />
       {label}
+      {showRetry && (
+        <button
+          onClick={onRetry}
+          className="flex items-center gap-1 mr-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold hover:brightness-95"
+          style={{ background: color, color: "#fff" }}
+        >
+          <RotateCcw size={10} /> إعادة المحاولة
+        </button>
+      )}
     </div>
   );
 }
@@ -10307,7 +10317,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
           </div>
           <div className="flex items-center gap-2">
-            <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} />
+            <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={saveToSupabase} />
             {isOwner && (
               <button onClick={() => setShowAdminPanel(true)} title="لوحة التحكم" className="w-10 h-10 rounded-full flex items-center justify-center hover:opacity-90" style={{ background: "#26423B" }}>
                 <ShieldCheck size={18} color="#fff" />
@@ -10814,7 +10824,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
 // ---------- Class detail page ----------
 
-function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, isOwner, density, isOnline, syncStatus, shawahed, onLinkShawahed }) {
+function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, isOwner, density, isOnline, syncStatus, onRetrySave, shawahed, onLinkShawahed }) {
   const [colModal, setColModal] = useState(null);
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -11348,7 +11358,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold hover:opacity-70" style={{ color: MUTED }}>
             <ArrowRight size={16} /> رجوع للفصول
           </button>
-          <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} />
+          <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={onRetrySave} />
         </div>
 
         <div className="rounded-xl px-2.5 py-1.5 mb-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5" style={{ background: "#fff", border: `1px solid ${LINE}`, borderInlineStart: `4px solid ${cls.color}` }}>
@@ -12296,17 +12306,21 @@ function AuthenticatedApp() {
     })();
   }, [session]);
 
+  const saveToSupabase = () => {
+    if (!session) return;
+    setSyncStatus("saving");
+    supabase.from("user_data")
+      .upsert({ user_id: session.user.id, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+      .then(({ error }) => {
+        if (error) { console.error("تعذر حفظ البيانات", error); setSyncStatus("error"); }
+        else setSyncStatus("saved");
+      });
+  };
+
   useEffect(() => {
     if (!loaded || !session) return;
     setSyncStatus("saving");
-    const t = setTimeout(() => {
-      supabase.from("user_data")
-        .upsert({ user_id: session.user.id, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
-        .then(({ error }) => {
-          if (error) { console.error("تعذر حفظ البيانات", error); setSyncStatus("error"); }
-          else setSyncStatus("saved");
-        });
-    }, 600);
+    const t = setTimeout(saveToSupabase, 600);
     return () => clearTimeout(t);
   }, [data, loaded, session]);
 
@@ -12454,7 +12468,7 @@ function AuthenticatedApp() {
     <>
       <PrintStyles />
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
