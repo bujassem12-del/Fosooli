@@ -12269,9 +12269,11 @@ function AuthenticatedApp() {
     });
   };
 
+  const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     if (!session) return;
     setLoaded(false);
+    setLoadFailed(false);
     (async () => {
       try {
         const { data: row, error } = await supabase.from("user_data").select("data").eq("user_id", session.user.id).maybeSingle();
@@ -12279,6 +12281,11 @@ function AuthenticatedApp() {
         if (row && row.data) setData(row.data);
       } catch (e) {
         console.error("تعذر تحميل البيانات", e);
+        // مهم جدًا: لو فشل التحميل (انقطاع اتصال، عطل بالخادم...) لازم
+        // نمنع أي حفظ لاحق نهائيًا — وإلا نخاطر نحفظ البيانات الفارغة
+        // الافتراضية فوق بياناتك الحقيقية المخزّنة، ونفقدها فعليًا. هذا
+        // بالضبط سبب فقدان بيانات حقيقي صار سابقًا ولازم ما يتكرر أبدًا.
+        setLoadFailed(true);
       } finally {
         setLoaded(true);
       }
@@ -12286,7 +12293,7 @@ function AuthenticatedApp() {
   }, [session]);
 
   const saveToSupabase = () => {
-    if (!session) return;
+    if (!session || loadFailed) return;
     setSyncStatus("saving");
     supabase.from("user_data")
       .upsert({ user_id: session.user.id, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
@@ -12297,7 +12304,7 @@ function AuthenticatedApp() {
   };
 
   useEffect(() => {
-    if (!loaded || !session) return;
+    if (!loaded || !session || loadFailed) return;
     setSyncStatus("saving");
     const t = setTimeout(saveToSupabase, 600);
     return () => clearTimeout(t);
@@ -12438,6 +12445,26 @@ function AuthenticatedApp() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER }}>
         <p style={{ color: MUTED, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>...جارٍ التحميل</p>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: PAPER, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir="rtl">
+        <div className="text-center max-w-sm">
+          <p className="text-base font-bold mb-2" style={{ color: "#C0392B" }}>تعذّر تحميل بياناتك</p>
+          <p className="text-sm mb-5" style={{ color: MUTED }}>
+            فيه مشكلة اتصال بقاعدة البيانات حاليًا. لحمايتك، أوقفنا أي حفظ تلقائي مؤقتًا حتى ما تنمحي بياناتك بالغلط. جرّب إعادة تحميل الصفحة بعد شوي.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white"
+            style={{ background: DASH_GREEN }}
+          >
+            إعادة تحميل الصفحة
+          </button>
+        </div>
       </div>
     );
   }
