@@ -9332,21 +9332,6 @@ function buildSharedReportUrl(shareId) {
   return `${window.location.origin}${window.location.pathname}?shared=${shareId}`;
 }
 
-// ينشئ (أو يعيد استخدام) رابط دائم لتصفح كل الشواهد للقراءة فقط — نفس
-// الرابط يبقى شغّالًا ويتحدّث تلقائيًا مع أي تعديل لاحق على الشواهد، لأنه
-// يقرأ البيانات الحيّة وقت الفتح، مو لقطة ثابتة.
-async function publishShawahedShare() {
-  // نستخدم دالة (RPC) بدل الإدراج المباشر على الجدول عمدًا — الإدراج
-  // المباشر يعتمد على "ذاكرة الجداول" المؤقتة لدى PostgREST واللي واجهنا
-  // فيها مشكلة تعطّل متكررة، بينما استدعاء دالة يعتمد فقط على "ذاكرة
-  // الدوال" (مؤكدة شغّالة) ويتجاوز المشكلة نهائيًا.
-  const { data, error } = await supabase.rpc("create_shawahed_share");
-  if (error) {
-    throw new Error(`${error.message || "خطأ غير معروف"}${error.code ? ` (code: ${error.code})` : ""}${error.details ? ` — ${error.details}` : ""}${error.hint ? ` — تلميح: ${error.hint}` : ""}`);
-  }
-  return data;
-}
-
 function buildSharedShawahedUrl(shareId) {
   return `${window.location.origin}${window.location.pathname}?shawahed=${shareId}`;
 }
@@ -10084,20 +10069,14 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
   // يعيد استخدام نفس رابط المشاركة لو سبق إنشاؤه، بدل ما يولّد رابط جديد
   // كل مرة (يحفظ المعرّف بإعدادات حسابك).
-  const getOrCreateShawahedShareId = async () => {
+  // ما يحتاج أي اتصال بقاعدة البيانات لإنشاء الرابط — نولّد معرّفًا عشوائيًا
+  // بجهازك ونحفظه بإعداداتك العادية (نفس آلية الحفظ الشغّالة أصلًا)، وهذا
+  // يتجاوز مشكلة "الذاكرة المؤقتة" اللي واجهناها مع أي عملية إدراج جديدة.
+  const getOrCreateShawahedShareId = () => {
     if (data.settings?.shawahedShareId) return data.settings.shawahedShareId;
-    setShawahedShareLoading(true);
-    try {
-      const id = await publishShawahedShare();
-      setData((d) => ({ ...d, settings: { ...(d.settings || {}), shawahedShareId: id } }));
-      return id;
-    } catch (e) {
-      const detail = e?.message || e?.error_description || JSON.stringify(e);
-      alert(`تعذّر إنشاء رابط المشاركة.\n\nرسالة الخطأ الفعلية:\n${detail}\n\nصوّر هذي الرسالة وأرسلها.`);
-      return null;
-    } finally {
-      setShawahedShareLoading(false);
-    }
+    const id = uid();
+    setData((d) => ({ ...d, settings: { ...(d.settings || {}), shawahedShareId: id } }));
+    return id;
   };
   const [showGradeSheetFlow, setShowGradeSheetFlow] = useState(false);
   const [gradeSheetClassId, setGradeSheetClassId] = useState(null);
