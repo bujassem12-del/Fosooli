@@ -10071,7 +10071,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
   );
 }
 
-function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner, isOnline, syncStatus }) {
+function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner, isOnline, syncStatus, onRetrySave }) {
   const [modal, setModal] = useState(null);
   const [mainTab, setMainTab] = useState("classes");
   const [tab, setTab] = useState("active");
@@ -10317,7 +10317,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
           </div>
           <div className="flex items-center gap-2">
-            <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={saveToSupabase} />
+            <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={onRetrySave} />
             {isOwner && (
               <button onClick={() => setShowAdminPanel(true)} title="لوحة التحكم" className="w-10 h-10 rounded-full flex items-center justify-center hover:opacity-90" style={{ background: "#26423B" }}>
                 <ShieldCheck size={18} color="#fff" />
@@ -12467,7 +12467,7 @@ function AuthenticatedApp() {
   const appContent = (
     <>
       <PrintStyles />
-      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} />}
+      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} />}
       {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
