@@ -3008,7 +3008,7 @@ function emptyColumnDraft() {
   return { key: uid(), name: "", type: "text", options: [], levels: [], color: COLORS[2].hex, autoRenew: false, pinned: false, bulkValue: "", behaviorFlag: false, behaviorThreshold: 3, colorScale: false, colorBands: [] };
 }
 
-function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
+function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, allClasses = [], onApplyToClasses }) {
   const isEdit = !!initial;
   const [single, setSingle] = useState(() => (initial ? { ...initial } : null));
   const [drafts, setDrafts] = useState(() => (isEdit ? [] : [emptyColumnDraft()]));
@@ -3016,10 +3016,30 @@ function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
   const [bulkText, setBulkText] = useState("");
   const [bulkType, setBulkType] = useState("text");
   const [bulkColor, setBulkColor] = useState(COLORS[2].hex);
+  const [applyToClassIds, setApplyToClassIds] = useState([]);
 
   const validSingle = single && single.name.trim();
   const validDrafts = drafts.filter((d) => d.name.trim());
   const bulkNames = bulkText.split("\n").map((s) => s.trim()).filter(Boolean);
+
+  const toggleApplyClass = (id) => setApplyToClassIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const applyClassesPicker = allClasses.length > 0 && (
+    <div className="mt-2 mb-1 p-3 rounded-xl" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+      <p className="text-xs font-bold mb-2" style={{ color: INK }}>تطبيق نفس {isEdit ? "التعديل" : "الإضافة"} على فصول أخرى أيضًا (اختياري)</p>
+      <div className="space-y-1.5 max-h-32 overflow-y-auto">
+        {allClasses.map((c) => (
+          <label key={c.id} className="flex items-center gap-2 text-xs" style={{ color: INK }}>
+            <input type="checkbox" checked={applyToClassIds.includes(c.id)} onChange={() => toggleApplyClass(c.id)} />
+            {c.subject} — {c.grade}
+          </label>
+        ))}
+      </div>
+      {isEdit && (
+        <p className="text-[11px] mt-1.5" style={{ color: MUTED }}>لو فيه عمود بنفس الاسم بالفصل المختار، يتحدّث بنفس التعديل. لو ما فيه، يُضاف كعمود جديد هناك.</p>
+      )}
+    </div>
+  );
 
   return (
     <Modal title={isEdit ? "تعديل العمود" : "إضافة عمود"} onClose={onClose} wide={!isEdit}>
@@ -3078,6 +3098,7 @@ function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
           )}
         </>
       )}
+      {applyClassesPicker}
       <div className="flex justify-between items-center mt-4">
         <div>
           {isEdit && (
@@ -3089,6 +3110,15 @@ function ColumnModal({ initial, onClose, onSaveMany, onSaveOne, onDelete }) {
           <button
             disabled={isEdit ? !validSingle : (tab === "detailed" ? validDrafts.length === 0 : bulkNames.length === 0)}
             onClick={() => {
+              if (applyToClassIds.length > 0 && onApplyToClasses) {
+                if (isEdit) {
+                  onApplyToClasses([single], applyToClassIds, true, initial.name);
+                } else if (tab === "detailed") {
+                  onApplyToClasses(validDrafts, applyToClassIds, false, null);
+                } else {
+                  onApplyToClasses(bulkNames.map((name) => ({ name, type: bulkType, options: [], color: bulkColor, autoRenew: false, pinned: false })), applyToClassIds, false, null);
+                }
+              }
               if (isEdit) return onSaveOne(single);
               if (tab === "detailed") return onSaveMany(validDrafts);
               return onSaveMany(bulkNames.map((name) => ({ name, type: bulkType, options: [], color: bulkColor, autoRenew: false, pinned: false, bulkValue: "" })));
@@ -5570,39 +5600,7 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
 // نافذة اختيار طريقة المشاركة: "مباشرة" (تشارك الملفات الحقيقية نفسها،
 // قابلة للتعديل عند المستلم بتطبيقه الخاص)، أو "للقراءة فقط" (رابط صفحة
 // تعرض كل مجلدات الشواهد للاطلاع بدون إمكانية تعديل).
-function ShawahedShareChoiceModal({ onClose, onShareRaw, onShareReadOnly, sharing }) {
-  return (
-    <Modal title="مشاركة الشواهد" onClose={onClose} accent="magic">
-      <button
-        disabled={sharing}
-        onClick={onShareRaw}
-        className="w-full flex items-start gap-3 p-4 rounded-xl text-right mb-3 disabled:opacity-60"
-        style={{ border: `1px solid ${LINE}`, background: "#fff" }}
-      >
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EAF3F0" }}>
-          <Share2 size={18} color="#26423B" />
-        </div>
-        <div>
-          <p className="text-sm font-bold" style={{ color: INK }}>{sharing ? "جارٍ التجهيز..." : "مشاركة مباشرة"}</p>
-          <p className="text-xs mt-0.5" style={{ color: MUTED }}>يشارك الملفات الحقيقية نفسها (صور، PDF، وورد...) — يفتحها المستلم بتطبيقه الخاص ويقدر يحفظ وين نسخته يعدّل عليها.</p>
-        </div>
-      </button>
-      <button
-        onClick={onShareReadOnly}
-        className="w-full flex items-start gap-3 p-4 rounded-xl text-right"
-        style={{ border: `1px solid ${LINE}`, background: "#fff" }}
-      >
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}>
-          <Link2 size={18} color={MUTED} />
-        </div>
-        <div>
-          <p className="text-sm font-bold" style={{ color: INK }}>مشاركة للقراءة فقط</p>
-          <p className="text-xs mt-0.5" style={{ color: MUTED }}>رابط صفحة يفتح كل مجلدات الشواهد للاطلاع فقط (مناسب لإرساله للإدارة) — بدون إمكانية تعديل.</p>
-        </div>
-      </button>
-    </Modal>
-  );
-}
+
 
 function ShawahedCategoryEditModal({ initial, onClose, onSave }) {
   const [title, setTitle] = useState(initial?.title || "");
@@ -5633,8 +5631,6 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
   const [showExportPicker, setShowExportPicker] = useState(false);
   const [showGoals, setShowGoals] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
-  const [showShareChoice, setShowShareChoice] = useState(false);
-  const [sharingRaw, setSharingRaw] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const entries = shawahed.entries || {};
@@ -5736,7 +5732,7 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
           <IconBtn icon={Target} label="تحديد أهداف" onClick={() => setShowGoals(true)} />
           <IconBtn icon={Archive} label="الأرشيف" onClick={() => setShowArchive(true)} />
           <IconBtn icon={Printer} label="طباعة" onClick={() => setShowExportPicker(true)} />
-          <IconBtn icon={Share2} label="مشاركة" magic onClick={() => setShowShareChoice(true)} />
+          <IconBtn icon={Share2} label="مشاركة" magic onClick={() => onShareReadOnly()} />
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -5830,30 +5826,6 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
         />
       )}
 
-      {showShareChoice && (
-        <ShawahedShareChoiceModal
-          sharing={sharingRaw}
-          onClose={() => setShowShareChoice(false)}
-          onShareRaw={async () => {
-            setSharingRaw(true);
-            const keysWithContent = allCategories.filter((c) => (entries[c.key] || []).length > 0).map((c) => c.key);
-            const files = collectAllShawahedFiles(shawahed, keysWithContent);
-            if (files.length === 0) {
-              alert("لا يوجد ملفات لمشاركتها بعد.");
-            } else {
-              const res = await shareMultipleFilesRaw(files);
-              if (!res.ok && res.reason !== "empty") alert("تعذّرت المشاركة المباشرة — جرّب مشاركة القراءة فقط بدلًا منها.");
-            }
-            setSharingRaw(false);
-            setShowShareChoice(false);
-          }}
-          onShareReadOnly={() => {
-            const keysWithContent = allCategories.filter((c) => (entries[c.key] || []).length > 0).map((c) => c.key);
-            setShowShareChoice(false);
-            onShareReadOnly(keysWithContent, "");
-          }}
-        />
-      )}
 
       {openCat && (
         <ShawahedCategoryModal
@@ -9354,19 +9326,15 @@ function buildSharedReportUrl(shareId) {
 // الرابط يبقى شغّالًا ويتحدّث تلقائيًا مع أي تعديل لاحق على الشواهد، لأنه
 // يقرأ البيانات الحيّة وقت الفتح، مو لقطة ثابتة.
 async function publishShawahedShare() {
-  const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr) throw new Error(`فشل التحقق من تسجيل الدخول: ${authErr.message}`);
-  const teacherId = authData?.user?.id;
-  if (!teacherId) throw new Error("يجب تسجيل الدخول أولًا.");
-  const { data, error } = await supabase
-    .from("shared_shawahed")
-    .insert({ teacher_id: teacherId })
-    .select("id")
-    .single();
+  // نستخدم دالة (RPC) بدل الإدراج المباشر على الجدول عمدًا — الإدراج
+  // المباشر يعتمد على "ذاكرة الجداول" المؤقتة لدى PostgREST واللي واجهنا
+  // فيها مشكلة تعطّل متكررة، بينما استدعاء دالة يعتمد فقط على "ذاكرة
+  // الدوال" (مؤكدة شغّالة) ويتجاوز المشكلة نهائيًا.
+  const { data, error } = await supabase.rpc("create_shawahed_share");
   if (error) {
     throw new Error(`${error.message || "خطأ غير معروف"}${error.code ? ` (code: ${error.code})` : ""}${error.details ? ` — ${error.details}` : ""}${error.hint ? ` — تلميح: ${error.hint}` : ""}`);
   }
-  return data.id;
+  return data;
 }
 
 function buildSharedShawahedUrl(shareId) {
@@ -10846,7 +10814,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
 // ---------- Class detail page ----------
 
-function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, isOwner, density, isOnline, syncStatus, shawahed, onLinkShawahed }) {
+function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, isOwner, density, isOnline, syncStatus, shawahed, onLinkShawahed }) {
   const [colModal, setColModal] = useState(null);
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -11556,7 +11524,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                     )}
                   </th>
                 ))}
-                <th className="p-1.5 text-center" style={{ background: "#FBEDEA", border: `1px solid ${LINE}`, color: "#9A3B2E", width: 60, minWidth: 60, position: "sticky", top: 0, insetInlineEnd: 0, zIndex: 9 }}>الغياب</th>
               </tr>
             </thead>
             <tbody>
@@ -11662,13 +11629,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                       </td>
                       );
                     })}
-                    <td className="p-1 text-center" style={{ border: `1px solid ${LINE}`, background: ruleColor || "#fff", position: "sticky", insetInlineEnd: 0, zIndex: 2 }}>
-                      {blinkRowId === row.id ? (
-                        <span className="inline-block w-10 h-4" />
-                      ) : (
-                        <button onClick={() => markAbsentToday(row.id)} className="text-xs font-bold hover:opacity-70" style={{ color: "#C0392B" }}>غياب</button>
-                      )}
-                    </td>
                   </tr>
                 );
               })}
@@ -11678,7 +11638,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       </div>
       </div>
 
-      {colModal && <ColumnModal initial={colModal.mode === "edit" ? colModal.data : null} onClose={() => setColModal(null)} onSaveMany={saveColumnsMany} onSaveOne={saveColumnOne} onDelete={deleteColumn} />}
+      {colModal && <ColumnModal initial={colModal.mode === "edit" ? colModal.data : null} onClose={() => setColModal(null)} onSaveMany={saveColumnsMany} onSaveOne={saveColumnOne} onDelete={deleteColumn} allClasses={allClasses.filter((c) => c.id !== cls.id && !c.archived)} onApplyToClasses={(cols, classIds, isEditMode, originalName) => onApplyColumnToClasses(cols, classIds, isEditMode, originalName)} />}
       {rowModal && (
         <RowModal
           initial={rowModal.mode === "edit" ? rowModal.data : null}
@@ -12374,6 +12334,42 @@ function AuthenticatedApp() {
   // Moves selected students from the currently open class to another class of
   // theirs. Columns are matched by name, so recorded values only transfer for
   // columns that exist (by name) in both classes; anything else is skipped.
+  // يطبّق نفس إضافة/تعديل عمود على فصول أخرى مختارة — لو فيه عمود بنفس
+  // الاسم بالفصل الهدف، يتحدّث بنفس الخصائص؛ ولو ما فيه، يُضاف كعمود جديد.
+  const applyColumnToClasses = (cols, targetClassIds, isEditMode, originalName) => {
+    setData((d) => ({
+      ...d,
+      classes: d.classes.map((c) => {
+        if (!targetClassIds.includes(c.id)) return c;
+        let columns = [...c.columns];
+        cols.forEach((colPayload) => {
+          const matchName = isEditMode ? originalName : null;
+          const existingIdx = matchName ? columns.findIndex((cc) => cc.name === matchName) : -1;
+          const newColData = {
+            name: colPayload.name.trim(),
+            type: colPayload.type,
+            options: colPayload.options || [],
+            levels: colPayload.levels || [],
+            color: colPayload.color,
+            maxValue: colPayload.maxValue || "",
+            colorScale: !!colPayload.colorScale,
+            colorBands: colPayload.colorBands || [],
+            autoRenew: !!colPayload.autoRenew,
+            pinned: !!colPayload.pinned,
+            behaviorFlag: !!colPayload.behaviorFlag,
+            behaviorThreshold: colPayload.behaviorThreshold || 3,
+          };
+          if (existingIdx >= 0) {
+            columns[existingIdx] = { ...columns[existingIdx], ...newColData };
+          } else {
+            columns.push({ id: uid(), ...newColData });
+          }
+        });
+        return { ...c, columns };
+      }),
+    }));
+  };
+
   const moveRowsToClass = (sourceClassId, destClassId, rowIds, includeGrades) => {
     setData((d) => {
       const source = d.classes.find((c) => c.id === sourceClassId);
@@ -12458,7 +12454,7 @@ function AuthenticatedApp() {
     <>
       <PrintStyles />
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
