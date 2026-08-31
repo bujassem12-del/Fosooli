@@ -9354,7 +9354,8 @@ function buildSharedReportUrl(shareId) {
 // الرابط يبقى شغّالًا ويتحدّث تلقائيًا مع أي تعديل لاحق على الشواهد، لأنه
 // يقرأ البيانات الحيّة وقت الفتح، مو لقطة ثابتة.
 async function publishShawahedShare() {
-  const { data: authData } = await supabase.auth.getUser();
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  if (authErr) throw new Error(`فشل التحقق من تسجيل الدخول: ${authErr.message}`);
   const teacherId = authData?.user?.id;
   if (!teacherId) throw new Error("يجب تسجيل الدخول أولًا.");
   const { data, error } = await supabase
@@ -9362,7 +9363,9 @@ async function publishShawahedShare() {
     .insert({ teacher_id: teacherId })
     .select("id")
     .single();
-  if (error) throw error;
+  if (error) {
+    throw new Error(`${error.message || "خطأ غير معروف"}${error.code ? ` (code: ${error.code})` : ""}${error.details ? ` — ${error.details}` : ""}${error.hint ? ` — تلميح: ${error.hint}` : ""}`);
+  }
   return data.id;
 }
 
@@ -10111,7 +10114,8 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       setData((d) => ({ ...d, settings: { ...(d.settings || {}), shawahedShareId: id } }));
       return id;
     } catch (e) {
-      alert("تعذّر إنشاء رابط المشاركة — تأكد من إعداد قاعدة البيانات (راجع ملف shawahed-sharing-setup.sql).");
+      const detail = e?.message || e?.error_description || JSON.stringify(e);
+      alert(`تعذّر إنشاء رابط المشاركة.\n\nرسالة الخطأ الفعلية:\n${detail}\n\nصوّر هذي الرسالة وأرسلها.`);
       return null;
     } finally {
       setShawahedShareLoading(false);
