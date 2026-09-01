@@ -6913,7 +6913,7 @@ function AdminPanelModal({ currentUserId, siteSettings, updateSiteSettings, onCl
   );
 }
 
-function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, themeColor, density, fontScale, schoolName, principalName, countryName, ministryName, logoImage, teacherPhoto, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onBackupData, onRestoreData, onClose }) {
+function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode, themeColor, density, fontScale, schoolName, principalName, countryName, ministryName, logoImage, teacherPhoto, onChangeSchoolInfo, footerContacts, footerBadges, onAddContact, onUpdateContact, onRemoveContact, onAddBadge, onRemoveBadge, userEmail, onSignOut, isOwner, onBackupData, onRestoreData, historySnapshots, onRestoreSnapshot, onClose }) {
   const logoInputRef = useRef(null);
   const teacherPhotoInputRef = useRef(null);
   const badgeInputRef = useRef(null);
@@ -7068,6 +7068,32 @@ function SettingsModal({ feedback, onToggleFeedback, darkMode, onToggleDarkMode,
               <input ref={restoreInputRef} type="file" accept=".json" onChange={handleRestoreFile} style={{ display: "none" }} />
               <IconBtn icon={FolderOpen} label="استعادة من نسخة" onClick={() => restoreInputRef.current?.click()} />
             </div>
+          </div>
+          <div className="p-3 rounded-xl mt-3" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <p className="text-sm font-semibold mb-1" style={{ color: INK }}>نسخ تلقائية محفوظة</p>
+            <p className="text-xs mb-3" style={{ color: MUTED }}>يحتفظ التطبيق تلقائيًا بآخر ٣ نسخ من بياناتك (كل ٤ ساعات كحد أقصى) — بدون أي عمل منك. لو صار خلل غير متوقع وضاعت بياناتك، ترجع لأقرب نسخة سليمة من هنا.</p>
+            {(!historySnapshots || historySnapshots.length === 0) ? (
+              <p className="text-xs text-center py-3" style={{ color: MUTED }}>ما فيه نسخ تلقائية بعد — بتظهر هنا تدريجيًا مع استخدامك للتطبيق.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {[...historySnapshots].reverse().map((h, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 rounded-lg" style={{ background: "#F8F7F2" }}>
+                    <span className="text-xs" style={{ color: INK }}>{new Date(h.savedAt).toLocaleString("ar-SA")}</span>
+                    <button
+                      onClick={() => {
+                        if (window.confirm("سيتم استبدال بياناتك الحالية بهذي النسخة. بياناتك الحالية تُحفظ تلقائيًا كنسخة جديدة قبل الاستبدال احتياطًا. متابعة؟")) {
+                          onRestoreSnapshot(h.snapshot);
+                        }
+                      }}
+                      className="text-xs font-bold px-2.5 py-1 rounded-lg text-white"
+                      style={{ background: "#26423B" }}
+                    >
+                      استعادة
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -10056,7 +10082,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
   );
 }
 
-function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner, isOnline, syncStatus, onRetrySave }) {
+function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSettings, updateSiteSettings, isOwner, isOnline, syncStatus, onRetrySave, historySnapshots, onRestoreSnapshot }) {
   const [modal, setModal] = useState(null);
   const [mainTab, setMainTab] = useState("classes");
   const [tab, setTab] = useState("active");
@@ -10695,6 +10721,8 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             downloadBlob(blob, `فصولي-نسخة-احتياطية-${todayKey()}.json`);
           }}
           onRestoreData={(parsed) => setData(parsed)}
+          historySnapshots={historySnapshots}
+          onRestoreSnapshot={onRestoreSnapshot}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -12270,6 +12298,14 @@ function AuthenticatedApp() {
   };
 
   const [loadFailed, setLoadFailed] = useState(false);
+  // آخر عدة نسخ محفوظة تلقائيًا من بياناتك — شبكة أمان إضافية لا تعتمد على
+  // أي جدول أو خدمة خارجية جديدة، بل تُخزَّن داخل نفس سجل بياناتك المعتاد
+  // (نفس الآلية المؤكدة أنها شغّالة طول الوقت). لو صار أي خلل مستقبلي
+  // (مني أو من أي سبب آخر) وحفظ بيانات فارغة أو تالفة، يقدر المعلم يرجع
+  // لآخر نسخة سليمة بضغطة واحدة من الإعدادات.
+  const historyRef = useRef([]);
+  const [historySnapshots, setHistorySnapshots] = useState([]);
+
   useEffect(() => {
     if (!session) return;
     setLoaded(false);
@@ -12278,7 +12314,12 @@ function AuthenticatedApp() {
       try {
         const { data: row, error } = await supabase.from("user_data").select("data").eq("user_id", session.user.id).maybeSingle();
         if (error) throw error;
-        if (row && row.data) setData(row.data);
+        if (row && row.data) {
+          const { __history, ...cleanData } = row.data;
+          setData(Object.keys(cleanData).length ? cleanData : row.data);
+          historyRef.current = __history || [];
+          setHistorySnapshots(__history || []);
+        }
       } catch (e) {
         console.error("تعذر تحميل البيانات", e);
         // مهم جدًا: لو فشل التحميل (انقطاع اتصال، عطل بالخادم...) لازم
@@ -12295,12 +12336,30 @@ function AuthenticatedApp() {
   const saveToSupabase = () => {
     if (!session || loadFailed) return;
     setSyncStatus("saving");
+    // كل ٤ ساعات كحد أقصى، ناخذ لقطة من البيانات الحالية قبل الحفظ فوقها
+    // — نحتفظ بآخر ٣ لقطات بس عشان ما تكبر المساحة المستخدمة كثير.
+    const now = Date.now();
+    const lastSnap = historyRef.current[historyRef.current.length - 1];
+    const lastTime = lastSnap ? new Date(lastSnap.savedAt).getTime() : 0;
+    if (now - lastTime > 4 * 60 * 60 * 1000) {
+      historyRef.current = [...historyRef.current, { savedAt: new Date().toISOString(), snapshot: data }].slice(-3);
+      setHistorySnapshots(historyRef.current);
+    }
+    const payload = { ...data, __history: historyRef.current };
     supabase.from("user_data")
-      .upsert({ user_id: session.user.id, data, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+      .upsert({ user_id: session.user.id, data: payload, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
       .then(({ error }) => {
         if (error) { console.error("تعذر حفظ البيانات", error); setSyncStatus("error"); }
         else setSyncStatus("saved");
       });
+  };
+
+  // يرجّع بياناتك لنسخة سابقة محفوظة تلقائيًا — يأخذ لقطة من الوضع الحالي
+  // أولًا كإجراء أمان إضافي قبل الاستبدال، حتى لو اخترت النسخة الغلط.
+  const restoreFromSnapshot = (snapshot) => {
+    historyRef.current = [...historyRef.current, { savedAt: new Date().toISOString(), snapshot: data }].slice(-3);
+    setHistorySnapshots(historyRef.current);
+    setData(snapshot);
   };
 
   useEffect(() => {
@@ -12473,7 +12532,7 @@ function AuthenticatedApp() {
   const appContent = (
     <>
       <PrintStyles />
-      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} />}
+      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} historySnapshots={historySnapshots} onRestoreSnapshot={restoreFromSnapshot} />}
       {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
