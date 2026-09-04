@@ -5505,6 +5505,9 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
   const fileInputRef = useRef(null);
   const [filterClassId, setFilterClassId] = useState("all");
   const [uploading, setUploading] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState(null); // { file } — waiting on class selection
+  const [pendingClassIds, setPendingClassIds] = useState([]);
+  const [reassigningId, setReassigningId] = useState(null);
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
@@ -5514,25 +5517,42 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
       e.target.value = "";
       return;
     }
+    setPendingUpload({ file });
+    setPendingClassIds([]);
+    e.target.value = "";
+  };
+
+  const confirmUpload = () => {
+    if (!pendingUpload) return;
     setUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
       onUpload({
         id: uid(),
-        name: file.name,
-        mimeType: file.type,
-        size: file.size,
+        name: pendingUpload.file.name,
+        mimeType: pendingUpload.file.type,
+        size: pendingUpload.file.size,
         dataUrl: reader.result,
-        classId: null,
+        classIds: pendingClassIds,
         uploadedAt: todayKey(),
       });
       setUploading(false);
+      setPendingUpload(null);
     };
-    reader.readAsDataURL(file);
-    e.target.value = "";
+    reader.readAsDataURL(pendingUpload.file);
   };
 
-  const filtered = (library || []).filter((item) => filterClassId === "all" || item.classId === filterClassId || (filterClassId === "shared" && !item.classId));
+  const togglePendingClass = (id) => setPendingClassIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  // توافق مع الملفات القديمة اللي عندها classId مفرد بدل classIds مصفوفة.
+  const getClassIds = (item) => (item.classIds && item.classIds.length ? item.classIds : (item.classId ? [item.classId] : []));
+
+  const filtered = (library || []).filter((item) => {
+    if (filterClassId === "all") return true;
+    const ids = getClassIds(item);
+    if (filterClassId === "shared") return ids.length === 0;
+    return ids.includes(filterClassId);
+  });
 
   const content = (
     <>
@@ -5542,15 +5562,34 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
           الملفات تُحفظ ضمن بيانات حسابك مباشرة — تجنّب رفع ملفات كبيرة جدًا (الحد الأقصى هنا ٢٥ ميجابايت لكل ملف).
         </p>
       </div>
+      {pendingUpload && (
+        <div className="p-3 rounded-xl mb-4" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+          <p className="text-xs font-bold mb-2" style={{ color: INK }}>ربط "{pendingUpload.file.name}" بفصول محددة (اختياري — اتركه فارغًا ليكون مشتركًا لكل الفصول)</p>
+          <div className="space-y-1.5 max-h-32 overflow-y-auto mb-3">
+            {classes.filter((c) => !c.archived).map((c) => (
+              <label key={c.id} className="flex items-center gap-2 text-xs" style={{ color: INK }}>
+                <input type="checkbox" checked={pendingClassIds.includes(c.id)} onChange={() => togglePendingClass(c.id)} />
+                {c.subject} — {c.grade}
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={confirmUpload} disabled={uploading} className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-60" style={{ background: "#26423B" }}>
+              {uploading ? "جارٍ الرفع..." : "تأكيد الرفع"}
+            </button>
+            <button onClick={() => setPendingUpload(null)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: MUTED }}>إلغاء</button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <input ref={fileInputRef} type="file" onChange={handleFile} style={{ display: "none" }} />
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || !!pendingUpload}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-60"
           style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
         >
-          <Plus size={16} /> {uploading ? "جارٍ الرفع..." : "رفع ملف جديد"}
+          <Plus size={16} /> رفع ملف جديد
         </button>
         <select value={filterClassId} onChange={(e) => setFilterClassId(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
           <option value="all">كل الملفات</option>
@@ -5565,31 +5604,53 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
         <div className="space-y-2">
           {filtered.map((item) => {
             const Icon = libraryFileIcon(item.mimeType);
-            const cls = classes.find((c) => c.id === item.classId);
+            const ids = getClassIds(item);
+            const assignedClasses = classes.filter((c) => ids.includes(c.id));
+            const label = assignedClasses.length === 0 ? "مشترك (كل الفصول)" : assignedClasses.map((c) => c.subject).join("، ");
             return (
-              <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}>
-                  <Icon size={18} color="#26423B" />
+              <div key={item.id} className="relative p-3 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F3F1E9" }}>
+                    <Icon size={18} color="#26423B" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: INK }}>{item.name}</p>
+                    <p className="text-xs" style={{ color: MUTED }}>{formatDateDisplay(item.uploadedAt)}</p>
+                  </div>
+                  <button
+                    onClick={() => setReassigningId(reassigningId === item.id ? null : item.id)}
+                    className="text-xs rounded-lg px-2 py-1.5 shrink-0 max-w-[110px] truncate"
+                    style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+                  >
+                    {label}
+                  </button>
+                  <a href={item.dataUrl} download={item.name} title="تنزيل" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                    <ImageDown size={15} color={MUTED} />
+                  </a>
+                  <button onClick={() => onDelete(item.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                    <Trash2 size={15} color="#C0392B" />
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: INK }}>{item.name}</p>
-                  <p className="text-xs" style={{ color: MUTED }}>{formatDateDisplay(item.uploadedAt)} • {cls ? `${cls.subject} — ${cls.grade}` : "مشترك (كل الفصول)"}</p>
-                </div>
-                <select
-                  value={item.classId || ""}
-                  onChange={(e) => onAssign(item.id, e.target.value || null)}
-                  className="text-xs rounded-lg px-2 py-1.5 shrink-0"
-                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff", maxWidth: 130 }}
-                >
-                  <option value="">مشترك (الكل)</option>
-                  {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject}</option>)}
-                </select>
-                <a href={item.dataUrl} download={item.name} title="تنزيل" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
-                  <ImageDown size={15} color={MUTED} />
-                </a>
-                <button onClick={() => onDelete(item.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
-                  <Trash2 size={15} color="#C0392B" />
-                </button>
+                {reassigningId === item.id && (
+                  <div className="mt-2 p-2.5 rounded-lg" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+                    <p className="text-[11px] font-bold mb-1.5" style={{ color: INK }}>ربط بفصول (اتركه فارغًا للمشاركة مع الكل)</p>
+                    <div className="space-y-1">
+                      {classes.filter((c) => !c.archived).map((c) => (
+                        <label key={c.id} className="flex items-center gap-2 text-xs" style={{ color: INK }}>
+                          <input
+                            type="checkbox"
+                            checked={ids.includes(c.id)}
+                            onChange={() => {
+                              const next = ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id];
+                              onAssign(item.id, next);
+                            }}
+                          />
+                          {c.subject} — {c.grade}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -9012,15 +9073,20 @@ function RemindersModal({ reminders, onAdd, onDelete, notifPermission, onRequest
   );
 }
 
-function EventsModal({ events, speed, onChangeSpeed, onClose, onAdd, onUpdate, onDelete, onMove }) {
+function EventsModal({ events, speed, onChangeSpeed, onClose, onAdd, onUpdate, onDelete, onMove, allClasses = [], onApplyToClasses }) {
   const [newText, setNewText] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
+  const [applyToClassIds, setApplyToClassIds] = useState([]);
+
+  const toggleApplyClass = (id) => setApplyToClassIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const submitNew = () => {
     if (!newText.trim()) return;
     onAdd(newText.trim());
+    if (applyToClassIds.length > 0 && onApplyToClasses) onApplyToClasses(newText.trim(), applyToClassIds);
     setNewText("");
+    setApplyToClassIds([]);
   };
   const startEdit = (ev) => { setEditingId(ev.id); setEditText(ev.text); };
   const saveEdit = () => {
@@ -9030,7 +9096,7 @@ function EventsModal({ events, speed, onChangeSpeed, onClose, onAdd, onUpdate, o
 
   return (
     <Modal title="الأحداث" onClose={onClose} wide>
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-2">
         <input
           style={inputStyle}
           value={newText}
@@ -9040,6 +9106,19 @@ function EventsModal({ events, speed, onChangeSpeed, onClose, onAdd, onUpdate, o
         />
         <button onClick={submitNew} className="px-4 py-2 rounded-lg text-sm font-bold text-white shrink-0" style={{ background: "#26423B" }}>إضافة</button>
       </div>
+      {allClasses.length > 0 && (
+        <div className="mb-4 p-3 rounded-xl" style={{ background: "#F8F7F2", border: `1px solid ${LINE}` }}>
+          <p className="text-xs font-bold mb-2" style={{ color: INK }}>إضافة نفس الحدث لفصول أخرى أيضًا (اختياري)</p>
+          <div className="space-y-1.5 max-h-28 overflow-y-auto">
+            {allClasses.map((c) => (
+              <label key={c.id} className="flex items-center gap-2 text-xs" style={{ color: INK }}>
+                <input type="checkbox" checked={applyToClassIds.includes(c.id)} onChange={() => toggleApplyClass(c.id)} />
+                {c.subject} — {c.grade}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-3 mb-4 p-3 rounded-xl" style={{ background: "#F3F1E9", border: `1px solid ${LINE}` }}>
         <span className="text-sm font-semibold shrink-0" style={{ color: INK }}>سرعة الشريط</span>
         <span className="text-xs shrink-0" style={{ color: MUTED }}>أبطأ</span>
@@ -10608,7 +10687,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           classes={data.classes}
           onUpload={(item) => setData((d) => ({ ...d, library: [...(d.library || []), item] }))}
           onDelete={(id) => setData((d) => ({ ...d, library: (d.library || []).filter((x) => x.id !== id) }))}
-          onAssign={(id, classId) => setData((d) => ({ ...d, library: (d.library || []).map((x) => (x.id === id ? { ...x, classId } : x)) }))}
+          onAssign={(id, classIds) => setData((d) => ({ ...d, library: (d.library || []).map((x) => (x.id === id ? { ...x, classIds } : x)) }))}
         />
       )}
       {mainTab === "games" && (
@@ -10831,7 +10910,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
 // ---------- Class detail page ----------
 
-function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, isOwner, density, isOnline, syncStatus, onRetrySave, shawahed, onLinkShawahed }) {
+function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, onApplyEventToClasses, isOwner, density, isOnline, syncStatus, onRetrySave, shawahed, onLinkShawahed }) {
   const [colModal, setColModal] = useState(null);
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -11831,6 +11910,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onUpdate={updateEvent}
           onDelete={deleteEvent}
           onMove={moveEvent}
+          allClasses={allClasses.filter((c) => c.id !== cls.id && !c.archived)}
+          onApplyToClasses={(text, classIds) => onApplyEventToClasses(text, classIds)}
         />
       )}
       {showRandomPicker && <RandomPickerModal rows={cls.rows} onClose={() => setShowRandomPicker(false)} />}
@@ -12429,6 +12510,17 @@ function AuthenticatedApp() {
     }));
   };
 
+  // يضيف نفس الحدث (خبر شريط الأحداث) لفصول أخرى مختارة دفعة وحدة.
+  const applyEventToClasses = (text, targetClassIds) => {
+    setData((d) => ({
+      ...d,
+      classes: d.classes.map((c) => {
+        if (!targetClassIds.includes(c.id)) return c;
+        return { ...c, events: [...(c.events || []), { id: uid(), text }] };
+      }),
+    }));
+  };
+
   const moveRowsToClass = (sourceClassId, destClassId, rowIds, includeGrades) => {
     setData((d) => {
       const source = d.classes.find((c) => c.id === sourceClassId);
@@ -12533,7 +12625,7 @@ function AuthenticatedApp() {
     <>
       <PrintStyles />
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} historySnapshots={historySnapshots} onRestoreSnapshot={restoreFromSnapshot} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} onApplyEventToClasses={applyEventToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
