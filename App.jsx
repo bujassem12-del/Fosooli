@@ -1985,18 +1985,19 @@ async function jobToCanvas(job) {
         if (canvas && canvas.width > 0 && canvas.height > 0) {
           studentCanvases.push(canvas);
         } else {
-          failedStudents.push(row.name);
+          failedStudents.push({ name: row.name, reason: "لوحة رسم فارغة (٠×٠)" });
         }
       } catch (e) {
         console.error(`تعذّر بناء تقرير الطالب "${row.name}":`, e);
-        failedStudents.push(row.name);
+        failedStudents.push({ name: row.name, reason: e?.message || "خطأ غير معروف" });
       }
     }
     if (failedStudents.length > 0) {
-      console.warn(`تخطّينا ${failedStudents.length} طالب/طلاب بسبب مشكلة ببياناتهم: ${failedStudents.join("، ")}`);
+      console.warn(`تخطّينا ${failedStudents.length} طالب/طلاب بسبب مشكلة ببياناتهم:`, failedStudents);
     }
     if (studentCanvases.length === 0) {
-      throw new Error("تعذّر بناء أي تقرير طالب لهذا الفصل — تحقق من بيانات الطلاب.");
+      const sample = failedStudents.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join(" | ");
+      throw new Error(`تعذّر بناء أي تقرير طالب لهذا الفصل (${failedStudents.length} طالب فشلوا). أمثلة: ${sample}`);
     }
     const scale = 3;
     const pad = 24 * scale;
@@ -2004,10 +2005,27 @@ async function jobToCanvas(job) {
     const gap = 30 * scale;
     const maxW = Math.max(headerH, ...studentCanvases.map((c) => c.width), 0) + pad * 2;
     const totalH = headerH + studentCanvases.reduce((sum, c) => sum + c.height + gap, pad);
+
+    // متصفحات الجوال (خصوصًا Safari) عندها حد أقصى لحجم اللوحة (Canvas) —
+    // فصل فيه رصد كثير جدًا لعدد كبير من الطلاب ممكن يتجاوزه فيفشل التصدير
+    // بصمت. نقلّص المقياس تلقائيًا لو اقتربنا من هذا الحد، بدل ما نفشل.
+    const MAX_SAFE_DIMENSION = 14000;
+    const MAX_SAFE_AREA = 16 * 1024 * 1024;
+    let finalScale = 1;
+    if (maxW > MAX_SAFE_DIMENSION || totalH > MAX_SAFE_DIMENSION) {
+      finalScale = Math.min(finalScale, MAX_SAFE_DIMENSION / Math.max(maxW, totalH));
+    }
+    if (maxW * totalH * finalScale * finalScale > MAX_SAFE_AREA) {
+      finalScale = Math.min(finalScale, Math.sqrt(MAX_SAFE_AREA / (maxW * totalH)));
+    }
+    const finalW = Math.floor(maxW * finalScale);
+    const finalH = Math.floor(totalH * finalScale);
+
     const combined = document.createElement("canvas");
-    combined.width = maxW;
-    combined.height = totalH;
+    combined.width = finalW;
+    combined.height = finalH;
     const ctx = combined.getContext("2d");
+    ctx.scale(finalScale, finalScale);
     ctx.fillStyle = PAPER;
     ctx.fillRect(0, 0, maxW, totalH);
     ctx.direction = "rtl";
@@ -2026,7 +2044,7 @@ async function jobToCanvas(job) {
       ctx.drawImage(c, x, y);
       y += c.height + gap;
     });
-    return { canvas: combined, logicalWidth: maxW / scale, logicalHeight: totalH / scale };
+    return { canvas: combined, logicalWidth: finalW / scale, logicalHeight: finalH / scale };
   }
   const table = jobToTable(job);
   return buildTableCanvas(table);
@@ -2570,7 +2588,7 @@ function PrintPreviewModal({ job, format, onClose, onExport }) {
         if (!cancelled) setImgUrl(canvas.toDataURL("image/png"));
       } catch (err) {
         console.error("فشلت معاينة الطباعة:", err);
-        if (!cancelled) setError("تعذّرت معاينة الملف. يمكنك المتابعة والتصدير مباشرة بالأزرار تحت رغم ذلك.");
+        if (!cancelled) setError(`تعذّرت معاينة الملف.\n\nسبب الخطأ الفعلي: ${err?.message || "غير معروف"}\n\nيمكنك المتابعة والتصدير مباشرة بالأزرار تحت رغم ذلك.`);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -2588,7 +2606,7 @@ function PrintPreviewModal({ job, format, onClose, onExport }) {
         ) : error ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 px-4 text-center">
             <AlertTriangle size={22} color="#C97A2B" />
-            <p className="text-sm" style={{ color: "#8A4A1E" }}>{error}</p>
+            <p className="text-sm" style={{ color: "#8A4A1E", whiteSpace: "pre-line" }}>{error}</p>
           </div>
         ) : (
           <img src={imgUrl} alt="معاينة" className="w-full h-auto" />
