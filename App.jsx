@@ -1972,15 +1972,31 @@ async function jobToCanvas(job) {
   if (job.type === "classFullReport") {
     const cls = job.cls;
     const studentCanvases = [];
+    const failedStudents = [];
     for (const row of cls.rows) {
-      const entries = cls.reports?.[row.id] || [];
-      const groups = groupEntries(entries);
-      let photoImageElement = null;
-      if (row.photo) {
-        try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
+      try {
+        const entries = cls.reports?.[row.id] || [];
+        const groups = groupEntries(entries);
+        let photoImageElement = null;
+        if (row.photo) {
+          try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
+        }
+        const { canvas } = buildReportCanvas({ title: row.name, subtitle: `${cls.subject} • ${cls.grade}`, groups, photoImageElement });
+        if (canvas && canvas.width > 0 && canvas.height > 0) {
+          studentCanvases.push(canvas);
+        } else {
+          failedStudents.push(row.name);
+        }
+      } catch (e) {
+        console.error(`تعذّر بناء تقرير الطالب "${row.name}":`, e);
+        failedStudents.push(row.name);
       }
-      const { canvas } = buildReportCanvas({ title: row.name, subtitle: `${cls.subject} • ${cls.grade}`, groups, photoImageElement });
-      studentCanvases.push(canvas);
+    }
+    if (failedStudents.length > 0) {
+      console.warn(`تخطّينا ${failedStudents.length} طالب/طلاب بسبب مشكلة ببياناتهم: ${failedStudents.join("، ")}`);
+    }
+    if (studentCanvases.length === 0) {
+      throw new Error("تعذّر بناء أي تقرير طالب لهذا الفصل — تحقق من بيانات الطلاب.");
     }
     const scale = 3;
     const pad = 24 * scale;
@@ -2260,6 +2276,7 @@ function useFonts() {
 function PrintStyles() {
   return (
     <style>{`
+      html, body { overscroll-behavior-y: contain; }
       .app-print-root { display: none; }
       @media print {
         body * { visibility: hidden !important; }
@@ -9979,7 +9996,7 @@ function BoardTable({ cls, dateKey }) {
   );
 }
 
-function DisplayBoard({ cls, onClose, onPrint }) {
+function DisplayBoard({ cls, onClose, onPrint, onExtractAll }) {
   const [boardDate, setBoardDate] = useState(todayKey());
   const [shareError, setShareError] = useState("");
   const shareReadOnly = () => {
@@ -10024,6 +10041,7 @@ function DisplayBoard({ cls, onClose, onPrint }) {
           <div className="flex items-center flex-wrap gap-2">
             <DateField value={boardDate} onChange={setBoardDate} />
             <IconBtn icon={Printer} label="طباعة" onClick={() => onPrint(boardDate)} />
+            <IconBtn icon={FileSpreadsheet} label="استخراج جميع المعلومات (كل الطلاب)" tone="primary" onClick={onExtractAll} />
             <IconBtn icon={Share2} label="مشاركة نسخة للقراءة فقط" onClick={shareReadOnly} />
             <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform"><X size={18} color={MUTED} /></button>
           </div>
@@ -11747,7 +11765,14 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           isOwner={isOwner}
         />
       )}
-      {showBoard && <DisplayBoard cls={cls} onClose={() => setShowBoard(false)} onPrint={(dateKey) => openPrintPreview({ type: "class", cls, dateKey })} />}
+      {showBoard && (
+        <DisplayBoard
+          cls={cls}
+          onClose={() => setShowBoard(false)}
+          onPrint={(dateKey) => openPrintPreview({ type: "class", cls, dateKey })}
+          onExtractAll={() => openPrintPreview({ type: "class", cls })}
+        />
+      )}
       {reportRow && (
         <ReportModal
           cls={cls}
@@ -12391,11 +12416,22 @@ function AuthenticatedApp() {
     if (!session) return;
     setLoaded(false);
     setLoadFailed(false);
+    const storageKey = `fosooli_offline_${session.user.id}`;
+    let localBackup = null;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) localBackup = JSON.parse(raw);
+    } catch (e) { /* تجاهل — النسخة المحلية مجرد شبكة أمان إضافية */ }
     (async () => {
       try {
-        const { data: row, error } = await supabase.from("user_data").select("data").eq("user_id", session.user.id).maybeSingle();
+        const { data: row, error } = await supabase.from("user_data").select("data, updated_at").eq("user_id", session.user.id).maybeSingle();
         if (error) throw error;
-        if (row && row.data) {
+        // لو عندك تعديلات محلية غير محفوظة (صارت وأنت بدون نت مثلًا) وهي
+        // أحدث من آخر حفظ ناجح بالسحابة، نفضّلها — عشان ما تضيع تعديلاتك
+        // الأخيرة لمجرد إنك قفلت الصفحة قبل ما يرجع النت.
+        if (localBackup && localBackup.data && (!row?.updated_at || new Date(localBackup.savedAt) > new Date(row.updated_at))) {
+          setData(localBackup.data);
+        } else if (row && row.data) {
           const { __history, ...cleanData } = row.data;
           setData(Object.keys(cleanData).length ? cleanData : row.data);
           historyRef.current = __history || [];
@@ -12403,19 +12439,41 @@ function AuthenticatedApp() {
         }
       } catch (e) {
         console.error("تعذر تحميل البيانات", e);
-        // مهم جدًا: لو فشل التحميل (انقطاع اتصال، عطل بالخادم...) لازم
-        // نمنع أي حفظ لاحق نهائيًا — وإلا نخاطر نحفظ البيانات الفارغة
-        // الافتراضية فوق بياناتك الحقيقية المخزّنة، ونفقدها فعليًا. هذا
-        // بالضبط سبب فقدان بيانات حقيقي صار سابقًا ولازم ما يتكرر أبدًا.
-        setLoadFailed(true);
+        if (localBackup && localBackup.data) {
+          // فشل الاتصال بالسحابة، لكن عندنا نسخة محلية حقيقية بجهازك —
+          // نستخدمها بدل ما نمنعك من الاستمرار أو (الأخطر) نحفظ فراغ فوق
+          // بياناتك. محاولات الحفظ التالية ببساطة تفشل بصمت وأنت بدون
+          // نت (بدون أي خطر)، وتنجح تلقائيًا بمجرد ما يرجع الاتصال.
+          setData(localBackup.data);
+        } else {
+          // مهم جدًا: لو فشل التحميل ولا توجد نسخة محلية بديلة، لازم نمنع
+          // أي حفظ لاحق نهائيًا — وإلا نخاطر نحفظ البيانات الفارغة
+          // الافتراضية فوق بياناتك الحقيقية المخزّنة، ونفقدها فعليًا. هذا
+          // بالضبط سبب فقدان بيانات حقيقي صار سابقًا ولازم ما يتكرر أبدًا.
+          setLoadFailed(true);
+        }
       } finally {
         setLoaded(true);
       }
     })();
   }, [session]);
 
+  // نسخة محلية فورية بجهازك بمجرد أي تعديل — تشتغل حتى وأنت بدون نت
+  // تمامًا، فلو قفلت الصفحة أو أعدت تحميلها قبل ما يرجع الاتصال، تعديلاتك
+  // الأخيرة ما تضيع (تُقرأ تلقائيًا بالمؤثر أعلاه أول ما يرجع تفتح التطبيق).
+  useEffect(() => {
+    if (!loaded || !session) return;
+    try {
+      localStorage.setItem(`fosooli_offline_${session.user.id}`, JSON.stringify({ data, savedAt: new Date().toISOString() }));
+    } catch (e) { /* المساحة ممتلئة أو غير متوفرة — تجاهل، هذي حماية إضافية بس */ }
+  }, [data, loaded, session]);
+
   const saveToSupabase = () => {
     if (!session || loadFailed) return;
+    // وأنت بدون إنترنت، ما فيه داعي نحاول الحفظ ونفشل — بس ننتظر بهدوء لين
+    // يرجع الاتصال، وقتها الحدث "online" بالأسفل يستدعي هذي الدالة تلقائيًا
+    // فتحفظ آخر نسخة من بياناتك (اللي بقيت بذاكرة الجهاز طول فترة الانقطاع).
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
     setSyncStatus("saving");
     // كل ٤ ساعات كحد أقصى، ناخذ لقطة من البيانات الحالية قبل الحفظ فوقها
     // — نحتفظ بآخر ٣ لقطات بس عشان ما تكبر المساحة المستخدمة كثير.
@@ -12454,12 +12512,22 @@ function AuthenticatedApp() {
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   const [syncStatus, setSyncStatus] = useState("saved"); // saved | saving | error
   useEffect(() => {
-    const goOnline = () => setIsOnline(true);
+    const goOnline = () => { setIsOnline(true); saveToSupabase(); };
     const goOffline = () => setIsOnline(false);
+    // لما تطلع من الصفحة (تفتح تطبيق ثاني، تبدّل تبويب...) نحفظ فورًا بدون
+    // انتظار — بعض متصفحات الجوال (خصوصًا Chrome بالأندرويد) ممكن "يتخلّص"
+    // من التبويب بالخلفية لتوفير الذاكرة، فيعيد تحميل الصفحة من الصفر لما
+    // ترجع له. هذا يضمن وصول آخر تعديل للسحابة قبل ما يصير هذا.
+    const onVisibilityChange = () => { if (document.visibilityState === "hidden") saveToSupabase(); };
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
-    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
-  }, []);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [data, session, loadFailed]);
 
   const handleSignOut = async () => {
     try { localStorage.removeItem("fosooli-last-view"); } catch (e) { /* ignore */ }
