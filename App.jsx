@@ -1465,6 +1465,12 @@ function jobToTable(job) {
     ]);
     return { title: cls.emoji ? `${cls.emoji} ${cls.subject}` : cls.subject, subtitle: dateKey ? `${cls.grade} • ${formatDateDisplay(dateKey)}` : `${cls.grade} • ${cls.teacher}`, headers, rows, filename: cls.subject || "الفصل", blankTemplate: true };
   }
+  if (job.type === "studentNamesList") {
+    const cls = job.cls;
+    const headers = ["#", "اسم الطالب"];
+    const rows = cls.rows.map((row, i) => [i + 1, row.name]);
+    return { title: `أسماء الطلاب — ${cls.subject}`, subtitle: `${cls.grade} • ${cls.rows.length} طالب`, headers, rows, filename: `أسماء-الطلاب-${cls.subject || "الفصل"}` };
+  }
   if (job.type === "blank") {
     const cls = job.cls;
     const headers = ["الاسم", ...cls.columns.map((c) => c.name)];
@@ -8987,6 +8993,79 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
   );
 }
 
+// نافذة بسيطة تعرض أسماء الطلاب فقط — تقدر تنسخ الكل دفعة وحدة، أو اسم
+// وحيد، تعدّل أي اسم مباشرة، أو تطبع/تصدّر القائمة.
+function StudentNamesModal({ cls, updateClass, onClose, onPrint }) {
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [copiedAll, setCopiedAll] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+
+  const copyAll = async () => {
+    const text = cls.rows.map((r) => r.name).join("\n");
+    try { await navigator.clipboard.writeText(text); setCopiedAll(true); setTimeout(() => setCopiedAll(false), 2000); } catch (e) { /* ignore */ }
+  };
+  const copyOne = async (row) => {
+    try { await navigator.clipboard.writeText(row.name); setCopiedId(row.id); setTimeout(() => setCopiedId(null), 1500); } catch (e) { /* ignore */ }
+  };
+  const startEdit = (row) => { setEditingId(row.id); setEditValue(row.name); };
+  const saveEdit = () => {
+    if (editValue.trim()) {
+      updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === editingId ? { ...r, name: editValue.trim() } : r)) }));
+    }
+    setEditingId(null);
+  };
+
+  return (
+    <Modal title={`أسماء الطلاب — ${cls.subject}`} onClose={onClose} wide>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <button
+          onClick={copyAll}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold text-white"
+          style={{ background: "#26423B" }}
+        >
+          <ClipboardCopy size={14} /> {copiedAll ? "تم النسخ ✓" : `نسخ الكل (${cls.rows.length})`}
+        </button>
+        <IconBtn icon={Printer} label="طباعة / تصدير" onClick={onPrint} />
+      </div>
+      {cls.rows.length === 0 ? (
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد طلاب بهذا الفصل بعد.</p>
+      ) : (
+        <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+          {cls.rows.map((row, i) => (
+            <div key={row.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              <span className="text-xs font-bold w-6 text-center shrink-0" style={{ color: MUTED }}>{i + 1}</span>
+              {editingId === row.id ? (
+                <>
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+                    style={{ ...inputStyle, flex: 1, padding: "6px 10px" }}
+                  />
+                  <button onClick={saveEdit} className="text-xs font-bold px-2.5 py-1.5 rounded-lg text-white shrink-0" style={{ background: "#26423B" }}>حفظ</button>
+                  <button onClick={() => setEditingId(null)} className="text-xs font-medium px-2 py-1.5 shrink-0" style={{ color: MUTED }}>إلغاء</button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm font-medium" style={{ color: INK }}>{row.name}</span>
+                  <button onClick={() => copyOne(row)} title="نسخ الاسم" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                    {copiedId === row.id ? <Check size={14} color="#0F9D58" /> : <ClipboardCopy size={14} color={MUTED} />}
+                  </button>
+                  <button onClick={() => startEdit(row)} title="تعديل الاسم" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                    <Pencil size={14} color={MUTED} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
   const [dateKey, setDateKey] = useState(todayKey());
 
@@ -10973,6 +11052,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showReportPicker, setShowReportPicker] = useState(false);
   const [showBehaviorReportPicker, setShowBehaviorReportPicker] = useState(false);
+  const [showStudentNames, setShowStudentNames] = useState(false);
   const [showGradeSheet, setShowGradeSheet] = useState(false);
   const [showPeriodComparison, setShowPeriodComparison] = useState(false);
   const [showExamMode, setShowExamMode] = useState(false);
@@ -11531,6 +11611,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <span className="text-xs font-bold px-1 shrink-0" style={{ color: MUTED }}>إدارة الجدول</span>
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" disabled={examLocked} onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" disabled={examLocked} onClick={() => setRowModal({ mode: "add" })} />
+          <IconBtn icon={Users} label="أسماء الطلاب" onClick={() => setShowStudentNames(true)} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={ShieldAlert} label="تقرير السلوك" tone="danger" onClick={() => setShowBehaviorReportPicker(true)} />
           <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
@@ -12011,6 +12092,14 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           rows={cls.rows}
           onSelect={(rowId) => { setBehaviorReportRowId(rowId); setShowBehaviorReportPicker(false); }}
           onClose={() => setShowBehaviorReportPicker(false)}
+        />
+      )}
+      {showStudentNames && (
+        <StudentNamesModal
+          cls={cls}
+          updateClass={updateClass}
+          onClose={() => setShowStudentNames(false)}
+          onPrint={() => openPrintPreview({ type: "studentNamesList", cls }, "pdf")}
         />
       )}
       {showGradeSheet && (
