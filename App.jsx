@@ -9091,6 +9091,12 @@ function StudentNamesModal({ cls, updateClass, onClose, onPrint }) {
 // التعديل أو الحذف بأي وقت.
 function BadgesModal({ cls, updateClass, onClose }) {
   const [openPickerFor, setOpenPickerFor] = useState(null);
+  const [creatingCustom, setCreatingCustom] = useState(false);
+  const [customEmoji, setCustomEmoji] = useState("");
+  const [customLabel, setCustomLabel] = useState("");
+  const [customColor, setCustomColor] = useState(COLORS[0].hex);
+
+  const allBadges = [...BADGE_CATALOG, ...(cls.customBadges || [])];
 
   const assignBadge = (rowId, badge) => {
     updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowId ? { ...r, badge } : r)) }));
@@ -9100,11 +9106,24 @@ function BadgesModal({ cls, updateClass, onClose }) {
     updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowId ? { ...r, badge: null } : r)) }));
     setOpenPickerFor(null);
   };
+  const createCustomBadge = (rowId) => {
+    if (!customEmoji.trim() || !customLabel.trim()) return;
+    const newBadge = { id: `custom-${uid()}`, emoji: customEmoji.trim(), label: customLabel.trim(), color: customColor };
+    updateClass((c) => ({ ...c, customBadges: [...(c.customBadges || []), newBadge] }));
+    assignBadge(rowId, newBadge);
+    setCreatingCustom(false);
+    setCustomEmoji("");
+    setCustomLabel("");
+  };
+  const deleteCustomBadge = (badgeId) => {
+    if (!window.confirm("حذف هذا الوسام المخصص نهائيًا؟ الطلاب اللي عندهم هذا الوسام حاليًا بيحتفظون فيه، لكنه بينمسح من قائمة الاختيار.")) return;
+    updateClass((c) => ({ ...c, customBadges: (c.customBadges || []).filter((b) => b.id !== badgeId) }));
+  };
 
   return (
     <Modal title="أوسمة التميز" onClose={onClose} accent="magic" wide>
       <p className="text-xs mb-4" style={{ color: MUTED }}>
-        اختر وسامًا لأي طالب — يظهر بجانب اسمه بجدول الفصل، وبتقريره الشخصي بشكل واضح.
+        اختر وسامًا لأي طالب — يظهر بجانب اسمه بجدول الفصل، وبتقريره الشخصي بشكل واضح. تقدر أيضًا تصمّم وسامك الخاص باسم ورمز ولون تختارهم.
       </p>
       {cls.rows.length === 0 ? (
         <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد طلاب بهذا الفصل بعد.</p>
@@ -9123,7 +9142,7 @@ function BadgesModal({ cls, updateClass, onClose }) {
                   </span>
                 )}
                 <button
-                  onClick={() => setOpenPickerFor(openPickerFor === row.id ? null : row.id)}
+                  onClick={() => { setOpenPickerFor(openPickerFor === row.id ? null : row.id); setCreatingCustom(false); }}
                   className="text-xs font-semibold px-2.5 py-1.5 rounded-lg shrink-0"
                   style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
                 >
@@ -9135,19 +9154,70 @@ function BadgesModal({ cls, updateClass, onClose }) {
                   </button>
                 )}
               </div>
-              {openPickerFor === row.id && (
-                <div className="mt-2.5 pt-2.5 grid grid-cols-3 sm:grid-cols-5 gap-2" style={{ borderTop: `1px solid ${LINE}` }}>
-                  {BADGE_CATALOG.map((b) => (
+              {openPickerFor === row.id && !creatingCustom && (
+                <div className="mt-2.5 pt-2.5" style={{ borderTop: `1px solid ${LINE}` }}>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-2">
+                    {allBadges.map((b) => (
+                      <div key={b.id} className="relative">
+                        <button
+                          onClick={() => assignBadge(row.id, b)}
+                          className="w-full flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-black/5"
+                          style={{ border: `1px solid ${row.badge?.id === b.id ? b.color : LINE}`, background: row.badge?.id === b.id ? `${b.color}12` : "#fff" }}
+                        >
+                          <span className="text-xl">{b.emoji}</span>
+                          <span className="text-[10px] font-semibold text-center leading-tight" style={{ color: INK }}>{b.label}</span>
+                        </button>
+                        {b.id.startsWith("custom-") && (
+                          <button
+                            onClick={() => deleteCustomBadge(b.id)}
+                            className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+                            style={{ background: "#C0392B" }}
+                          >
+                            <X size={9} color="#fff" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setCreatingCustom(true)}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
+                    style={{ border: `1px dashed ${LINE}`, color: "#26423B" }}
+                  >
+                    <Plus size={13} /> تصميم وسام مخصص جديد
+                  </button>
+                </div>
+              )}
+              {openPickerFor === row.id && creatingCustom && (
+                <div className="mt-2.5 pt-2.5 space-y-2" style={{ borderTop: `1px solid ${LINE}` }}>
+                  <div className="flex gap-2">
+                    <input
+                      value={customEmoji}
+                      onChange={(e) => setCustomEmoji(e.target.value)}
+                      placeholder="🎖️"
+                      maxLength={4}
+                      style={{ ...inputStyle, width: 64, textAlign: "center", fontSize: 20 }}
+                    />
+                    <input
+                      value={customLabel}
+                      onChange={(e) => setCustomLabel(e.target.value)}
+                      placeholder="اسم الوسام (مثال: بطل الإملاء)"
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                  </div>
+                  <p className="text-[11px]" style={{ color: MUTED }}>اضغط مطولًا على لوحة مفاتيح جوالك واختر رمز/إيموجي من قائمة الرموز التعبيرية للحقل الأول.</p>
+                  <ColorSwatches value={customColor} onChange={setCustomColor} />
+                  <div className="flex gap-2">
                     <button
-                      key={b.id}
-                      onClick={() => assignBadge(row.id, b)}
-                      className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-black/5"
-                      style={{ border: `1px solid ${row.badge?.id === b.id ? b.color : LINE}`, background: row.badge?.id === b.id ? `${b.color}12` : "#fff" }}
+                      disabled={!customEmoji.trim() || !customLabel.trim()}
+                      onClick={() => createCustomBadge(row.id)}
+                      className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40"
+                      style={{ background: "#26423B" }}
                     >
-                      <span className="text-xl">{b.emoji}</span>
-                      <span className="text-[10px] font-semibold text-center leading-tight" style={{ color: INK }}>{b.label}</span>
+                      إنشاء وتعيين
                     </button>
-                  ))}
+                    <button onClick={() => setCreatingCustom(false)} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ color: MUTED }}>رجوع</button>
+                  </div>
                 </div>
               )}
             </div>
