@@ -44,6 +44,20 @@ function colorLight(hex) {
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
+// كتالوج أوسمة التميز الجاهزة — تظهر بجانب اسم الطالب بالجدول (رمز صغير)
+// وبتقريره (شارة واضحة بالاسم والوصف).
+const BADGE_CATALOG = [
+  { id: "star", emoji: "⭐", label: "نجم الفصل", color: "#C9A227" },
+  { id: "gold", emoji: "🥇", label: "الأول على الفصل", color: "#C9A227" },
+  { id: "trophy", emoji: "🏆", label: "متميز", color: "#C97A2B" },
+  { id: "reader", emoji: "📚", label: "قارئ متميز", color: "#3B4C8C" },
+  { id: "creative", emoji: "🎨", label: "مبدع", color: "#7A4E9E" },
+  { id: "team", emoji: "🤝", label: "متعاون", color: "#6B9E4E" },
+  { id: "behavior", emoji: "🌟", label: "سلوك مثالي", color: "#2E9FD6" },
+  { id: "committed", emoji: "🎯", label: "ملتزم", color: "#0F6B5C" },
+  { id: "innovator", emoji: "💡", label: "مبتكر", color: "#B4526A" },
+];
+
 // يستخدم لتلوين خانة عمود "عداد" تدريجيًا حسب قيمتها الحالية نسبةً للحد
 // الأقصى — عند ratio=0 يرجع تدرّجًا فاتحًا جدًا من اللون، وعند ratio=1
 // يرجع اللون كاملًا بلا تخفيف (تدرّج حراري بسيط).
@@ -423,7 +437,7 @@ function buildTableCanvas({ title, subtitle, headers, rows, blankTemplate = fals
 // colored section per category (behavior, homework, participation, notes,
 // exams...) each with its own mini date/time/value table — legible enough
 // to print and hand to a parent.
-function buildReportCanvas({ title, subtitle, groups, photoImageElement }) {
+function buildReportCanvas({ title, subtitle, groups, photoImageElement, badge }) {
   const pad = 24, titleH = 70, summaryH = 34, sectionH = 34, colHeaderH = 26, lineH = 17, cellPadV = 12, sectionGap = 18;
   const colWidths = [180, 90, 300];
   const tableW = colWidths.reduce((a, b) => a + b, 0);
@@ -458,11 +472,17 @@ function buildReportCanvas({ title, subtitle, groups, photoImageElement }) {
   }
   ctx.fillStyle = INK;
   ctx.font = "bold 20px Tahoma, Arial";
-  ctx.fillText(title, width / 2, pad + 14);
+  const titleText = badge ? `${badge.emoji} ${title}` : title;
+  ctx.fillText(titleText, width / 2, pad + 14);
+  if (badge) {
+    ctx.font = "bold 11px Tahoma, Arial";
+    ctx.fillStyle = badge.color;
+    ctx.fillText(badge.label, width / 2, pad + 30);
+  }
   if (subtitle) {
     ctx.font = "13px Tahoma, Arial";
     ctx.fillStyle = MUTED;
-    ctx.fillText(subtitle, width / 2, pad + 36);
+    ctx.fillText(subtitle, width / 2, pad + (badge ? 48 : 36));
   }
   let y = titleH;
   if (groups.length === 0) {
@@ -1965,7 +1985,7 @@ async function jobToCanvas(job) {
     if (row.photo) {
       try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
     }
-    return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement });
+    return buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement, badge: row.badge });
   }
   if (job.type === "parentReport") {
     const { cls, row, entries, meta } = job;
@@ -1987,7 +2007,7 @@ async function jobToCanvas(job) {
         if (row.photo) {
           try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
         }
-        const { canvas } = buildReportCanvas({ title: row.name, subtitle: `${cls.subject} • ${cls.grade}`, groups, photoImageElement });
+        const { canvas } = buildReportCanvas({ title: row.name, subtitle: `${cls.subject} • ${cls.grade}`, groups, photoImageElement, badge: row.badge });
         if (canvas && canvas.width > 0 && canvas.height > 0) {
           studentCanvases.push(canvas);
         } else {
@@ -9066,6 +9086,78 @@ function StudentNamesModal({ cls, updateClass, onClose, onPrint }) {
   );
 }
 
+// نافذة "أوسمة التميز": تختار طالب، تحدد له وسام من كتالوج جاهز — يظهر
+// بجانب اسمه بالجدول (رمز صغير بارز) وبتقريره (شارة واضحة)، مع إمكانية
+// التعديل أو الحذف بأي وقت.
+function BadgesModal({ cls, updateClass, onClose }) {
+  const [openPickerFor, setOpenPickerFor] = useState(null);
+
+  const assignBadge = (rowId, badge) => {
+    updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowId ? { ...r, badge } : r)) }));
+    setOpenPickerFor(null);
+  };
+  const removeBadge = (rowId) => {
+    updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowId ? { ...r, badge: null } : r)) }));
+    setOpenPickerFor(null);
+  };
+
+  return (
+    <Modal title="أوسمة التميز" onClose={onClose} accent="magic" wide>
+      <p className="text-xs mb-4" style={{ color: MUTED }}>
+        اختر وسامًا لأي طالب — يظهر بجانب اسمه بجدول الفصل، وبتقريره الشخصي بشكل واضح.
+      </p>
+      {cls.rows.length === 0 ? (
+        <p className="text-sm text-center py-10" style={{ color: MUTED }}>لا يوجد طلاب بهذا الفصل بعد.</p>
+      ) : (
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+          {cls.rows.map((row) => (
+            <div key={row.id} className="relative p-2.5 rounded-xl" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0" style={{ background: row.color }}>
+                  {(row.name || "؟").trim().charAt(0)}
+                </span>
+                <span className="flex-1 text-sm font-medium truncate" style={{ color: INK }}>{row.name}</span>
+                {row.badge && (
+                  <span className="flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full shrink-0" style={{ background: `${row.badge.color}18`, color: row.badge.color }}>
+                    {row.badge.emoji} {row.badge.label}
+                  </span>
+                )}
+                <button
+                  onClick={() => setOpenPickerFor(openPickerFor === row.id ? null : row.id)}
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg shrink-0"
+                  style={{ border: `1px solid ${LINE}`, color: INK, background: "#fff" }}
+                >
+                  {row.badge ? "تغيير" : "إضافة وسام"}
+                </button>
+                {row.badge && (
+                  <button onClick={() => removeBadge(row.id)} title="إزالة الوسام" className="p-1.5 rounded-lg hover:bg-black/5 shrink-0">
+                    <X size={14} color="#C0392B" />
+                  </button>
+                )}
+              </div>
+              {openPickerFor === row.id && (
+                <div className="mt-2.5 pt-2.5 grid grid-cols-3 sm:grid-cols-5 gap-2" style={{ borderTop: `1px solid ${LINE}` }}>
+                  {BADGE_CATALOG.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => assignBadge(row.id, b)}
+                      className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-black/5"
+                      style={{ border: `1px solid ${row.badge?.id === b.id ? b.color : LINE}`, background: row.badge?.id === b.id ? `${b.color}12` : "#fff" }}
+                    >
+                      <span className="text-xl">{b.emoji}</span>
+                      <span className="text-[10px] font-semibold text-center leading-tight" style={{ color: INK }}>{b.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
   const [dateKey, setDateKey] = useState(todayKey());
 
@@ -9688,7 +9780,7 @@ function LinkToShawahedModal({ cls, row, entries, shawahed, onLink, onClose }) {
       const groups = groupEntries(entries);
       let photoImageElement = null;
       if (row.photo) { try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; } }
-      const { canvas } = await buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement });
+      const { canvas } = await buildReportCanvas({ title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade} • ${cls.teacher}`, groups, photoImageElement, badge: row.badge });
       const dataUrl = canvas.toDataURL("image/png");
       onLink({ catKey, mode, existingId, title: title.trim(), notes: notes.trim(), photo: dataUrl });
       onClose();
@@ -9818,6 +9910,11 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
           <div className="flex-1" style={{ minWidth: 160 }}>
             <div className="flex items-center gap-2">
               <p className="font-bold text-base" style={{ color: INK }}>{row.name}</p>
+              {row.badge && (
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: `${row.badge.color}18`, color: row.badge.color }}>
+                  {row.badge.emoji} {row.badge.label}
+                </span>
+              )}
               {(() => {
                 const pct = attendancePercent(cls, row.id);
                 if (pct === null) return null;
@@ -11053,6 +11150,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showReportPicker, setShowReportPicker] = useState(false);
   const [showBehaviorReportPicker, setShowBehaviorReportPicker] = useState(false);
   const [showStudentNames, setShowStudentNames] = useState(false);
+  const [showBadges, setShowBadges] = useState(false);
   const [showGradeSheet, setShowGradeSheet] = useState(false);
   const [showPeriodComparison, setShowPeriodComparison] = useState(false);
   const [showExamMode, setShowExamMode] = useState(false);
@@ -11612,6 +11710,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <IconBtn icon={Plus} label="إضافة عمود" tone="primary" disabled={examLocked} onClick={() => setColModal({ mode: "add" })} />
           <IconBtn icon={Plus} label="إضافة صف" tone="primary" disabled={examLocked} onClick={() => setRowModal({ mode: "add" })} />
           <IconBtn icon={Users} label="أسماء الطلاب" onClick={() => setShowStudentNames(true)} />
+          <IconBtn icon={Award} label="أوسمة التميز" onClick={() => setShowBadges(true)} />
           <IconBtn icon={FileText} label="تقرير" magic onClick={() => setShowReportPicker(true)} />
           <IconBtn icon={ShieldAlert} label="تقرير السلوك" tone="danger" onClick={() => setShowBehaviorReportPicker(true)} />
           <IconBtn icon={ClipboardList} label="تقرير شامل للفصل" magic onClick={() => openPrintPreview({ type: "classFullReport", cls }, "pdf")} />
@@ -11782,6 +11881,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                           className="shrink-0"
                         />
                         <span className="font-semibold truncate flex-1">{row.name}</span>
+                        {row.badge && (
+                          <span title={row.badge.label} className="shrink-0 text-sm">{row.badge.emoji}</span>
+                        )}
                         {(() => {
                           const pct = attendancePercent(cls, row.id);
                           if (pct === null) return null;
@@ -12100,6 +12202,13 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           updateClass={updateClass}
           onClose={() => setShowStudentNames(false)}
           onPrint={() => openPrintPreview({ type: "studentNamesList", cls }, "pdf")}
+        />
+      )}
+      {showBadges && (
+        <BadgesModal
+          cls={cls}
+          updateClass={updateClass}
+          onClose={() => setShowBadges(false)}
         />
       )}
       {showGradeSheet && (
