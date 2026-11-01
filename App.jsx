@@ -12883,8 +12883,14 @@ function AuthenticatedApp() {
   const [disabledMessage, setDisabledMessage] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+    // Supabase يطلق أحداث (SIGNED_IN / TOKEN_REFRESHED) كل ما رجعت للصفحة بعد
+    // ما كانت بالخلفية، ومعها كائن جلسة جديد. لو حدّثنا الحالة بكل مرة، تنعاد
+    // كل التأثيرات المعتمدة على session (تحميل البيانات + شاشة "جارٍ التحميل").
+    // فنحتفظ بنفس الكائن طالما المستخدم نفسه، ونحدّث فقط عند الدخول/الخروج
+    // أو تغيّر الحساب. (التوكن الجديد يديره عميل Supabase داخليًا.)
+    const keepIfSameUser = (next) => setSession((prev) => (prev && next && prev.user?.id === next.user?.id ? prev : next));
+    supabase.auth.getSession().then(({ data: { session } }) => keepIfSameUser(session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => keepIfSameUser(session));
     return () => listener.subscription.unsubscribe();
   }, []);
 
