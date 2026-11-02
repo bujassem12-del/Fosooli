@@ -2558,6 +2558,13 @@ function PrintStyles() {
         .am-dots { transition: none; }
       }
       .data-row > td { transition: background-color 0.12s; }
+      /* أزرار + و − بالجدول تظهر عند المرور بالفأرة فقط (بالأجهزة اللي فيها فأرة) */
+      @media (hover: hover) and (pointer: fine) {
+        .data-row .ctr-btn { opacity: 0; transition: opacity 0.15s; }
+        .data-row:hover .ctr-btn, .data-row .ctr-btn:focus-visible, .data-row:focus-within .ctr-btn { opacity: 1; }
+      }
+      /* الأرقام بنفس العرض عشان تصطف */
+      .tabular-nums { font-variant-numeric: tabular-nums; }
       .data-row:hover > td { background-color: #F0F4F2 !important; }
       @keyframes drift1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-3%, 4%) scale(1.06); } }
       @keyframes drift2 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(4%, -3%) scale(1.05); } }
@@ -2588,6 +2595,29 @@ function usePrint() {
 // One consistent look for every compact icon-only action (table column/row
 // controls, small list actions, etc.) — fixed size, padding, and hover state
 // so these don't feel scattered across different parts of the app.
+// شعار فصولي: مربّع بلون الهوية فيه ثلاث "صفوف" (رمز الفصل/الجدول) + الكلمة
+function BrandMark({ size = 40, withWord = true, wordSize = 22, sub = null, color = null }) {
+  const c = color || DASH_GREEN;
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      <span className="flex items-center justify-center shrink-0" style={{ width: size, height: size, borderRadius: size * 0.3, background: c, boxShadow: `0 6px 16px ${hexToRgba(c, 0.28)}` }} aria-hidden="true">
+        <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="4" width="18" height="4.2" rx="2.1" fill="#fff" />
+          <rect x="3" y="10" width="12" height="4.2" rx="2.1" fill="#fff" fillOpacity="0.8" />
+          <rect x="3" y="16" width="15" height="4.2" rx="2.1" fill="#fff" fillOpacity="0.6" />
+          <circle cx="19.2" cy="12.1" r="2.1" fill="#fff" />
+        </svg>
+      </span>
+      {withWord && (
+        <span className="flex flex-col leading-none">
+          <span className="font-bold" style={{ fontSize: wordSize, color: INK, letterSpacing: "-0.01em" }}>فصولي</span>
+          {sub && <span className="text-[13px] mt-1.5" style={{ color: MUTED }}>{sub}</span>}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
   return (
     <button
@@ -6796,7 +6826,7 @@ function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
 
   return (
     <div className="flex items-center justify-center gap-1.5">
-      <button aria-label="إنقاص" onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
+      <button aria-label="إنقاص" onClick={() => bump(-1)} className="ctr-btn w-9 h-9 md:w-7 md:h-7 rounded-lg flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}`, background: "#fff" }}><Minus size={14} /></button>
       <input
         id={rowId && colId ? cellDomId(rowId, colId) : undefined}
         type="number"
@@ -6806,10 +6836,10 @@ function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
         onKeyDown={(e) => {
           if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); focusNextCell(nextRowId, colId); }
         }}
-        className="w-9 text-center font-semibold text-sm bg-transparent"
+        className="w-10 text-center font-bold text-[15px] bg-transparent tabular-nums"
         style={{ outline: "none", color: INK }}
       />
-      <button aria-label="زيادة" onClick={() => bump(1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Plus size={12} /></button>
+      <button aria-label="زيادة" onClick={() => bump(1)} className="ctr-btn w-9 h-9 md:w-7 md:h-7 rounded-lg flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}`, background: "#fff" }}><Plus size={14} /></button>
     </div>
   );
 }
@@ -10891,7 +10921,7 @@ function ClassCard({ cls, subjectsCount = 1, onOpen, onEdit, onColor, onDelete, 
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <h3 className="font-bold text-base truncate" style={{ color: INK }}>{cls.subject}</h3>
+              <h3 className="font-bold text-[17px] leading-snug truncate" style={{ color: INK }}>{cls.subject}</h3>
               {cls.pinned && <Pin size={13} color={DASH_GREEN} className="shrink-0" aria-label="مثبّت" />}
               {locked && <Lock size={13} color="#A01E14" className="shrink-0" aria-label="مقفل" />}
             </div>
@@ -11167,7 +11197,49 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
     : [];
 
   return (
-    <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 py-6 page-fade-in">
+    <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 md:px-6 pt-6 pb-28 md:pb-6 page-fade-in">
+      {/* الجوال: شريط تنقّل سفلي ثابت بدل التبويبات المتمرّرة */}
+      <nav aria-label="التنقل الرئيسي" className="md:hidden fixed bottom-0 inset-x-0 z-40" style={{ background: "rgba(255,255,255,0.94)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderTop: `1px solid ${LINE}`, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        <div className="grid grid-cols-4 h-16">
+          {[
+            { key: "classes", label: "الفصول", icon: BookOpen },
+            { key: "tests", label: "الاختبارات", icon: ListChecks },
+            { key: "shawahed", label: "الشواهد", icon: FileCheck },
+          ].map((t) => {
+            const on = mainTab === t.key;
+            return (
+              <button key={t.key} type="button" onClick={() => { setMainTab(t.key); window.scrollTo({ top: 0 }); }} aria-current={on ? "page" : undefined}
+                className="flex flex-col items-center justify-center gap-1 text-[12px] font-semibold" style={{ color: on ? DASH_GREEN : MUTED }}>
+                <span className="w-14 h-8 rounded-full flex items-center justify-center transition-colors" style={{ background: on ? hexToRgba(DASH_GREEN, 0.12) : "transparent" }}>
+                  <t.icon size={20} strokeWidth={on ? 2.3 : 1.9} />
+                </span>
+                {t.label}
+              </button>
+            );
+          })}
+          {(() => {
+            const moreOn = ["library", "games", "archive"].includes(mainTab);
+            return (
+              <div className="flex flex-col items-center justify-center gap-1 text-[12px] font-semibold" style={{ color: moreOn ? DASH_GREEN : MUTED }}>
+                <ActionMenu
+                  label="المزيد"
+                  title="المزيد"
+                  windowIcon={LayoutGrid}
+                  triggerClassName="w-14 h-8 !rounded-full"
+                  triggerStyle={{ background: moreOn ? hexToRgba(DASH_GREEN, 0.12) : "transparent" }}
+                  triggerContent={<LayoutGrid size={20} color={moreOn ? DASH_GREEN : MUTED} strokeWidth={moreOn ? 2.3 : 1.9} />}
+                  items={[
+                    { icon: FolderOpen, label: "المكتبة", onClick: () => { setMainTab("library"); window.scrollTo({ top: 0 }); } },
+                    { icon: Gamepad2, label: "الأدوات التفاعلية", onClick: () => { setMainTab("games"); window.scrollTo({ top: 0 }); } },
+                    { icon: Archive, label: "المؤرشفة", onClick: () => { setMainTab("archive"); window.scrollTo({ top: 0 }); } },
+                  ]}
+                />
+                المزيد
+              </div>
+            );
+          })()}
+        </div>
+      </nav>
       {siteSettings.announcementActive && siteSettings.announcement && (
         <div className="flex items-start gap-2 p-3 rounded-xl mb-4" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
           <Info size={16} color="#0F6B5C" className="shrink-0 mt-0.5" />
@@ -11178,11 +11250,13 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         <div className="flex items-center justify-between mb-5">
           <div>
             {siteSettings.siteLogo ? (
-              <img src={siteSettings.siteLogo} alt="فصولي" className="max-h-12 object-contain" />
+              <>
+                <img src={siteSettings.siteLogo} alt="فصولي" className="max-h-12 object-contain" />
+                <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
+              </>
             ) : (
-              <h1 className="text-2xl font-bold" style={{ color: INK }}>فصولي</h1>
+              <h1 className="m-0"><BrandMark size={44} wordSize={26} sub={siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"} /></h1>
             )}
-            <p className="text-sm mt-1" style={{ color: MUTED }}>{siteSettings.siteTagline || "فصولك الدراسية في مكان واحد"}</p>
           </div>
           <div className="flex items-center gap-2">
             <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={onRetrySave} />
@@ -11200,7 +11274,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
+        <div className="hidden md:flex items-center gap-1.5 mb-4 overflow-x-auto pb-1">
           {[
             { key: "classes", label: "الفصول", icon: BookOpen },
             { key: "shawahed", label: "شواهد", icon: FileCheck },
@@ -11227,7 +11301,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         <ScheduleMiniCard schedule={data.schedule} image={data.scheduleImage} onOpen={() => setShowSchedule(true)} />
 
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
-          <h2 className="text-lg font-bold" style={{ color: INK }}>
+          <h2 className="text-xl font-bold" style={{ color: INK }}>
             فصولي النشطة <span className="font-medium" style={{ color: MUTED }}>({data.classes.filter((c) => !c.archived).length})</span>
           </h2>
           <div className="mr-auto flex items-center gap-2">
@@ -12141,8 +12215,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [showStatsRow, setShowStatsRow] = useState(false);
   const examLocked = isExamModeActive(cls);
   const compactDensity = density === "compact";
-  const cellPadClass = compactDensity ? "p-0.5" : "p-1";
-  const namePadClass = compactDensity ? "p-1" : "p-2";
+  const cellPadClass = compactDensity ? "px-1 py-0.5" : "px-1.5 py-1";
+  const namePadClass = compactDensity ? "px-2 py-1" : "px-2.5 py-1.5";
   const [blinkRowId, setBlinkRowId] = useState(null);
   const timers = useRef({});
 
@@ -12625,6 +12699,22 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [scopeAsk, setScopeAsk] = useState(null);
   const [showGroupData, setShowGroupData] = useState(false);
 
+  // الجوال: رأس الصفحة الكبير يتمرّر مع الصفحة، ولما يختفي يطلع شريط مضغوط ثابت فوق
+  const headerRef = useRef(null);
+  const [compactBar, setCompactBar] = useState(false);
+  useEffect(() => {
+    if (!isMobile) { setCompactBar(false); return; }
+    const onScroll = () => {
+      const h = headerRef.current;
+      if (!h) return;
+      setCompactBar(h.getBoundingClientRect().bottom < 4);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isMobile]);
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+
   const switchSubject = (subject) => {
     if (subject === cls.subject) return;
     const units = gSheets.filter((c) => c.subject === subject);
@@ -12744,7 +12834,35 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           </div>
         </div>
       )}
-      <div className="sticky top-0 z-20 pb-2" style={{ background: PAPER }}>
+      {isMobile && (
+        <div
+          className="fixed top-0 inset-x-0 z-30 transition-transform duration-300"
+          style={{ transform: compactBar ? "translateY(0)" : "translateY(-110%)", pointerEvents: compactBar ? "auto" : "none", background: "rgba(255,255,255,0.94)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: `1px solid ${LINE}`, paddingTop: "env(safe-area-inset-top, 0px)", boxShadow: compactBar ? "0 4px 16px rgba(16,24,22,0.06)" : "none" }}
+          aria-hidden={!compactBar}
+        >
+          <div className="flex items-center gap-1.5 px-2 h-14">
+            <button type="button" tabIndex={compactBar ? 0 : -1} onClick={onBack} aria-label="رجوع للفصول" className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
+              <ArrowRight size={20} color={INK} />
+            </button>
+            <button type="button" tabIndex={compactBar ? 0 : -1} onClick={scrollToTop} className="flex-1 min-w-0 text-right flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: colorLight(cls.color), color: cls.color }}>
+                {cls.emoji ? cls.emoji : <BookOpen size={16} />}
+              </span>
+              <span className="min-w-0">
+                <span className="block font-bold text-[15px] leading-tight truncate" style={{ color: INK }}>{cls.subject}</span>
+                <span className="block text-xs truncate" style={{ color: MUTED }}>{unitLabel(cls)} · {cls.grade}</span>
+              </span>
+            </button>
+            <button type="button" tabIndex={compactBar ? 0 : -1} aria-label="ابحث عن طالب" onClick={() => { scrollToTop(); setTimeout(() => document.getElementById("class-search")?.focus({ preventScroll: true }), 450); }} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
+              <Search size={19} color={INK} />
+            </button>
+            <button type="button" tabIndex={compactBar ? 0 : -1} aria-label="المواد والوحدات والأدوات" onClick={scrollToTop} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}>
+              <ChevronUp size={20} color={DASH_GREEN_DARK} />
+            </button>
+          </div>
+        </div>
+      )}
+      <div ref={headerRef} className={isMobile ? "pb-2" : "sticky top-0 z-20 pb-2"} style={{ background: PAPER }}>
         <div className="flex items-center justify-between mb-3">
           <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold hover:opacity-70" style={{ color: MUTED }}>
             <ArrowRight size={16} /> رجوع للفصول
@@ -12757,7 +12875,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
             {cls.emoji ? cls.emoji : <BookOpen size={20} />}
           </span>
           <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold leading-tight truncate" style={{ color: INK }}>{cls.subject}</h1>
+            <h1 className="text-[22px] md:text-[28px] font-bold leading-tight truncate" style={{ color: INK, letterSpacing: "-0.01em" }}>{cls.subject}</h1>
             <p className="text-sm truncate" style={{ color: MUTED }}>
               {[cls.grade, unitLabel(cls), `${cls.rows.length} طالب`, cls.teacher, cls.yearHijri && `${cls.yearHijri} هـ`].filter(Boolean).join(" · ")}
             </p>
@@ -12870,6 +12988,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  id="class-search"
                   placeholder="ابحث عن طالب"
                   aria-label="ابحث عن طالب"
                   style={{ ...inputStyle, width: "100%", height: 36, paddingInlineStart: 34, paddingInlineEnd: 28 }}
@@ -13001,7 +13120,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 <div
                   key={row.id}
                   className={`rounded-2xl p-3 ${row.id === animatingRowId ? "trash-toss" : ""}`}
-                  style={{ background: ruleColor || "#fff", border: `1px solid ${LINE}`, borderInlineStart: `4px solid ${row.color}` }}
+                  style={{ background: ruleColor || "#fff", border: `1px solid ${LINE}`, ...(row.color && row.color !== COLORS[4].hex ? { borderInlineStart: `3px solid ${row.color}` } : {}) }}
                 >
                   <div className="flex items-center gap-2">
                     <input type="checkbox" aria-label={`تحديد ${row.name}`} checked={selectedRowIds.includes(row.id)} onChange={() => toggleRowSelection(row.id)} className="shrink-0 w-4 h-4" />
@@ -13060,8 +13179,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 {hasTotalGradeCol && (
                   <th
                     className="p-2 text-center"
-                    style={{ background: DASH_GREEN, color: "#fff", border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: nameEndOffset, zIndex: 9, width: TOTAL_GRADE_W, minWidth: TOTAL_GRADE_W }}
-                  >الدرجة الكلية</th>
+                    style={{ background: "#F8FAF9", color: DASH_GREEN_DARK, border: `1px solid ${LINE}`, position: "sticky", top: 0, insetInlineStart: nameEndOffset, zIndex: 9, width: TOTAL_GRADE_W, minWidth: TOTAL_GRADE_W }}
+                  ><span className="inline-flex items-center gap-1.5"><Sigma size={14} /> المجموع</span></th>
                 )}
                 {columnMeta.map((col, i) => (
                   <th
@@ -13070,7 +13189,6 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                     style={{
                       background: "#F8FAF9",
                       border: `1px solid ${LINE}`,
-                      borderTop: `3px solid ${col.color}`,
                       color: INK,
                       minWidth: col.pinned ? PIN_W : "150px",
                       width: col.pinned ? PIN_W : undefined,
@@ -13128,7 +13246,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                     )}
                     <td
                       className={`${namePadClass} font-medium`}
-                      style={{ border: `1px solid ${LINE}`, color: INK, borderInlineStart: `4px solid ${row.color}`, background: ruleColor || "#fff", position: "sticky", insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 3, width: NAME_W, minWidth: NAME_W, fontSize: compactDensity ? 12 : undefined }}
+                      style={{ border: `1px solid ${LINE}`, color: INK, borderInlineStart: row.color && row.color !== COLORS[4].hex ? `3px solid ${row.color}` : `1px solid ${LINE}`, background: ruleColor || "#fff", position: "sticky", insetInlineStart: cls.showRowNumbers ? NUM_W : 0, zIndex: 3, width: NAME_W, minWidth: NAME_W, fontSize: compactDensity ? 12 : undefined }}
                     >
                       <div className="flex items-center gap-1.5">
                         <input
@@ -13163,13 +13281,13 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                       return (
                         <td
                           className="p-1.5 text-center"
-                          style={{ border: `1px solid ${LINE}`, background: tg ? tg.bandBg : "#fff", position: "sticky", insetInlineStart: nameEndOffset, zIndex: 2 }}
+                          style={{ border: `1px solid ${LINE}`, background: ruleColor || "#fff", position: "sticky", insetInlineStart: nameEndOffset, zIndex: 2 }}
                         >
                           {tg ? (
-                            <div>
-                              <p className="font-bold text-sm" style={{ color: tg.bandColor }}>{tg.score}/{tg.max}</p>
-                              <p className="text-[11px] font-semibold" style={{ color: tg.bandColor }}>{tg.band}</p>
-                            </div>
+                            <span title={tg.band} dir="ltr" className="inline-flex items-baseline gap-0.5 px-2.5 py-1 rounded-lg" style={{ background: tg.bandBg, color: tg.bandColor }}>
+                              <span className="font-bold text-[15px] tabular-nums">{tg.score}</span>
+                              <span className="text-[11px] font-semibold opacity-80">/{tg.max}</span>
+                            </span>
                           ) : (
                             <span className="text-xs" style={{ color: MUTED }}>—</span>
                           )}
@@ -13615,10 +13733,8 @@ function AuthScreen({ siteSettings }) {
           <img src={siteSettings.siteLogo} alt="فصولي" className="max-h-28 mx-auto mb-4 object-contain" />
         ) : (
           <>
-            <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#0F6B5C" }}>
-              <BookOpen size={26} color="#fff" strokeWidth={2} />
-            </div>
-            <h1 className="text-2xl font-extrabold text-center" style={{ color: INK, fontFamily: "'Cairo', sans-serif" }}>فصولي</h1>
+            <div className="flex justify-center mb-3"><BrandMark size={56} withWord={false} /></div>
+            <h1 className="text-[26px] font-bold text-center" style={{ color: INK }}>فصولي</h1>
             <p className="text-xs text-center mb-1 tracking-wide" style={{ color: MUTED }}>FOSOOLI</p>
           </>
         )}
