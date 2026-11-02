@@ -2408,39 +2408,49 @@ function PrintStyles() {
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
       }
-      /* ===== حركة القوائم المنبثقة من الأيقونة ===== */
-      .am-panel { transform-origin: var(--ox) var(--oy); will-change: transform, clip-path, opacity; }
+      /* ===== نافذة الخيارات: تطير من الأيقونة للوسط وترجع لها ===== */
+      @keyframes amOverlayIn { from { background: rgba(16,24,22,0); backdrop-filter: blur(0); } to { background: rgba(16,24,22,0.38); backdrop-filter: blur(6px); } }
+      @keyframes amOverlayOut { from { background: rgba(16,24,22,0.38); backdrop-filter: blur(6px); } to { background: rgba(16,24,22,0); backdrop-filter: blur(0); } }
+      .am-overlay-in  { animation: amOverlayIn 0.35s ease-out both; -webkit-backdrop-filter: blur(6px); }
+      .am-overlay-out { animation: amOverlayOut 0.3s ease-in both; pointer-events: none; }
+      .am-window { will-change: transform, opacity, border-radius; }
       @keyframes amIn {
-        0%   { opacity: 0; transform: scale(0.4); clip-path: circle(0px at var(--ox) var(--oy)); filter: blur(6px); }
-        45%  { opacity: 1; filter: blur(0); }
-        100% { opacity: 1; transform: scale(1); clip-path: circle(150% at var(--ox) var(--oy)); filter: blur(0); }
+        0%   { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.06); border-radius: 50%; filter: blur(4px); }
+        30%  { opacity: 1; filter: blur(0); }
+        65%  { transform: translate(0, 0) scale(1.03); border-radius: 24px; }
+        82%  { transform: translate(0, 0) scale(0.99); }
+        100% { opacity: 1; transform: translate(0, 0) scale(1); border-radius: 24px; filter: blur(0); }
       }
       @keyframes amOut {
-        0%   { opacity: 1; transform: scale(1); clip-path: circle(150% at var(--ox) var(--oy)); filter: blur(0); }
-        100% { opacity: 0.3; transform: scale(0.35); clip-path: circle(0px at var(--ox) var(--oy)); filter: blur(4px); }
+        0%   { opacity: 1; transform: translate(0, 0) scale(1); border-radius: 24px; }
+        25%  { transform: translate(0, 0) scale(1.03); }
+        100% { opacity: 0.2; transform: translate(var(--dx), var(--dy)) scale(0.04); border-radius: 50%; filter: blur(3px); }
       }
-      .am-in  { animation: amIn 0.46s cubic-bezier(0.34, 1.32, 0.64, 1) both; }
-      .am-out { animation: amOut 0.26s cubic-bezier(0.6, 0, 0.8, 0.25) both; pointer-events: none; }
-      @keyframes amItemIn { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
-      @keyframes amItemOut { to { opacity: 0; transform: translateY(-4px); } }
-      .am-in .am-item  { animation: amItemIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(70ms + var(--i, 0) * 30ms); }
-      .am-out .am-item { animation: amItemOut 0.14s ease-in both; animation-delay: calc((var(--n, 1) - var(--i, 0)) * 10ms); }
+      .am-in  { animation: amIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      .am-out { animation: amOut 0.3s cubic-bezier(0.55, 0, 0.75, 0.15) both; }
+      @keyframes amItemIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+      @keyframes amItemOut { to { opacity: 0; transform: translateY(6px); } }
+      .am-in .am-item  { animation: amItemIn 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(160ms + var(--i, 0) * 35ms); }
+      .am-out .am-item { animation: amItemOut 0.12s ease-in both; animation-delay: calc((var(--n, 1) - var(--i, 0)) * 8ms); }
       .am-trigger { transition: background-color 0.2s, transform 0.2s; }
       .am-trigger:active { transform: scale(0.9); }
       .am-trigger:focus { outline: none; }
       .am-trigger:focus-visible { outline: 2px solid var(--am-ring); outline-offset: 2px; }
-      .am-trigger-open { background-color: var(--am-ring) !important; background-color: color-mix(in srgb, var(--am-ring) 35%, transparent) !important; }
+      .am-trigger-open { background-color: color-mix(in srgb, var(--am-ring) 35%, transparent) !important; }
       .am-dots { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
       .am-trigger-open .am-dots { transform: rotate(90deg) scale(1.1); }
       @keyframes amLand {
         0%   { transform: scale(1);    box-shadow: 0 0 0 0 var(--am-ring); }
-        35%  { transform: scale(0.84); }
-        70%  { transform: scale(1.1);  box-shadow: 0 0 0 9px transparent; }
+        35%  { transform: scale(0.8); }
+        70%  { transform: scale(1.12); box-shadow: 0 0 0 10px transparent; }
         100% { transform: scale(1);    box-shadow: 0 0 0 0 transparent; }
       }
-      .am-land { animation: amLand 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
+      .am-land { animation: amLand 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+      /* لوحة الألوان الصغيرة ببطاقة الفصل */
+      @keyframes amPop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+      .am-pop { transform-origin: 20px -10px; animation: amPop 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
       @media (prefers-reduced-motion: reduce) {
-        .am-in, .am-out, .am-in .am-item, .am-out .am-item, .am-land { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+        .am-in, .am-out, .am-in .am-item, .am-out .am-item, .am-land, .am-pop, .am-overlay-in, .am-overlay-out { animation-duration: 1ms !important; animation-delay: 0ms !important; }
         .am-dots { transition: none; }
       }
       .data-row > td { transition: background-color 0.12s; }
@@ -2490,37 +2500,41 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
 }
 
 // قائمة "⋯" موحّدة لكل الإجراءات الثانوية (صف طالب، عمود، بطاقة فصل، أدوات).
-// تُرسم بموضع ثابت على الشاشة، فما تنقص داخل الجداول القابلة للتمرير.
-// الحركة: القائمة "تنبثق" من الأيقونة نفسها (دائرة تتوسّع من مركز الزر مع
-// ارتداد خفيف وظهور العناصر بالتتابع)، وعند الإغلاق "تنسحب" راجعة للأيقونة
-// وتنبض الأيقونة نبضة صغيرة كأنها استقبلتها. نفس السلوك بالجوال والآيباد
-// واللابتوب، وتختفي الحركة تلقائيًا لمن فعّل "تقليل الحركة" بجهازه.
+// الضغط على الأيقونة يفتح نافذة بوسط الشاشة (بالجوال والآيباد واللابتوب):
+// النافذة "تطير" من الأيقونة نفسها وتكبر لين توصل الوسط مع ارتداد خفيف،
+// والعناصر تظهر بالتتابع. وعند الإغلاق ترجع تنكمش وتدخل بالأيقونة، والأيقونة
+// تنبض نبضة صغيرة كأنها استقبلتها. وتختفي الحركة لمن فعّل "تقليل الحركة".
 // items: [{ icon, label, onClick, danger?, disabled? } | "sep" | false]
-const MENU_W = 232;
-const MENU_OUT_MS = 260;
-function ActionMenu({ items, label = "خيارات", size = 18, triggerClassName = "w-8 h-8", triggerStyle = undefined, triggerContent = null }) {
+const MENU_OUT_MS = 300;
+function ActionMenu({ items, label = "خيارات", title = null, size = 18, triggerClassName = "w-8 h-8", triggerStyle = undefined, triggerContent = null }) {
   const [phase, setPhase] = useState("closed"); // closed | open | closing
-  const [pos, setPos] = useState(null);
+  const [origin, setOrigin] = useState({ dx: 0, dy: 0 });
   const [landing, setLanding] = useState(false);
   const btnRef = useRef(null);
-  const menuRef = useRef(null);
+  const panelRef = useRef(null);
   const timerRef = useRef(null);
   const list = (items || []).filter(Boolean);
   const open = phase === "open";
 
+  // نحسب مكان مركز الأيقونة منسوبًا لوسط الشاشة — منه تطلع النافذة وله ترجع
+  const measure = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setOrigin({ dx: r.left + r.width / 2 - window.innerWidth / 2, dy: r.top + r.height / 2 - window.innerHeight / 2 });
+  };
+
   const close = () => {
+    measure(); // لو تحرّكت الصفحة، ترجع للمكان الصحيح للأيقونة
     setPhase((p) => (p === "open" ? "closing" : p));
   };
 
-  // بعد انتهاء حركة الإغلاق: نشيل القائمة وننبّض الأيقونة
   useEffect(() => {
     if (phase !== "closing") return;
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       setPhase("closed");
-      setPos(null);
       setLanding(true);
-      timerRef.current = setTimeout(() => setLanding(false), 420);
+      timerRef.current = setTimeout(() => setLanding(false), 450);
     }, MENU_OUT_MS);
   }, [phase]);
   useEffect(() => () => clearTimeout(timerRef.current), []);
@@ -2528,66 +2542,40 @@ function ActionMenu({ items, label = "خيارات", size = 18, triggerClassName
   const toggle = (e) => {
     e.stopPropagation();
     if (phase === "open") { close(); return; }
-    const r = btnRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const W = Math.min(MENU_W, vw - 16);
-    // RTL: نحاذي الحافة اليمنى للقائمة مع الزر، ونقلبها لو طلعت برّا الشاشة
-    let left = r.right - W;
-    if (left < 8) left = Math.min(r.left, vw - W - 8);
-    left = Math.max(8, left);
-    const rowH = vw < 640 ? 44 : 40;
-    const seps = list.filter((it) => it === "sep").length;
-    const estH = Math.min((list.length - seps) * rowH + seps * 13 + 14, vh - 16);
-    // تحت الأيقونة إن كفى المكان، وإلا فوقها، وإلا نلصقها بأقرب حافة تكفيها
-    let top = r.bottom + 8;
-    if (top + estH > vh - 8) {
-      top = r.top - estH - 8;
-      if (top < 8) top = Math.max(8, vh - estH - 8);
-    }
-    // مركز الأيقونة منسوبًا للقائمة — منه تنبثق ولها ترجع
-    const ox = r.left + r.width / 2 - left;
-    const oy = r.top + r.height / 2 - top;
     clearTimeout(timerRef.current);
+    measure();
     setLanding(false);
-    setPos({ left, top, width: W, ox, oy });
     setPhase("open");
   };
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e) => {
-      if (menuRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
-      close();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); close(); btnRef.current?.focus({ preventScroll: true }); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const btns = Array.from(panelRef.current?.querySelectorAll("[role=menuitem]:not(:disabled)") || []);
+        if (!btns.length) return;
+        e.preventDefault();
+        const i = btns.indexOf(document.activeElement);
+        const next = e.key === "ArrowDown" ? (i + 1) % btns.length : (i - 1 + btns.length) % btns.length;
+        btns[next].focus();
+      }
     };
-    const onKey = (e) => { if (e.key === "Escape") { close(); btnRef.current?.focus(); } };
-    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    // تركيز أول عنصر للوحة المفاتيح
-    const t = setTimeout(() => menuRef.current?.querySelector("button:not(:disabled)")?.focus({ preventScroll: true }), 30);
+    // نقفل تمرير الصفحة خلف النافذة
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const t = setTimeout(() => panelRef.current?.querySelector("[role=menuitem]:not(:disabled)")?.focus({ preventScroll: true }), 60);
     return () => {
       clearTimeout(t);
-      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
+      document.body.style.overflow = prevOverflow;
     };
   }, [open]);
 
-  // أسهم لوحة المفاتيح داخل القائمة
-  const onMenuKey = (e) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const btns = Array.from(menuRef.current?.querySelectorAll("button:not(:disabled)") || []);
-    const i = btns.indexOf(document.activeElement);
-    const next = e.key === "ArrowDown" ? (i + 1) % btns.length : (i - 1 + btns.length) % btns.length;
-    btns[next]?.focus();
-  };
-
   let itemIndex = 0;
   const itemCount = list.filter((it) => it !== "sep").length;
+  const heading = title || label;
 
   return (
     <>
@@ -2596,47 +2584,68 @@ function ActionMenu({ items, label = "خيارات", size = 18, triggerClassName
         type="button"
         aria-label={label}
         title={label}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         onClick={toggle}
-        className={`${triggerClassName} am-trigger ${open ? "am-trigger-open" : ""} ${landing ? "am-land" : ""} rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5`}
+        className={`${triggerClassName} am-trigger ${phase !== "closed" ? "am-trigger-open" : ""} ${landing ? "am-land" : ""} rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5`}
         style={{ ...(triggerStyle || {}), "--am-ring": hexToRgba(DASH_GREEN, 0.35) }}
       >
-        {triggerContent || <MoreHorizontal size={size} color={open ? DASH_GREEN : MUTED} className="am-dots" />}
+        {triggerContent || <MoreHorizontal size={size} color={phase !== "closed" ? DASH_GREEN : MUTED} className="am-dots" />}
       </button>
-      {phase !== "closed" && pos && createPortal(
+      {phase !== "closed" && createPortal(
         <div
-          ref={menuRef}
-          role="menu"
-          aria-label={label}
           dir="rtl"
-          onKeyDown={onMenuKey}
-          className={`fixed py-1.5 rounded-2xl overflow-y-auto am-panel ${phase === "closing" ? "am-out" : "am-in"}`}
-          style={{
-            left: pos.left, top: pos.top, width: pos.width, maxHeight: "calc(100vh - 16px)", zIndex: 70,
-            background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 16px 40px rgba(16,24,22,0.18), 0 2px 6px rgba(16,24,22,0.06)",
-            "--ox": `${pos.ox}px`, "--oy": `${pos.oy}px`, "--n": itemCount,
-          }}
+          className={`fixed inset-0 flex items-center justify-center p-4 ${phase === "closing" ? "am-overlay-out" : "am-overlay-in"}`}
+          style={{ zIndex: 80 }}
+          onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
           onClick={(e) => e.stopPropagation()}
         >
-          {list.map((it, i) => {
-            if (it === "sep") return <div key={`sep${i}`} className="my-1.5 h-px am-item" style={{ background: LINE, "--i": itemIndex }} />;
-            const idx = itemIndex++;
-            return (
-              <button
-                key={`${it.label}${i}`}
-                type="button"
-                role="menuitem"
-                disabled={it.disabled}
-                onClick={() => { close(); it.onClick(); }}
-                className="am-item w-full flex items-center gap-2.5 px-3 h-11 sm:h-10 text-sm text-right hover:bg-black/[0.04] focus:bg-black/[0.05] outline-none disabled:opacity-35 disabled:pointer-events-none"
-                style={{ color: it.danger ? "#A01E14" : INK, "--i": idx }}
-              >
-                {it.icon && <it.icon size={16} color={it.danger ? "#A01E14" : MUTED} className="shrink-0" />}
-                <span className="flex-1">{it.label}</span>
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={heading}
+            className={`am-window w-full rounded-3xl overflow-hidden ${phase === "closing" ? "am-out" : "am-in"}`}
+            style={{
+              maxWidth: 380, maxHeight: "calc(100vh - 32px)",
+              background: "#fff", border: `1px solid ${LINE}`,
+              boxShadow: "0 30px 80px rgba(16,24,22,0.28), 0 4px 12px rgba(16,24,22,0.08)",
+              "--dx": `${origin.dx}px`, "--dy": `${origin.dy}px`, "--n": itemCount,
+            }}
+          >
+            <div className="flex items-center gap-3 px-5 pt-5 pb-3 am-item" style={{ "--i": 0 }}>
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}>
+                <MoreHorizontal size={20} color={DASH_GREEN} />
+              </span>
+              <h3 className="flex-1 min-w-0 font-bold text-base truncate" style={{ color: INK }}>{heading}</h3>
+              <button type="button" onClick={close} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
+                <X size={18} color={MUTED} />
               </button>
-            );
-          })}
+            </div>
+            <div role="menu" aria-label={heading} className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>
+              {list.map((it, i) => {
+                if (it === "sep") return <div key={`sep${i}`} className="my-2 mx-2 h-px am-item" style={{ background: LINE, "--i": itemIndex + 1 }} />;
+                const idx = ++itemIndex;
+                return (
+                  <button
+                    key={`${it.label}${i}`}
+                    type="button"
+                    role="menuitem"
+                    disabled={it.disabled}
+                    onClick={() => { close(); it.onClick(); }}
+                    className="am-item w-full flex items-center gap-3 px-2 h-12 rounded-xl text-[15px] text-right hover:bg-black/[0.04] focus:bg-black/[0.05] outline-none disabled:opacity-35 disabled:pointer-events-none"
+                    style={{ color: it.danger ? "#A01E14" : INK, "--i": idx }}
+                  >
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: it.danger ? "#FDECEA" : PAPER }}>
+                      {it.icon && <it.icon size={17} color={it.danger ? "#A01E14" : INK} />}
+                    </span>
+                    <span className="flex-1 font-medium">{it.label}</span>
+                    <ChevronLeft size={16} color={it.danger ? "#A01E14" : "#A3ADAA"} className="shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>,
         // داخل غلاف التطبيق (عشان يتأثر بالوضع الليلي)، وإلا body
         btnRef.current?.closest("[data-app-root]") || document.body
@@ -10655,9 +10664,9 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
         {locked && <p className="text-xs font-semibold -mt-2" style={{ color: "#A01E14" }}>الفصل مقفل — افتحه من قائمة الخيارات</p>}
       </div>
       <div ref={menuRef} className="absolute top-3 left-3 z-20" onClick={(e) => e.stopPropagation()}>
-        <ActionMenu label="خيارات الفصل" size={20} triggerClassName="w-10 h-10" items={menuItems} />
+        <ActionMenu label="خيارات الفصل" title={`${cls.subject} — ${cls.grade}`} size={20} triggerClassName="w-10 h-10" items={menuItems} />
         {showColors && (
-          <div className="absolute top-11 left-0 z-30 p-2.5 rounded-2xl am-panel am-in" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 16px 40px rgba(16,24,22,0.18)", "--ox": "20px", "--oy": "-24px" }}>
+          <div className="absolute top-11 left-0 z-30 p-2.5 rounded-2xl am-pop" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 16px 40px rgba(16,24,22,0.18)" }}>
             <ColorSwatches value={cls.color} onChange={(hex) => { onColor(cls.id, hex); setShowColors(false); }} />
           </div>
         )}
@@ -10957,6 +10966,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             </button>
             <ActionMenu
               label="أدوات"
+              title="أدوات الفصول"
               triggerClassName="h-10 px-3 gap-1.5"
               triggerStyle={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 12 }}
               triggerContent={<><span className="text-sm font-semibold" style={{ color: INK }}>أدوات</span><ChevronDown size={16} color={MUTED} /></>}
@@ -12128,6 +12138,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 <div key={col.id} className="relative shrink-0">
                   <ActionMenu
                     label={`خيارات عمود ${col.name}`}
+                    title={`عمود ${col.name}`}
                     triggerClassName="h-8 px-2.5 gap-1.5"
                     triggerStyle={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 999 }}
                     triggerContent={<><span className="w-2 h-2 rounded-full" style={{ background: col.color }} /><span className="text-xs font-semibold whitespace-nowrap" style={{ color: INK }}>{col.name}</span><ChevronDown size={12} color={MUTED} /></>}
@@ -12169,7 +12180,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         {tg.score}/{tg.max}
                       </span>
                     )}
-                    <ActionMenu label={`خيارات ${row.name}`} size={18} triggerClassName="w-9 h-9" items={rowMenuItems(row, i)} />
+                    <ActionMenu label={`خيارات ${row.name}`} title={row.name} size={18} triggerClassName="w-9 h-9" items={rowMenuItems(row, i)} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-3">
                     {columnMeta.map((col) => {
@@ -12236,7 +12247,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                       {col.type === "counter" && Number(col.maxValue) > 0 && <span className="text-xs font-normal" style={{ color: MUTED }}>({col.maxValue})</span>}
                       {col.autoRenew && <RefreshCw size={11} color="#0F6B5C" title="تفريغ تلقائي مفعّل" />}
                       {col.pinned && <Pin size={11} color={DASH_GREEN} aria-label="مثبّت" />}
-                      <ActionMenu label={`خيارات عمود ${col.name}`} size={16} triggerClassName="w-7 h-7" items={columnMenuItems(col, i)} />
+                      <ActionMenu label={`خيارات عمود ${col.name}`} title={`عمود ${col.name}`} size={16} triggerClassName="w-7 h-7" items={columnMenuItems(col, i)} />
                     </div>
                     {bulkSetColId === col.id && (
                       <BulkSetPopover column={col} onApply={(v) => bulkSetColumnValue(col, v)} onClose={() => setBulkSetColId(null)} />
@@ -12305,7 +12316,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                         {row.medicalNote && row.medicalNote.trim() && (
                           <span title={`تنبيه: ${row.medicalNote}`} className="shrink-0"><AlertTriangle size={12} color="#C97A2B" /></span>
                         )}
-                        <ActionMenu label={`خيارات ${row.name}`} size={16} triggerClassName="w-7 h-7" items={rowMenuItems(row, i)} />
+                        <ActionMenu label={`خيارات ${row.name}`} title={row.name} size={16} triggerClassName="w-7 h-7" items={rowMenuItems(row, i)} />
                       </div>
                     </td>
                     {hasTotalGradeCol && (() => {
