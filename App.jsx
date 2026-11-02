@@ -2439,6 +2439,7 @@ function PrintStyles() {
       .am-trigger-open { background-color: color-mix(in srgb, var(--am-ring) 35%, transparent) !important; }
       .am-dots { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
       .am-trigger-open .am-dots { transform: rotate(90deg) scale(1.1); }
+      .am-trigger[aria-haspopup="dialog"][aria-expanded="true"]:not(.am-trigger-open) .am-dots { transform: rotate(180deg); }
       @keyframes amLand {
         0%   { transform: scale(1);    box-shadow: 0 0 0 0 var(--am-ring); }
         35%  { transform: scale(0.8); }
@@ -2495,6 +2496,117 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
       style={{ color: color || MUTED }}
     >
       <Icon size={13} strokeWidth={2} />
+    </button>
+  );
+}
+
+// نافذة "طائرة": تطلع من زر معيّن لوسط الشاشة وترجع له عند الإغلاق.
+// تُستخدم لاختيار قيمة خانات القائمة المنسدلة ومستوى المهارة بالجدول.
+function useFlyWindow() {
+  const [phase, setPhase] = useState("closed"); // closed | open | closing
+  const [origin, setOrigin] = useState({ dx: 0, dy: 0 });
+  const [landing, setLanding] = useState(false);
+  const anchorRef = useRef(null);
+  const timerRef = useRef(null);
+  const measure = () => {
+    const r = anchorRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setOrigin({ dx: r.left + r.width / 2 - window.innerWidth / 2, dy: r.top + r.height / 2 - window.innerHeight / 2 });
+  };
+  const openWin = () => { clearTimeout(timerRef.current); measure(); setLanding(false); setPhase("open"); };
+  const closeWin = () => { measure(); setPhase((p) => (p === "open" ? "closing" : p)); };
+  useEffect(() => {
+    if (phase !== "closing") return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setPhase("closed");
+      setLanding(true);
+      timerRef.current = setTimeout(() => setLanding(false), 450);
+    }, 300);
+  }, [phase]);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  return { phase, origin, landing, anchorRef, openWin, closeWin };
+}
+
+function FlyWindow({ fly, title, icon: Icon = ListChecks, children, maxWidth = 380 }) {
+  const panelRef = useRef(null);
+  const open = fly.phase === "open";
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); fly.closeWin(); fly.anchorRef.current?.focus({ preventScroll: true }); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const btns = Array.from(panelRef.current?.querySelectorAll("[data-fly-item]:not(:disabled)") || []);
+        if (!btns.length) return;
+        e.preventDefault();
+        const i = btns.indexOf(document.activeElement);
+        btns[e.key === "ArrowDown" ? (i + 1) % btns.length : (i - 1 + btns.length) % btns.length].focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const t = setTimeout(() => (panelRef.current?.querySelector("[data-fly-item][aria-checked=true]") || panelRef.current?.querySelector("[data-fly-item]"))?.focus({ preventScroll: true }), 60);
+    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
+  }, [open]);
+  if (fly.phase === "closed") return null;
+  return createPortal(
+    <div
+      dir="rtl"
+      className={`fixed inset-0 flex items-center justify-center p-4 ${fly.phase === "closing" ? "am-overlay-out" : "am-overlay-in"}`}
+      style={{ zIndex: 80 }}
+      onPointerDown={(e) => { if (e.target === e.currentTarget) fly.closeWin(); }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`am-window w-full rounded-3xl overflow-hidden ${fly.phase === "closing" ? "am-out" : "am-in"}`}
+        style={{
+          maxWidth, maxHeight: "calc(100vh - 32px)", background: "#fff", border: `1px solid ${LINE}`,
+          boxShadow: "0 30px 80px rgba(16,24,22,0.28), 0 4px 12px rgba(16,24,22,0.08)",
+          "--dx": `${fly.origin.dx}px`, "--dy": `${fly.origin.dy}px`, "--n": 8,
+        }}
+      >
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3 am-item" style={{ "--i": 0 }}>
+          <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}>
+            <Icon size={20} color={DASH_GREEN} />
+          </span>
+          <h3 className="flex-1 min-w-0 font-bold text-base truncate" style={{ color: INK }}>{title}</h3>
+          <button type="button" onClick={fly.closeWin} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
+            <X size={18} color={MUTED} />
+          </button>
+        </div>
+        <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>{children}</div>
+      </div>
+    </div>,
+    fly.anchorRef.current?.closest("[data-app-root]") || document.body
+  );
+}
+
+// خيار داخل نافذة الاختيار: دائرة لون + الاسم + علامة صح للمختار
+function FlyChoice({ index, color, label, selected, onPick, muted = false }) {
+  return (
+    <button
+      type="button"
+      data-fly-item=""
+      role="radio"
+      aria-checked={selected}
+      onClick={onPick}
+      className="am-item w-full flex items-center gap-3 px-2 h-12 rounded-xl text-[15px] text-right outline-none hover:bg-black/[0.04] focus:bg-black/[0.05]"
+      style={{ "--i": index, background: selected ? hexToRgba(color || DASH_GREEN, 0.1) : undefined, color: muted ? MUTED : INK }}
+    >
+      <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: color ? hexToRgba(color, 0.14) : PAPER }}>
+        {color ? <span className="w-3.5 h-3.5 rounded-full" style={{ background: color }} /> : <Minus size={16} color={MUTED} />}
+      </span>
+      <span className="flex-1 font-medium">{label}</span>
+      {selected && (
+        <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: color || DASH_GREEN }}>
+          <Check size={14} color="#fff" strokeWidth={3} />
+        </span>
+      )}
     </button>
   );
 }
@@ -6481,31 +6593,39 @@ function BulkSetPopover({ column, onApply, onClose }) {
 }
 
 function DropdownCell({ column, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const selected = (column.options || []).find((o) => o.label === value);
+  const fly = useFlyWindow();
+  const options = column.options || [];
+  const selected = options.find((o) => o.label === value);
+  const pick = (v) => { onChange(v); fly.closeWin(); };
   return (
     <div className="relative flex justify-center">
       <button
+        ref={fly.anchorRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full font-semibold transition-transform active:scale-95"
-        style={selected
-          ? { background: selected.color, color: "#fff", minWidth: "80px", justifyContent: "center", boxShadow: `0 2px 6px ${selected.color}55` }
-          : { border: `1px solid ${LINE}`, background: "#fff", color: MUTED, minWidth: "80px", justifyContent: "center" }}
+        aria-haspopup="dialog"
+        aria-expanded={fly.phase === "open"}
+        aria-label={`${column.name}: ${selected ? selected.label : "بدون"}`}
+        onClick={(e) => { e.stopPropagation(); fly.phase === "open" ? fly.closeWin() : fly.openWin(); }}
+        className={`am-trigger ${fly.landing ? "am-land" : ""} flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full font-semibold`}
+        style={{
+          ...(selected
+            ? { background: selected.color, color: "#fff", minWidth: "84px", justifyContent: "center" }
+            : { border: `1px solid ${LINE}`, background: "#fff", color: MUTED, minWidth: "84px", justifyContent: "center" }),
+          "--am-ring": hexToRgba(selected ? selected.color : DASH_GREEN, 0.4),
+        }}
       >
         <span>{selected ? selected.label : "—"}</span>
+        <ChevronDown size={14} className="am-dots shrink-0" style={{ opacity: 0.8 }} />
       </button>
-      {open && (
-        <div className="absolute z-30 top-full mt-1 rounded-lg shadow-lg py-1 min-w-[130px]" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-          <button onClick={() => { onChange(""); setOpen(false); }} className="w-full text-right px-3 py-1.5 text-xs hover:bg-black/5" style={{ color: MUTED }}>بدون</button>
-          {(column.options || []).map((o) => (
-            <button key={o.id} onClick={() => { onChange(o.label); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-black/5">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: o.color }} />
-              <span style={{ color: INK }}>{o.label}</span>
-            </button>
+      <FlyWindow fly={fly} title={column.name} icon={ListChecks}>
+        <div role="radiogroup" aria-label={column.name}>
+          {options.map((o, i) => (
+            <FlyChoice key={o.id} index={i + 1} color={o.color} label={o.label} selected={value === o.label} onPick={() => pick(o.label)} />
           ))}
+          <div className="my-2 mx-2 h-px am-item" style={{ background: LINE, "--i": options.length + 1 }} />
+          <FlyChoice index={options.length + 2} label="بدون (مسح القيمة)" muted selected={!selected} onPick={() => pick("")} />
         </div>
-      )}
+      </FlyWindow>
     </div>
   );
 }
@@ -6514,21 +6634,28 @@ function DropdownCell({ column, value, onChange }) {
 // موضع المستوى المختار ضمن الترتيب الكامل (مبتدئ ← متقن) بنظرة واحدة —
 // أنسب من رقم مجرّد لمواد المهارات (قراءة، خط...).
 function LevelCell({ column, value, onChange }) {
-  const [open, setOpen] = useState(false);
+  const fly = useFlyWindow();
   const levels = column.levels || [];
   const idx = levels.findIndex((l) => l.label === value);
   const activeColor = idx >= 0 ? levels[idx].color : LINE;
+  const pick = (v) => { onChange(v); fly.closeWin(); };
   return (
     <div className="relative flex flex-col items-center gap-1">
       <button
+        ref={fly.anchorRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold transition-transform active:scale-95"
-        style={idx >= 0
-          ? { background: activeColor, color: "#fff" }
-          : { border: `1px solid ${LINE}`, background: "#fff", color: MUTED }}
+        aria-haspopup="dialog"
+        aria-expanded={fly.phase === "open"}
+        aria-label={`${column.name}: ${idx >= 0 ? levels[idx].label : "بدون"}`}
+        onClick={(e) => { e.stopPropagation(); fly.phase === "open" ? fly.closeWin() : fly.openWin(); }}
+        className={`am-trigger ${fly.landing ? "am-land" : ""} flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold`}
+        style={{
+          ...(idx >= 0 ? { background: activeColor, color: "#fff" } : { border: `1px solid ${LINE}`, background: "#fff", color: MUTED }),
+          "--am-ring": hexToRgba(idx >= 0 ? activeColor : DASH_GREEN, 0.4),
+        }}
       >
         {idx >= 0 ? levels[idx].label : "—"}
+        <ChevronDown size={12} className="am-dots shrink-0" style={{ opacity: 0.8 }} />
       </button>
       {levels.length > 0 && (
         <div className="flex gap-0.5">
@@ -6537,17 +6664,20 @@ function LevelCell({ column, value, onChange }) {
           ))}
         </div>
       )}
-      {open && (
-        <div className="absolute z-30 top-full mt-1 rounded-lg shadow-lg py-1 min-w-[140px]" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
-          <button onClick={() => { onChange(""); setOpen(false); }} className="w-full text-right px-3 py-1.5 text-xs hover:bg-black/5" style={{ color: MUTED }}>بدون</button>
-          {levels.map((l) => (
-            <button key={l.id} onClick={() => { onChange(l.label); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-black/5">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: l.color }} />
-              <span style={{ color: INK }}>{l.label}</span>
-            </button>
+      <FlyWindow fly={fly} title={column.name} icon={Layers}>
+        <div role="radiogroup" aria-label={column.name}>
+          {levels.map((l, i) => (
+            <div key={l.id} className="relative">
+              <FlyChoice index={i + 1} color={l.color} label={l.label} selected={value === l.label} onPick={() => pick(l.label)} />
+              <div className="absolute bottom-1.5 flex gap-0.5 pointer-events-none" style={{ insetInlineStart: 56 }} aria-hidden="true">
+                {levels.map((x, j) => <span key={x.id} className="w-3 h-1 rounded-full" style={{ background: j <= i ? l.color : "#E1E6E4" }} />)}
+              </div>
+            </div>
           ))}
+          <div className="my-2 mx-2 h-px am-item" style={{ background: LINE, "--i": levels.length + 1 }} />
+          <FlyChoice index={levels.length + 2} label="بدون (مسح القيمة)" muted selected={idx < 0} onPick={() => pick("")} />
         </div>
-      )}
+      </FlyWindow>
     </div>
   );
 }
