@@ -2394,6 +2394,9 @@ function useFonts() {
 function useViewportVars() {
   useEffect(() => {
     const root = document.documentElement;
+    // الصفحة كلها من اليمين لليسار (حتى شريط التمرير ومكان العناصر الأصلية بالمتصفح)
+    root.setAttribute("dir", "rtl");
+    root.setAttribute("lang", "ar");
     // أندرويد (كروم): خلي الكيبورد يصغّر الصفحة نفسها
     const meta = document.querySelector('meta[name="viewport"]');
     if (meta && !/interactive-widget/.test(meta.content)) meta.content = `${meta.content}, interactive-widget=resizes-content`;
@@ -2425,9 +2428,75 @@ function useViewportVars() {
   }, []);
 }
 
+// ===== جسر إضافة "فصولي — استيراد من نور" =====
+// الإضافة (بمتصفح المعلم) تضيف زر "استيراد إلى فصولي" داخل نور، وترسل الأسماء
+// لهذه الصفحة عبر window.postMessage. نحفظها مؤقتًا هنا لين يفتح المعلم نافذة
+// الاستيراد. ما فيه أي سيرفر بالنص: كل شي داخل متصفحه.
+const NOOR_PENDING_KEY = "fosooli-noor-pending";
+function readNoorPending() {
+  try { const v = JSON.parse(localStorage.getItem(NOOR_PENDING_KEY) || "null"); return v && Array.isArray(v.students) && v.students.length ? v : null; } catch (e) { return null; }
+}
+function clearNoorPending() { try { localStorage.removeItem(NOOR_PENDING_KEY); } catch (e) { /* ignore */ } }
+function isNoorExtensionInstalled() { return typeof document !== "undefined" && !!document.documentElement.getAttribute("data-fosooli-ext"); }
+function useNoorExtensionBridge() {
+  useEffect(() => {
+    // تنظيف بيانات طريقة "الكوكي" القديمة (كانت تحفظ جلسة نور بالمتصفح)
+    ["fosooli-noor-cookie", "fosooli-noor-api-key", "fosooli-noor-server-url", "fosooli-noor-page-path"].forEach((k) => { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } });
+    const onMsg = (e) => {
+      if (e.source !== window || !e.data || e.data.source !== "fosooli-extension") return;
+      if (e.data.type === "ready") window.dispatchEvent(new CustomEvent("fosooli-ext-ready"));
+      if (e.data.type === "noor-students" && Array.isArray(e.data.students)) {
+        const students = e.data.students
+          .filter((x) => x && typeof x.name === "string" && x.name.trim())
+          .slice(0, 400)
+          .map((x) => ({ name: String(x.name).trim().slice(0, 120), nationalId: String(x.nationalId || "").replace(/[^\d]/g, "").slice(0, 10) }));
+        if (!students.length) return;
+        try { localStorage.setItem(NOOR_PENDING_KEY, JSON.stringify({ students, at: Date.now() })); } catch (err) { /* ignore */ }
+        window.postMessage({ source: "fosooli-app", type: "noor-students-received" }, window.location.origin);
+        window.dispatchEvent(new CustomEvent("fosooli-noor-students"));
+      }
+    };
+    window.addEventListener("message", onMsg);
+    window.postMessage({ source: "fosooli-app", type: "ping" }, window.location.origin);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+}
+// شريط صغير يظهر لو وصلت أسماء من نور والمعلم مو فاتح نافذة الاستيراد
+function NoorPendingBanner() {
+  const [pending, setPending] = useState(() => readNoorPending());
+  const [modalOpen, setModalOpen] = useState(false);
+  useEffect(() => {
+    const onModal = (e) => setModalOpen(!!e.detail);
+    window.addEventListener("fosooli-noor-modal", onModal);
+    return () => window.removeEventListener("fosooli-noor-modal", onModal);
+  }, []);
+  useEffect(() => {
+    const update = () => setTimeout(() => setPending(readNoorPending()), 600);
+    window.addEventListener("fosooli-noor-students", update);
+    window.addEventListener("fosooli-noor-consumed", update);
+    return () => { window.removeEventListener("fosooli-noor-students", update); window.removeEventListener("fosooli-noor-consumed", update); };
+  }, []);
+  if (!pending || modalOpen) return null;
+  return (
+    <div dir="rtl" className="fixed inset-x-3 sm:inset-x-auto sm:left-5 bottom-20 md:bottom-5 z-[65] sm:max-w-sm rounded-2xl p-4 dlg-in" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 18px 44px rgba(16,24,22,0.2)" }}>
+      <div className="flex items-start gap-3">
+        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#E3EEFA" }}><Download size={19} color="#1565C0" /></span>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-sm" style={{ color: INK }}>وصلت {pending.students.length} اسم من نور</p>
+          <p className="text-xs mt-1" style={{ color: MUTED }}>افتح الفصل اللي تبيه، ومن «إدارة الجدول» اضغط «استيراد من نظام نور» عشان تراجعها وتضيفها.</p>
+        </div>
+        <button type="button" aria-label="تجاهل" onClick={() => { clearNoorPending(); setPending(null); }} className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5"><X size={16} color={MUTED} /></button>
+      </div>
+    </div>
+  );
+}
+
 function PrintStyles() {
   useViewportVars();
+  useNoorExtensionBridge();
   return (
+    <>
+    <NoorPendingBanner />
     <style>{`
       /* ===== النوافذ: تظهر من فوق، وتنحصر بالمساحة الظاهرة فوق الكيبورد ===== */
       .dlg-wrap {
@@ -2563,6 +2632,9 @@ function PrintStyles() {
         .data-row .ctr-btn { opacity: 0; transition: opacity 0.15s; }
         .data-row:hover .ctr-btn, .data-row .ctr-btn:focus-visible, .data-row:focus-within .ctr-btn { opacity: 1; }
       }
+      /* خانة العدّاد بدون أسهم المتصفح الصغيرة */
+      .ctr-input::-webkit-inner-spin-button, .ctr-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      .ctr-input { -moz-appearance: textfield; appearance: textfield; }
       /* الأرقام بنفس العرض عشان تصطف */
       .tabular-nums { font-variant-numeric: tabular-nums; }
       .data-row:hover > td { background-color: #F0F4F2 !important; }
@@ -2577,6 +2649,7 @@ function PrintStyles() {
         box-shadow: 0 0 0 3px rgba(15,107,92,0.14);
       }
     `}</style>
+    </>
   );
 }
 
@@ -3838,10 +3911,10 @@ function RowModal({ initial, onClose, onSaveMany, onSaveOne, onDelete, showRowNu
             <>
               <button
                 onClick={() => setShowNoorEmbed(true)}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-3 transition-all hover:brightness-110 active:scale-95 magic-shimmer"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, backgroundSize: "220% 220%" }}
+                className="w-full flex items-center justify-center gap-2 h-11 rounded-xl text-sm font-semibold text-white mb-3 transition-all hover:brightness-95 active:scale-[0.98]"
+                style={{ background: DASH_GREEN }}
               >
-                <ExternalLink size={16} /> استيراد الأسماء من نور تلقائيًا
+                <Download size={16} /> استيراد الأسماء من نظام نور
               </button>
               <p className="text-xs text-center mb-3" style={{ color: MUTED }}>أو ألصق الأسماء يدويًا بالمربع تحت</p>
               <div className="flex items-center justify-between mb-1.5">
@@ -6422,32 +6495,27 @@ function ShawahedHub({ shawahed, onUpdate, onClose, onExport, onQuickPrint, onSh
   );
 }
 
-function NoorEmbedModal({ onImportNames, onClose, isOwner }) {
-  const [mode, setMode] = useState("paste"); // "paste" | "auto"
+function NoorEmbedModal({ onImportNames, onClose, isOwner, targetLabel = "" }) {
+  const [mode, setMode] = useState("extension"); // "extension" | "paste"
   const [pasteText, setPasteText] = useState("");
-  const [selectedIdx, setSelectedIdx] = useState(null); // Set of selected indices, null = not yet computed
-
-  // إعدادات "الوضع الآلي" (خادم وسيط منشور من طرفك) — تُحفظ محليًا بجهازك
-  // فقط (localStorage)، ما تُرفَع لقاعدة البيانات، لأن الكوكي بيانات حساسة.
-  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("fosooli-noor-server-url") || "");
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("fosooli-noor-api-key") || "");
-  const [cookie, setCookie] = useState(() => localStorage.getItem("fosooli-noor-cookie") || "");
-  const [pagePath, setPagePath] = useState(() => localStorage.getItem("fosooli-noor-page-path") || "");
-  const [stage, setStage] = useState("");
-  const [classCode, setClassCode] = useState("");
-  const [sectionCode, setSectionCode] = useState("");
-  const [semester, setSemester] = useState("");
-  const [autoResults, setAutoResults] = useState([]);
-  const [autoLoading, setAutoLoading] = useState(false);
-  const [autoError, setAutoError] = useState("");
-
-  useEffect(() => { localStorage.setItem("fosooli-noor-server-url", serverUrl); }, [serverUrl]);
-  useEffect(() => { localStorage.setItem("fosooli-noor-api-key", apiKey); }, [apiKey]);
-  useEffect(() => { localStorage.setItem("fosooli-noor-cookie", cookie); }, [cookie]);
-  useEffect(() => { localStorage.setItem("fosooli-noor-page-path", pagePath); }, [pagePath]);
-
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [extInstalled, setExtInstalled] = useState(() => isNoorExtensionInstalled());
+  const [extResults, setExtResults] = useState(() => readNoorPending()?.students || []);
+  const [noorOpened, setNoorOpened] = useState(false);
+  const autoResults = extResults;
+  const setAutoResults = setExtResults;
+  useEffect(() => {
+    const onReady = () => setExtInstalled(true);
+    const onStudents = () => { const p = readNoorPending(); if (p) { setExtResults(p.students); setMode("extension"); } };
+    window.addEventListener("fosooli-ext-ready", onReady);
+    window.addEventListener("fosooli-noor-students", onStudents);
+    window.dispatchEvent(new CustomEvent("fosooli-noor-modal", { detail: true }));
+    const t = setInterval(() => setExtInstalled(isNoorExtensionInstalled()), 1500);
+    window.postMessage({ source: "fosooli-app", type: "ping" }, window.location.origin);
+    return () => { window.removeEventListener("fosooli-ext-ready", onReady); window.removeEventListener("fosooli-noor-students", onStudents); clearInterval(t); window.dispatchEvent(new CustomEvent("fosooli-noor-modal", { detail: false })); };
+  }, []);
   const pastedResults = parseNoorStudentTable(pasteText);
-  const parsed = mode === "auto" ? autoResults : pastedResults;
+  const parsed = mode === "extension" ? extResults : pastedResults;
   const selected = selectedIdx || new Set(parsed.map((_, i) => i));
   useEffect(() => {
     // كل مرة يتغيّر الاستخراج (نص جديد لُصق أو نتيجة آلية جديدة) نُعيد تحديد الجميع افتراضيًا
@@ -6465,30 +6533,6 @@ function NoorEmbedModal({ onImportNames, onClose, isOwner }) {
 
   const confirmedCount = parsed.filter((_, i) => selected.has(i)).length;
 
-  const fetchAutomatically = async () => {
-    setAutoError("");
-    setAutoResults([]);
-    if (!serverUrl.trim() || !apiKey.trim() || !cookie.trim() || !pagePath.trim()) {
-      setAutoError("عبّي رابط الخادم ومفتاح API والكوكي ورابط الصفحة أولًا.");
-      return;
-    }
-    setAutoLoading(true);
-    try {
-      const res = await fetch(`${serverUrl.replace(/\/$/, "")}/api/noor/students`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
-        body: JSON.stringify({ cookie, pagePath, stage, classCode, sectionCode, semester }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error([data.error, data.detail].filter(Boolean).join(" — ") || "فشل الجلب");
-      setAutoResults(data.students || []);
-    } catch (err) {
-      setAutoError(err.message === "Failed to fetch" ? "تعذّر الوصول للخادم — تأكد من الرابط ومن أن الخادم يعمل." : err.message);
-    } finally {
-      setAutoLoading(false);
-    }
-  };
-
   const STEPS = [
     "افتح نور بنافذة مستقلة من الزر تحت، وسجّل دخولك بحسابك (عبر نفاذ أو بوابة الدخول الموحد).",
     "من القائمة الجانبية اختر «الطلاب» ← «الطلاب حسب العلاقات التدريسية».",
@@ -6499,47 +6543,83 @@ function NoorEmbedModal({ onImportNames, onClose, isOwner }) {
   ];
 
   return (
-    <Modal title="استيراد الأسماء من نور" onClose={onClose} accent="magic" xl>
-      {isOwner && (
-        <div className="flex gap-2 mb-4">
-          <button onClick={() => setMode("paste")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "paste" ? INK : "transparent", color: mode === "paste" ? "#fff" : MUTED, border: `1px solid ${mode === "paste" ? INK : LINE}` }}>
-            لصق يدوي (يعمل فورًا)
-          </button>
-          <button onClick={() => setMode("auto")} className="flex-1 text-xs font-semibold py-2 rounded-lg" style={{ background: mode === "auto" ? INK : "transparent", color: mode === "auto" ? "#fff" : MUTED, border: `1px solid ${mode === "auto" ? INK : LINE}` }}>
-            الوضع الآلي (يحتاج خادم متصل)
-          </button>
-        </div>
-      )}
+    <Modal title="استيراد الأسماء من نور" onClose={onClose} wide>
+      <div role="tablist" className="flex items-center gap-1 p-1 rounded-xl mb-4 w-fit max-w-full" style={{ background: PAPER }}>
+        {[{ k: "extension", l: "بضغطة من نور" }, { k: "paste", l: "نسخ ولصق" }].map((t) => (
+          <button key={t.k} type="button" role="tab" aria-selected={mode === t.k} onClick={() => setMode(t.k)} className="h-9 px-3.5 rounded-lg text-[13px] font-semibold"
+            style={mode === t.k ? { background: "#fff", color: DASH_GREEN_DARK, boxShadow: "0 1px 2px rgba(16,24,22,0.10)" } : { color: MUTED }}>{t.l}</button>
+        ))}
+      </div>
 
-      {(mode === "paste" || !isOwner) ? (
+      {mode === "extension" ? (
+        extResults.length === 0 && (
+          <>
+            {targetLabel && <p className="text-sm mb-3" style={{ color: INK }}>الأسماء راح تنضاف إلى: <b>{targetLabel}</b></p>}
+            {extInstalled ? (
+              <div className="rounded-2xl p-4 mb-4" style={{ background: hexToRgba(DASH_GREEN, 0.06), border: `1px solid ${hexToRgba(DASH_GREEN, 0.2)}` }}>
+                <p className="text-sm font-bold flex items-center gap-2 mb-3" style={{ color: DASH_GREEN_DARK }}><Check size={16} /> إضافة فصولي مثبّتة بمتصفحك</p>
+                <ol className="space-y-2.5 mb-4">
+                  {[
+                    "اضغط «فتح نظام نور» تحت، وسجّل دخولك (نفاذ أو الدخول الموحد) واختر المدرسة.",
+                    "روح لصفحة فيها جدول طلاب الفصل: الطلاب ← الطلاب حسب العلاقات التدريسية ← «عرض» ← «الطلاب» (أو صفحة إدخال الدرجات بعد اختيار الفصل).",
+                    "اضغط الزر الأزرق «استيراد إلى فصولي» اللي يطلع أسفل صفحة نور.",
+                    "ترجع هنا تلقائيًا وتلقى الأسماء جاهزة للمراجعة والإضافة.",
+                  ].map((t, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm" style={{ color: INK }}>
+                      <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white" style={{ background: i === 2 ? "#1565C0" : DASH_GREEN }}>{i + 1}</span>
+                      <span className="pt-0.5">{t}</span>
+                    </li>
+                  ))}
+                </ol>
+                <button type="button" onClick={() => { window.open("https://noor.moe.gov.sa/", "_blank", "noopener"); setNoorOpened(true); }}
+                  className="w-full h-12 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2" style={{ background: DASH_GREEN }}>
+                  <ExternalLink size={17} /> فتح نظام نور
+                </button>
+                {noorOpened && (
+                  <p className="text-xs mt-3 flex items-center justify-center gap-2" style={{ color: MUTED }}>
+                    <RefreshCw size={13} className="animate-spin" /> بانتظار الأسماء من نور… خلّ هذي النافذة مفتوحة
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl p-4 mb-4" style={{ background: "#F4F8FD", border: "1px solid #D6E4F5" }}>
+                <p className="text-sm font-bold mb-1" style={{ color: INK }}>ثبّت «إضافة فصولي» مرة وحدة</p>
+                <p className="text-xs mb-3" style={{ color: MUTED }}>الإضافة تحط زر «استيراد إلى فصولي» داخل صفحة نور. تشتغل على كروم أو إيدج بالكمبيوتر.</p>
+                <ol className="space-y-2 mb-4 text-sm" style={{ color: INK }}>
+                  <li>1. حمّل ملف الإضافة وفك الضغط عنه بمجلد ثابت (لا تحذفه بعدين).</li>
+                  <li>2. افتح <b dir="ltr">chrome://extensions</b> (أو <b dir="ltr">edge://extensions</b>).</li>
+                  <li>3. فعّل «وضع المطوّر» (Developer mode) من أعلى الصفحة.</li>
+                  <li>4. اضغط «تحميل إضافة غير مضغوطة» (Load unpacked) واختر المجلد.</li>
+                  <li>5. حدّث صفحة فصولي هذي، وارجع لهذي النافذة.</li>
+                </ol>
+                <a href="/fosooli-extension.zip" download className="w-full h-11 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2" style={{ background: "#1565C0" }}>
+                  <Download size={17} /> تحميل إضافة فصولي
+                </a>
+                <p className="text-xs mt-3 text-center" style={{ color: MUTED }}>بالجوال؟ استخدم تبويب «نسخ ولصق».</p>
+              </div>
+            )}
+          </>
+        )
+      ) : (
         <>
-          <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#FCEFE2", border: "1px solid #F0D2CB" }}>
-            <Info size={15} color="#C97A2B" className="shrink-0 mt-0.5" />
-            <p className="text-xs" style={{ color: "#8A4A1E" }}>
-              نور يمنع صراحة فتحه داخل تطبيقات أخرى (إجراء أمني من طرفهم)، لذلك الخطوة تُنجَز بفتح نور بنافذة مستقلة ثم نسخ الجدول ولصقه هنا — الاستخراج والإضافة بعدها تلقائي بالكامل.
-            </p>
-          </div>
-
           <button
-            onClick={() => window.open("https://noor.moe.gov.sa/", "_blank")}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-4 transition-all hover:brightness-110 active:scale-95"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
+            onClick={() => window.open("https://noor.moe.gov.sa/", "_blank", "noopener")}
+            className="w-full flex items-center justify-center gap-2 h-11 rounded-xl text-sm font-semibold text-white mb-4"
+            style={{ background: DASH_GREEN }}
           >
             <ExternalLink size={16} /> فتح نظام نور
           </button>
-
-          <div className="rounded-xl p-3 mb-4" style={{ border: `1px solid ${LINE}`, background: "#F5F7F6" }}>
+          <div className="rounded-xl p-3 mb-4" style={{ border: `1px solid ${LINE}`, background: PAPER }}>
             <p className="text-xs font-bold mb-2" style={{ color: INK }}>خطوات الاستيراد</p>
             <ol className="space-y-1.5">
-              {STEPS.map((s, i) => (
+              {STEPS.map((st, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs" style={{ color: MUTED }}>
                   <span className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 font-bold text-white" style={{ background: DASH_GREEN, fontSize: 9 }}>{i + 1}</span>
-                  {s}
+                  {st}
                 </li>
               ))}
             </ol>
           </div>
-
           <div className="p-3 rounded-xl mb-4" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
             <p className="text-xs font-bold mb-2" style={{ color: INK }}>الصق جدول الطلاب من نور هنا</p>
             <textarea
@@ -6550,49 +6630,18 @@ function NoorEmbedModal({ onImportNames, onClose, isOwner }) {
             />
           </div>
         </>
-      ) : (
-        <>
-          <div className="p-3 rounded-xl mb-3 flex items-start gap-2" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
-            <Info size={15} color={DASH_GREEN} className="shrink-0 mt-0.5" />
-            <p className="text-xs" style={{ color: DASH_GREEN }}>
-              هذا الوضع يحتاج خادمًا وسيطًا منشورًا (راجع ملف <b>noor-proxy-server/README.md</b> اللي أرسلته لك لخطوات الإعداد الكاملة — مرة وحدة فقط). بعد التجهيز، عبّي الحقول تحت وستُحفَظ بجهازك.
-            </p>
-          </div>
-          <Field label="رابط الخادم"><input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} style={inputStyle} placeholder="https://noor-proxy-xxxx.onrender.com" /></Field>
-          <Field label="مفتاح API"><input value={apiKey} onChange={(e) => setApiKey(e.target.value)} style={inputStyle} placeholder="نفس SERVER_API_KEY" /></Field>
-          <Field label="الكوكي (من تبويب Network بنور)"><textarea value={cookie} onChange={(e) => setCookie(e.target.value)} style={{ ...inputStyle, minHeight: 70, fontFamily: "monospace", fontSize: 11 }} placeholder="الصق قيمة هيدر Cookie كاملة" /></Field>
-          <Field label="رابط الصفحة كامل (من شريط العنوان)" hint="انسخه من شريط عنوان المتصفح وأنت واقف بصفحة قائمة الطلاب — يتغيّر كل جلسة دخول، انسخه بنفس وقت الكوكي.">
-            <input value={pagePath} onChange={(e) => setPagePath(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace", fontSize: 11 }} placeholder="https://noor.moe.gov.sa/Noor/UsersManagement/TeacherStudents.aspx?EKME-..." />
-          </Field>
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <input value={stage} onChange={(e) => setStage(e.target.value)} style={inputStyle} placeholder="الصف (اختياري)" />
-            <input value={classCode} onChange={(e) => setClassCode(e.target.value)} style={inputStyle} placeholder="القسم (اختياري)" />
-            <input value={sectionCode} onChange={(e) => setSectionCode(e.target.value)} style={inputStyle} placeholder="الفصل الدراسي (اختياري)" />
-            <input value={semester} onChange={(e) => setSemester(e.target.value)} style={inputStyle} placeholder="فصل آخر (اختياري)" />
-          </div>
-          <button
-            onClick={fetchAutomatically}
-            disabled={autoLoading}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-2 disabled:opacity-60 transition-all hover:brightness-110"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})` }}
-          >
-            {autoLoading ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
-            {autoLoading ? "جاري الجلب..." : "جلب الطلاب تلقائيًا"}
-          </button>
-          {autoError && <p className="text-xs text-center mb-2" style={{ color: "#C0392B" }}>{autoError}</p>}
-        </>
       )}
 
       {parsed.length > 0 && (
         <div className="rounded-2xl overflow-hidden mb-4" style={{ border: `1px solid ${LINE}` }}>
-          <div className="p-4" style={{ background: `linear-gradient(135deg, ${DASH_GREEN}, ${DASH_GREEN_DARK})`, color: "#fff" }}>
+          <div className="p-4" style={{ background: DASH_GREEN, color: "#fff" }}>
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.18)" }}>
                 <Users size={20} color="#fff" />
               </div>
               <div>
                 <p className="font-bold text-base">بيانات الطلاب</p>
-                <p className="text-xs opacity-85">تم استخراج {parsed.length} طالب</p>
+                <p className="text-xs opacity-85">{mode === "extension" ? `وصل من نور ${parsed.length} طالب` : `تم استخراج ${parsed.length} طالب`}{targetLabel ? ` — للإضافة إلى ${targetLabel}` : ""}</p>
               </div>
             </div>
           </div>
@@ -6615,13 +6664,13 @@ function NoorEmbedModal({ onImportNames, onClose, isOwner }) {
           <div className="flex gap-2 p-3" style={{ borderTop: `1px solid ${LINE}` }}>
             <button
               disabled={confirmedCount === 0}
-              onClick={() => onImportNames(parsed.filter((_, i) => selected.has(i)))}
+              onClick={() => { if (mode === "extension") { clearNoorPending(); window.dispatchEvent(new CustomEvent("fosooli-noor-consumed")); } onImportNames(parsed.filter((_, i) => selected.has(i))); }}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 transition-all hover:brightness-110"
               style={{ background: "#0F9D58" }}
             >
               <Download size={15} /> استيراد البيانات {confirmedCount > 0 ? `(${confirmedCount})` : ""}
             </button>
-            <button onClick={() => { setPasteText(""); setAutoResults([]); }} className="px-5 py-2.5 rounded-xl text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: MUTED }}>
+            <button onClick={() => { setPasteText(""); setAutoResults([]); if (mode === "extension") { clearNoorPending(); window.dispatchEvent(new CustomEvent("fosooli-noor-consumed")); } }} className="px-5 py-2.5 rounded-xl text-sm font-semibold" style={{ border: `1px solid ${LINE}`, color: MUTED }}>
               <X size={14} className="inline" /> إلغاء
             </button>
           </div>
@@ -6826,7 +6875,7 @@ function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
 
   return (
     <div className="flex items-center justify-center gap-1.5">
-      <button aria-label="إنقاص" onClick={() => bump(-1)} className="ctr-btn w-9 h-9 md:w-7 md:h-7 rounded-lg flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}`, background: "#fff" }}><Minus size={14} /></button>
+      <button aria-label="زيادة" onClick={() => bump(1)} className="ctr-btn w-9 h-9 md:w-7 md:h-7 rounded-lg flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}`, background: "#fff" }}><Plus size={14} /></button>
       <input
         id={rowId && colId ? cellDomId(rowId, colId) : undefined}
         type="number"
@@ -6836,10 +6885,10 @@ function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
         onKeyDown={(e) => {
           if (e.key === "Enter") { commitNow(n); e.currentTarget.blur(); focusNextCell(nextRowId, colId); }
         }}
-        className="w-10 text-center font-bold text-[15px] bg-transparent tabular-nums"
+        className="ctr-input w-10 text-center font-bold text-[15px] bg-transparent tabular-nums"
         style={{ outline: "none", color: INK }}
       />
-      <button aria-label="زيادة" onClick={() => bump(1)} className="ctr-btn w-9 h-9 md:w-7 md:h-7 rounded-lg flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}`, background: "#fff" }}><Plus size={14} /></button>
+      <button aria-label="إنقاص" onClick={() => bump(-1)} className="ctr-btn w-9 h-9 md:w-7 md:h-7 rounded-lg flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}`, background: "#fff" }}><Minus size={14} /></button>
     </div>
   );
 }
@@ -12698,6 +12747,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const [groupModal, setGroupModal] = useState(null);
   const [scopeAsk, setScopeAsk] = useState(null);
   const [showGroupData, setShowGroupData] = useState(false);
+  const [showNoorImport, setShowNoorImport] = useState(false);
 
   // الجوال: رأس الصفحة الكبير يتمرّر مع الصفحة، ولما يختفي يطلع شريط مضغوط ثابت فوق
   const headerRef = useRef(null);
@@ -13061,6 +13111,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
                 />
               </>)}
               {toolGroup === "table" && (<>
+                <IconBtn icon={Download} label="استيراد من نظام نور" magic disabled={examLocked} onClick={() => setShowNoorImport(true)} />
                 <IconBtn icon={Users} label="أسماء الطلاب" onClick={() => setShowStudentNames(true)} />
                 <IconBtn icon={Award} label="أوسمة التميز" onClick={() => setShowBadges(true)} />
                 <IconBtn icon={RotateCcw} label="تراجع" disabled={examLocked} onClick={restoreLatest} />
@@ -13679,6 +13730,22 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           defaultMode={scopeAsk.kind === "addRows" || scopeAsk.kind === "rename" ? "all" : "this"}
           onConfirm={runScope}
           onCancel={() => setScopeAsk(null)}
+        />
+      )}
+      {showNoorImport && (
+        <NoorEmbedModal
+          isOwner={isOwner}
+          targetLabel={`${cls.grade} — ${sheetLabel(cls)}`}
+          onClose={() => setShowNoorImport(false)}
+          onImportNames={(rows) => {
+            setShowNoorImport(false);
+            // نتجاهل الطلاب الموجودين مسبقًا (بنفس رقم الهوية أو الاسم)
+            const have = new Set(cls.rows.flatMap((r) => [r.nationalId, (r.name || "").trim()]).filter(Boolean));
+            const fresh = rows.filter((r) => !(r.nationalId && have.has(r.nationalId)) && !have.has(r.name.trim()));
+            if (!fresh.length) { showToast("كل الطلاب موجودين بالفصل مسبقًا"); return; }
+            saveRowsMany(fresh.map((r) => ({ name: r.name, type: "text", options: [], color: COLORS[4].hex, autoRenew: false, medicalNote: "", nationalId: r.nationalId || "" })));
+            showToast(`تمت إضافة ${fresh.length} طالب من نور${rows.length > fresh.length ? ` (تجاهلنا ${rows.length - fresh.length} موجودين)` : ""}`);
+          }}
         />
       )}
       {showGroupData && (
