@@ -2388,9 +2388,64 @@ function useFonts() {
 }
 
 // ---------- print system (robust, doesn't rely on Tailwind print: variant) ----------
+// يتابع المساحة الظاهرة فعليًا من الشاشة (تنقص لما يطلع الكيبورد بالجوال)
+// ويحطها بمتغيرات CSS، فالنوافذ تنحصر فوق الكيبورد بدل ما يغطيها. ولما
+// تضغط على خانة كتابة داخل نافذة، تتمرّر الخانة لمكان ظاهر تلقائيًا.
+function useViewportVars() {
+  useEffect(() => {
+    const root = document.documentElement;
+    // أندرويد (كروم): خلي الكيبورد يصغّر الصفحة نفسها
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (meta && !/interactive-widget/.test(meta.content)) meta.content = `${meta.content}, interactive-widget=resizes-content`;
+    const vv = window.visualViewport;
+    const update = () => {
+      const h = vv ? vv.height : window.innerHeight;
+      const top = vv ? vv.offsetTop : 0;
+      root.style.setProperty("--vv-h", `${Math.round(h)}px`);
+      root.style.setProperty("--vv-top", `${Math.round(top)}px`);
+    };
+    update();
+    const onFocus = (e) => {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (!t.matches("input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]), textarea, select, [contenteditable=true]")) return;
+      if (!t.closest(".dlg-panel")) return;
+      setTimeout(() => { try { t.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (err) { /* ignore */ } }, 320);
+    };
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    document.addEventListener("focusin", onFocus);
+    return () => {
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      document.removeEventListener("focusin", onFocus);
+    };
+  }, []);
+}
+
 function PrintStyles() {
+  useViewportVars();
   return (
     <style>{`
+      /* ===== النوافذ: تظهر من فوق، وتنحصر بالمساحة الظاهرة فوق الكيبورد ===== */
+      .dlg-wrap {
+        position: fixed; left: 0; right: 0;
+        top: var(--vv-top, 0px); height: var(--vv-h, 100dvh);
+        display: flex; align-items: flex-start; justify-content: center;
+        padding: calc(env(safe-area-inset-top, 0px) + 12px) 12px 12px;
+        overflow-y: auto; overscroll-behavior: contain;
+      }
+      .dlg-panel { width: 100%; max-height: calc(var(--vv-h, 100dvh) - env(safe-area-inset-top, 0px) - 24px); }
+      @media (min-width: 640px) {
+        .dlg-wrap { padding: max(5vh, 32px) 24px 24px; }
+        .dlg-panel { max-height: calc(var(--vv-h, 100dvh) - max(5vh, 32px) - 24px); }
+      }
+      @keyframes dlgIn { from { opacity: 0; transform: translateY(-14px) scale(0.985); } to { opacity: 1; transform: none; } }
+      .dlg-in { animation: dlgIn 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      @media (prefers-reduced-motion: reduce) { .dlg-in { animation: none; } }
+
       html, body { overscroll-behavior-y: contain; }
       .app-print-root { display: none; }
       @media print {
@@ -2668,19 +2723,19 @@ function FlyWindow({ fly, title, icon: Icon = ListChecks, children, maxWidth = 3
   return createPortal(
     <div
       dir="rtl"
-      className="fixed inset-0 flex items-center justify-center p-4"
-      style={{ zIndex: 80 }}
+      className="dlg-wrap"
+      style={{ zIndex: 80, overflow: "hidden" }}
       onPointerDown={(e) => { if (e.target === e.currentTarget || e.target === overlayRef.current) fly.closeWin(); }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div ref={overlayRef} className="absolute inset-0" style={{ background: "rgba(16,24,22,0.36)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", opacity: 0 }} />
+      <div ref={overlayRef} className="fixed inset-0" style={{ background: "rgba(16,24,22,0.36)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", opacity: 0 }} />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative w-full overflow-hidden fly-panel ${fly.phase === "open" ? "fly-open" : ""}`}
-        style={{ maxWidth, maxHeight: "calc(100vh - 32px)", background: "#fff", borderRadius: 24, boxShadow: FLY_SHADOW, transformOrigin: "50% 50%" }}
+        className={`dlg-panel relative w-full overflow-hidden fly-panel ${fly.phase === "open" ? "fly-open" : ""}`}
+        style={{ maxWidth, background: "#fff", borderRadius: 24, boxShadow: FLY_SHADOW, transformOrigin: "50% 50%", marginTop: "min(6vh, 48px)" }}
       >
         <div ref={contentRef}>
           <div className="flex items-center gap-3 px-5 pt-5 pb-3">
@@ -2692,7 +2747,7 @@ function FlyWindow({ fly, title, icon: Icon = ListChecks, children, maxWidth = 3
               <X size={18} color={MUTED} />
             </button>
           </div>
-          <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>{children}</div>
+          <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(var(--vv-h, 100dvh) - 160px)" }}>{children}</div>
         </div>
       </div>
     </div>,
@@ -2922,16 +2977,16 @@ function DateField({ value, onChange }) {
 function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = "حذف" }) {
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 modal-backdrop-in"
-      style={{ background: "rgba(35,38,34,0.5)" }}
+      className="dlg-wrap z-[70] modal-backdrop-in"
+      style={{ background: "rgba(16,24,22,0.5)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div className="rounded-2xl shadow-2xl w-full max-w-sm p-5 modal-panel-in" style={{ background: PAPER, border: `1px solid ${LINE}` }}>
+      <div role="alertdialog" aria-modal="true" aria-label={title} className="dlg-panel rounded-2xl w-full max-w-sm p-5 dlg-in overflow-y-auto sm:mt-[10vh]" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 24px 60px rgba(16,24,22,0.22)" }}>
         <h3 className="font-bold text-base mb-2" style={{ color: INK }}>{title}</h3>
         <p className="text-sm mb-5" style={{ color: MUTED }}>{message}</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-medium active:scale-95 transition-transform" style={{ color: MUTED }}>إلغاء</button>
-          <button onClick={onConfirm} className="px-4 py-2 rounded-lg text-sm font-bold text-white active:scale-95 transition-transform" style={{ background: "#C0392B" }}>{confirmLabel}</button>
+          <button onClick={onCancel} className="h-10 px-4 rounded-xl text-sm font-semibold active:scale-95 transition-transform" style={{ color: INK, border: `1px solid ${LINE}` }}>إلغاء</button>
+          <button onClick={onConfirm} className="h-10 px-4 rounded-xl text-sm font-semibold text-white active:scale-95 transition-transform" style={{ background: "#B42318" }}>{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -3010,7 +3065,7 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
   const isMagic = accent === "magic";
 
   useEffect(() => {
-    const t = setTimeout(() => setEntered(true), 520);
+    const t = setTimeout(() => setEntered(true), 280);
     return () => clearTimeout(t);
   }, []);
 
@@ -3039,12 +3094,12 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
 
   return (
     <div
-      className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4 modal-backdrop-in"
+      className="dlg-wrap modal-backdrop-in"
       style={{ background: "rgba(16,24,22,0.5)", zIndex }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className={`rounded-t-2xl sm:rounded-2xl w-full ${widthClass} modal-max-height overflow-y-auto ${entered ? "" : "modal-panel-in"}`}
+        className={`dlg-panel rounded-2xl w-full ${widthClass} overflow-y-auto ${entered ? "" : "dlg-in"}`}
         style={{ background: "#fff", border: `1px solid ${LINE}`, ...(pos.x || pos.y ? { transform: `translate(${pos.x}px, ${pos.y}px)` } : {}), boxShadow: "0 24px 60px rgba(16,24,22,0.22)" }}
       >
         <div
@@ -5218,14 +5273,14 @@ function PeriodComparisonModal({ cls, onClose, onPrint }) {
 // — مناسبة لشاشات المحتوى الطويلة (زي فتح شاهد فيه ملفات ومجلدات).
 function BottomSheetModal({ title, onClose, onBack, children }) {
   return (
-    <div className="fixed inset-0 flex flex-col justify-end" style={{ background: "rgba(25,28,25,0.55)", zIndex: 55 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sheet-slide-up rounded-t-3xl overflow-hidden mx-auto w-full" style={{ background: PAPER, maxWidth: 720, maxHeight: "92dvh", display: "flex", flexDirection: "column" }}>
-        <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
+    <div className="dlg-wrap modal-backdrop-in" style={{ background: "rgba(16,24,22,0.5)", zIndex: 55 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="dlg-panel dlg-in rounded-2xl overflow-hidden w-full" style={{ background: "#fff", maxWidth: 720, display: "flex", flexDirection: "column", border: `1px solid ${LINE}`, boxShadow: "0 24px 60px rgba(16,24,22,0.22)" }}>
+        <div className="flex items-center justify-between gap-3 px-5 py-4 shrink-0" style={{ borderBottom: `1px solid ${LINE}` }}>
           <div className="flex items-center gap-2 min-w-0">
-            {onBack && <button onClick={onBack} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><ArrowRight size={18} color="#fff" /></button>}
-            <h3 className="font-bold text-base truncate" style={{ color: "#fff" }}>{title}</h3>
+            {onBack && <button onClick={onBack} aria-label="رجوع" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5"><ArrowRight size={18} color={MUTED} /></button>}
+            <h3 className="font-bold text-lg truncate" style={{ color: INK }}>{title}</h3>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><X size={20} color="#fff" /></button>
+          <button onClick={onClose} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5"><X size={18} color={MUTED} /></button>
         </div>
         <div className="overflow-y-auto p-5" style={{ flex: 1 }}>
           {children}
@@ -9151,9 +9206,9 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
 function GameClassPickerModal({ classes, onSelect, onClose, onBack }) {
   const activeClasses = classes.filter((c) => !c.archived);
   return (
-    <div className="fixed inset-0 flex flex-col" style={{ background: "rgba(25,28,25,0.55)", zIndex: 60 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full mx-auto mt-auto mb-auto sm:mt-16" style={{ maxWidth: 460 }}>
-        <div className="rounded-2xl overflow-hidden" style={{ background: PAPER, border: `1px solid ${LINE}`, maxHeight: "80dvh", display: "flex", flexDirection: "column" }}>
+    <div className="dlg-wrap modal-backdrop-in" style={{ background: "rgba(16,24,22,0.5)", zIndex: 60 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full dlg-in" style={{ maxWidth: 460 }}>
+        <div className="dlg-panel rounded-2xl overflow-hidden" style={{ background: PAPER, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
           <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
             <div className="flex items-center gap-2">
               {onBack && <button onClick={onBack} className="p-1 rounded-lg hover:bg-white/10"><ArrowRight size={18} color="#fff" /></button>}
@@ -10711,8 +10766,8 @@ function DisplayBoard({ cls, onClose, onPrint, onExtractAll }) {
     }
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-in" style={{ background: "rgba(35,38,34,0.45)" }}>
-      <div className="rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col modal-panel-in" style={{ background: "#fff" }}>
+    <div className="dlg-wrap z-50 modal-backdrop-in" style={{ background: "rgba(16,24,22,0.5)" }}>
+      <div className="dlg-panel rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col dlg-in" style={{ background: "#fff" }}>
         <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-2" style={{ borderBottom: `1px solid ${LINE}` }}>
           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: INK }}>{cls.emoji && <span>{cls.emoji}</span>}لوحة العرض — {cls.subject}</h3>
           <div className="flex items-center flex-wrap gap-2">
