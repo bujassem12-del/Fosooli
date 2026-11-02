@@ -2408,6 +2408,41 @@ function PrintStyles() {
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
       }
+      /* ===== حركة القوائم المنبثقة من الأيقونة ===== */
+      .am-panel { transform-origin: var(--ox) var(--oy); will-change: transform, clip-path, opacity; }
+      @keyframes amIn {
+        0%   { opacity: 0; transform: scale(0.4); clip-path: circle(0px at var(--ox) var(--oy)); filter: blur(6px); }
+        45%  { opacity: 1; filter: blur(0); }
+        100% { opacity: 1; transform: scale(1); clip-path: circle(150% at var(--ox) var(--oy)); filter: blur(0); }
+      }
+      @keyframes amOut {
+        0%   { opacity: 1; transform: scale(1); clip-path: circle(150% at var(--ox) var(--oy)); filter: blur(0); }
+        100% { opacity: 0.3; transform: scale(0.35); clip-path: circle(0px at var(--ox) var(--oy)); filter: blur(4px); }
+      }
+      .am-in  { animation: amIn 0.46s cubic-bezier(0.34, 1.32, 0.64, 1) both; }
+      .am-out { animation: amOut 0.26s cubic-bezier(0.6, 0, 0.8, 0.25) both; pointer-events: none; }
+      @keyframes amItemIn { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
+      @keyframes amItemOut { to { opacity: 0; transform: translateY(-4px); } }
+      .am-in .am-item  { animation: amItemIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(70ms + var(--i, 0) * 30ms); }
+      .am-out .am-item { animation: amItemOut 0.14s ease-in both; animation-delay: calc((var(--n, 1) - var(--i, 0)) * 10ms); }
+      .am-trigger { transition: background-color 0.2s, transform 0.2s; }
+      .am-trigger:active { transform: scale(0.9); }
+      .am-trigger:focus { outline: none; }
+      .am-trigger:focus-visible { outline: 2px solid var(--am-ring); outline-offset: 2px; }
+      .am-trigger-open { background-color: var(--am-ring) !important; background-color: color-mix(in srgb, var(--am-ring) 35%, transparent) !important; }
+      .am-dots { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+      .am-trigger-open .am-dots { transform: rotate(90deg) scale(1.1); }
+      @keyframes amLand {
+        0%   { transform: scale(1);    box-shadow: 0 0 0 0 var(--am-ring); }
+        35%  { transform: scale(0.84); }
+        70%  { transform: scale(1.1);  box-shadow: 0 0 0 9px transparent; }
+        100% { transform: scale(1);    box-shadow: 0 0 0 0 transparent; }
+      }
+      .am-land { animation: amLand 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
+      @media (prefers-reduced-motion: reduce) {
+        .am-in, .am-out, .am-in .am-item, .am-out .am-item, .am-land { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+        .am-dots { transition: none; }
+      }
       .data-row > td { transition: background-color 0.12s; }
       .data-row:hover > td { background-color: #F0F4F2 !important; }
       @keyframes drift1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-3%, 4%) scale(1.06); } }
@@ -2454,47 +2489,105 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
   );
 }
 
-// قائمة "⋯" موحّدة لكل الإجراءات الثانوية (صف طالب، عمود، أدوات الصفحة).
+// قائمة "⋯" موحّدة لكل الإجراءات الثانوية (صف طالب، عمود، بطاقة فصل، أدوات).
 // تُرسم بموضع ثابت على الشاشة، فما تنقص داخل الجداول القابلة للتمرير.
+// الحركة: القائمة "تنبثق" من الأيقونة نفسها (دائرة تتوسّع من مركز الزر مع
+// ارتداد خفيف وظهور العناصر بالتتابع)، وعند الإغلاق "تنسحب" راجعة للأيقونة
+// وتنبض الأيقونة نبضة صغيرة كأنها استقبلتها. نفس السلوك بالجوال والآيباد
+// واللابتوب، وتختفي الحركة تلقائيًا لمن فعّل "تقليل الحركة" بجهازه.
 // items: [{ icon, label, onClick, danger?, disabled? } | "sep" | false]
+const MENU_W = 232;
+const MENU_OUT_MS = 260;
 function ActionMenu({ items, label = "خيارات", size = 18, triggerClassName = "w-8 h-8", triggerStyle = undefined, triggerContent = null }) {
-  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState("closed"); // closed | open | closing
   const [pos, setPos] = useState(null);
+  const [landing, setLanding] = useState(false);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+  const timerRef = useRef(null);
   const list = (items || []).filter(Boolean);
+  const open = phase === "open";
+
+  const close = () => {
+    setPhase((p) => (p === "open" ? "closing" : p));
+  };
+
+  // بعد انتهاء حركة الإغلاق: نشيل القائمة وننبّض الأيقونة
+  useEffect(() => {
+    if (phase !== "closing") return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setPhase("closed");
+      setPos(null);
+      setLanding(true);
+      timerRef.current = setTimeout(() => setLanding(false), 420);
+    }, MENU_OUT_MS);
+  }, [phase]);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const toggle = (e) => {
+    e.stopPropagation();
+    if (phase === "open") { close(); return; }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const W = Math.min(MENU_W, vw - 16);
+    // RTL: نحاذي الحافة اليمنى للقائمة مع الزر، ونقلبها لو طلعت برّا الشاشة
+    let left = r.right - W;
+    if (left < 8) left = Math.min(r.left, vw - W - 8);
+    left = Math.max(8, left);
+    const rowH = vw < 640 ? 44 : 40;
+    const seps = list.filter((it) => it === "sep").length;
+    const estH = Math.min((list.length - seps) * rowH + seps * 13 + 14, vh - 16);
+    // تحت الأيقونة إن كفى المكان، وإلا فوقها، وإلا نلصقها بأقرب حافة تكفيها
+    let top = r.bottom + 8;
+    if (top + estH > vh - 8) {
+      top = r.top - estH - 8;
+      if (top < 8) top = Math.max(8, vh - estH - 8);
+    }
+    // مركز الأيقونة منسوبًا للقائمة — منه تنبثق ولها ترجع
+    const ox = r.left + r.width / 2 - left;
+    const oy = r.top + r.height / 2 - top;
+    clearTimeout(timerRef.current);
+    setLanding(false);
+    setPos({ left, top, width: W, ox, oy });
+    setPhase("open");
+  };
 
   useEffect(() => {
     if (!open) return;
-    const r = btnRef.current?.getBoundingClientRect();
-    if (r) {
-      const W = 232;
-      const vw = window.innerWidth, vh = window.innerHeight;
-      // RTL: نحاذي الحافة اليمنى للقائمة مع الزر، ونقلبها لو طلعت برّا الشاشة
-      let left = r.right - W;
-      if (left < 8) left = Math.min(r.left, vw - W - 8);
-      const estH = Math.min(list.length * 40 + 16, vh - 16);
-      let top = r.bottom + 6;
-      if (top + estH > vh - 8) top = Math.max(8, r.top - estH - 6);
-      setPos({ left: Math.max(8, left), top });
-    }
     const onDown = (e) => {
       if (menuRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
-      setOpen(false);
+      close();
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
-    const close = () => setOpen(false);
+    const onKey = (e) => { if (e.key === "Escape") { close(); btnRef.current?.focus(); } };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
+    // تركيز أول عنصر للوحة المفاتيح
+    const t = setTimeout(() => menuRef.current?.querySelector("button:not(:disabled)")?.focus({ preventScroll: true }), 30);
     return () => {
+      clearTimeout(t);
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", close, true);
     };
   }, [open]);
+
+  // أسهم لوحة المفاتيح داخل القائمة
+  const onMenuKey = (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const btns = Array.from(menuRef.current?.querySelectorAll("button:not(:disabled)") || []);
+    const i = btns.indexOf(document.activeElement);
+    const next = e.key === "ArrowDown" ? (i + 1) % btns.length : (i - 1 + btns.length) % btns.length;
+    btns[next]?.focus();
+  };
+
+  let itemIndex = 0;
+  const itemCount = list.filter((it) => it !== "sep").length;
 
   return (
     <>
@@ -2505,37 +2598,45 @@ function ActionMenu({ items, label = "خيارات", size = 18, triggerClassName
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={(e) => { e.stopPropagation(); setPos(null); setOpen((o) => !o); }}
-        className={`${triggerClassName} rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5 active:scale-95 transition-transform`}
-        style={triggerStyle}
+        onClick={toggle}
+        className={`${triggerClassName} am-trigger ${open ? "am-trigger-open" : ""} ${landing ? "am-land" : ""} rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5`}
+        style={{ ...(triggerStyle || {}), "--am-ring": hexToRgba(DASH_GREEN, 0.35) }}
       >
-        {triggerContent || <MoreHorizontal size={size} color={MUTED} />}
+        {triggerContent || <MoreHorizontal size={size} color={open ? DASH_GREEN : MUTED} className="am-dots" />}
       </button>
-      {open && pos && createPortal(
+      {phase !== "closed" && pos && createPortal(
         <div
           ref={menuRef}
           role="menu"
+          aria-label={label}
           dir="rtl"
-          className="fixed py-1.5 rounded-xl overflow-y-auto"
-          style={{ left: pos.left, top: pos.top, width: 232, maxHeight: "calc(100vh - 16px)", zIndex: 70, background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 12px 32px rgba(16,24,22,0.16)" }}
+          onKeyDown={onMenuKey}
+          className={`fixed py-1.5 rounded-2xl overflow-y-auto am-panel ${phase === "closing" ? "am-out" : "am-in"}`}
+          style={{
+            left: pos.left, top: pos.top, width: pos.width, maxHeight: "calc(100vh - 16px)", zIndex: 70,
+            background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 16px 40px rgba(16,24,22,0.18), 0 2px 6px rgba(16,24,22,0.06)",
+            "--ox": `${pos.ox}px`, "--oy": `${pos.oy}px`, "--n": itemCount,
+          }}
           onClick={(e) => e.stopPropagation()}
         >
-          {list.map((it, i) => it === "sep" ? (
-            <div key={`sep${i}`} className="my-1.5 h-px" style={{ background: LINE }} />
-          ) : (
-            <button
-              key={`${it.label}${i}`}
-              type="button"
-              role="menuitem"
-              disabled={it.disabled}
-              onClick={() => { setOpen(false); it.onClick(); }}
-              className="w-full flex items-center gap-2.5 px-3 h-10 text-sm text-right hover:bg-black/[0.04] disabled:opacity-35 disabled:pointer-events-none"
-              style={{ color: it.danger ? "#A01E14" : INK }}
-            >
-              {it.icon && <it.icon size={16} color={it.danger ? "#A01E14" : MUTED} className="shrink-0" />}
-              <span className="flex-1">{it.label}</span>
-            </button>
-          ))}
+          {list.map((it, i) => {
+            if (it === "sep") return <div key={`sep${i}`} className="my-1.5 h-px am-item" style={{ background: LINE, "--i": itemIndex }} />;
+            const idx = itemIndex++;
+            return (
+              <button
+                key={`${it.label}${i}`}
+                type="button"
+                role="menuitem"
+                disabled={it.disabled}
+                onClick={() => { close(); it.onClick(); }}
+                className="am-item w-full flex items-center gap-2.5 px-3 h-11 sm:h-10 text-sm text-right hover:bg-black/[0.04] focus:bg-black/[0.05] outline-none disabled:opacity-35 disabled:pointer-events-none"
+                style={{ color: it.danger ? "#A01E14" : INK, "--i": idx }}
+              >
+                {it.icon && <it.icon size={16} color={it.danger ? "#A01E14" : MUTED} className="shrink-0" />}
+                <span className="flex-1">{it.label}</span>
+              </button>
+            );
+          })}
         </div>,
         // داخل غلاف التطبيق (عشان يتأثر بالوضع الليلي)، وإلا body
         btnRef.current?.closest("[data-app-root]") || document.body
@@ -10483,7 +10584,6 @@ function PrintContent({ job }) {
 
 function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplicate, onTogglePin, onToggleLock, onMove, onNewTerm, animating, isFirst, isLast }) {
   const [showColors, setShowColors] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const locked = !!cls.locked;
   const studentCount = (cls.rows || []).length;
@@ -10491,13 +10591,12 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
 
   // إغلاق القائمة عند الضغط خارجها
   useEffect(() => {
-    if (!menuOpen && !showColors) return;
-    const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) { setMenuOpen(false); setShowColors(false); } };
+    if (!showColors) return;
+    const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setShowColors(false); };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
-  }, [menuOpen, showColors]);
+  }, [showColors]);
 
-  const run = (fn) => (e) => { e.stopPropagation(); setMenuOpen(false); fn(); };
   const menuItems = [
     { icon: cls.pinned ? PinOff : Pin, label: cls.pinned ? "إلغاء التثبيت" : "تثبيت في الأعلى", onClick: () => onTogglePin(cls.id) },
     { icon: locked ? Unlock : Lock, label: locked ? "فتح القفل" : "قفل الفصل", onClick: () => onToggleLock(cls.id) },
@@ -10516,7 +10615,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
   return (
     <div
       className={`rounded-2xl relative card-in transition-shadow duration-200 ${animating ? "trash-toss" : ""}`}
-      style={{ background: "#fff", border: `1px solid ${cls.pinned ? hexToRgba(DASH_GREEN, 0.45) : LINE}`, boxShadow: "0 1px 2px rgba(16,24,22,0.04)", zIndex: menuOpen || showColors ? 30 : undefined }}
+      style={{ background: "#fff", border: `1px solid ${cls.pinned ? hexToRgba(DASH_GREEN, 0.45) : LINE}`, boxShadow: "0 1px 2px rgba(16,24,22,0.04)", zIndex: showColors ? 30 : undefined }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 8px 24px rgba(16,24,22,0.08)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 1px 2px rgba(16,24,22,0.04)"; }}
     >
@@ -10555,30 +10654,10 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
         </div>
         {locked && <p className="text-xs font-semibold -mt-2" style={{ color: "#A01E14" }}>الفصل مقفل — افتحه من قائمة الخيارات</p>}
       </div>
-      <div ref={menuRef} className="absolute top-4 left-4 z-20" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          aria-label="خيارات الفصل"
-          aria-expanded={menuOpen}
-          onClick={() => { setMenuOpen((o) => !o); setShowColors(false); }}
-          className="w-10 h-10 -m-1 rounded-xl flex items-center justify-center hover:bg-black/5"
-        >
-          <MoreHorizontal size={20} color={MUTED} />
-        </button>
-        {menuOpen && (
-          <div className="absolute top-11 left-0 z-30 w-56 py-1.5 rounded-xl" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 12px 32px rgba(16,24,22,0.14)" }}>
-            {menuItems.map((it, i) => it === "sep" ? (
-              <div key={`s${i}`} className="my-1.5 h-px" style={{ background: LINE }} />
-            ) : (
-              <button key={it.label} type="button" onClick={run(it.onClick)} className="w-full flex items-center gap-2.5 px-3 h-10 text-sm text-right hover:bg-black/[0.04]" style={{ color: it.danger ? "#A01E14" : INK }}>
-                <it.icon size={16} color={it.danger ? "#A01E14" : MUTED} />
-                {it.label}
-              </button>
-            ))}
-          </div>
-        )}
+      <div ref={menuRef} className="absolute top-3 left-3 z-20" onClick={(e) => e.stopPropagation()}>
+        <ActionMenu label="خيارات الفصل" size={20} triggerClassName="w-10 h-10" items={menuItems} />
         {showColors && (
-          <div className="absolute top-11 left-0 z-30 p-2.5 rounded-xl" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 12px 32px rgba(16,24,22,0.14)" }}>
+          <div className="absolute top-11 left-0 z-30 p-2.5 rounded-2xl am-panel am-in" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 16px 40px rgba(16,24,22,0.18)", "--ox": "20px", "--oy": "-24px" }}>
             <ColorSwatches value={cls.color} onChange={(hex) => { onColor(cls.id, hex); setShowColors(false); }} />
           </div>
         )}
