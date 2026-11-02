@@ -12715,6 +12715,26 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   }, [isMobile]);
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
+  // اللابتوب: الجدول ياخذ باقي ارتفاع الشاشة بالضبط، فالصفحة نفسها ما تتمرّر
+  // والتمرير يصير داخل الجدول بس (بدون ما "يعلق" التمرير بين الصفحة والجدول)
+  const tableBoxRef = useRef(null);
+  const [tableMaxH, setTableMaxH] = useState(null);
+  useEffect(() => {
+    if (isMobile) { setTableMaxH(null); return; }
+    const calc = () => {
+      const el = tableBoxRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setTableMaxH(Math.max(320, Math.floor(window.innerHeight - top - 16)));
+    };
+    calc();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(calc) : null;
+    if (ro && headerRef.current) ro.observe(headerRef.current);
+    window.addEventListener("resize", calc);
+    const t = setTimeout(calc, 600); // بعد حركة دخول الصفحة
+    return () => { ro?.disconnect(); window.removeEventListener("resize", calc); clearTimeout(t); };
+  }, [isMobile, selectedRowIds.length, toolGroup, cls.id]);
+
   const switchSubject = (subject) => {
     if (subject === cls.subject) return;
     const units = gSheets.filter((c) => c.subject === subject);
@@ -12823,7 +12843,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   });
 
   return (
-    <div className="max-w-[1800px] mx-auto px-4 py-6 page-fade-in class-print-area">
+    <div className="max-w-[1800px] mx-auto px-4 pt-4 pb-4 md:pt-5 page-fade-in class-print-area">
       {toast && (
         <div className="fixed top-4 inset-x-0 z-[60] flex justify-center pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg toast-pop" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
@@ -12862,24 +12882,21 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           </div>
         </div>
       )}
-      <div ref={headerRef} className={isMobile ? "pb-2" : "sticky top-0 z-20 pb-2"} style={{ background: PAPER }}>
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold hover:opacity-70" style={{ color: MUTED }}>
-            <ArrowRight size={16} /> رجوع للفصول
-          </button>
-          <SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={onRetrySave} />
-        </div>
-
+      <div ref={headerRef} className="pb-1" style={{ background: PAPER }}>
         <div className="flex items-center gap-3 mb-3">
+          <button onClick={onBack} aria-label="رجوع للفصول" title="رجوع للفصول" className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5" style={{ border: `1px solid ${LINE}`, background: "#fff" }}>
+            <ArrowRight size={18} color={INK} />
+          </button>
           <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-lg" style={{ background: colorLight(cls.color), color: cls.color }}>
             {cls.emoji ? cls.emoji : <BookOpen size={20} />}
           </span>
-          <div className="min-w-0">
-            <h1 className="text-[22px] md:text-[28px] font-bold leading-tight truncate" style={{ color: INK, letterSpacing: "-0.01em" }}>{cls.subject}</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[22px] md:text-[26px] font-bold leading-tight truncate" style={{ color: INK, letterSpacing: "-0.01em" }}>{cls.subject}</h1>
             <p className="text-sm truncate" style={{ color: MUTED }}>
               {[cls.grade, unitLabel(cls), `${cls.rows.length} طالب`, cls.teacher, cls.yearHijri && `${cls.yearHijri} هـ`].filter(Boolean).join(" · ")}
             </p>
           </div>
+          <div className="shrink-0 self-start"><SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={onRetrySave} /></div>
         </div>
 
         {examLocked && (
@@ -12891,9 +12908,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
 
-        {/* ===== تبويبات المواد والوحدات ===== */}
-        <div className="flex flex-col gap-2 mb-3">
-          <div role="tablist" aria-label="المواد" className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
+        {/* ===== تبويبات المواد والوحدات (بالجوال فوق بعض، باللابتوب بنفس السطر) ===== */}
+        <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
+          <div role="tablist" aria-label="المواد" className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1 md:mx-0 md:px-0 md:pb-0 min-w-0 md:flex-1">
             {gSubjects.map((sj) => {
               const active = sj === cls.subject;
               return (
@@ -12923,7 +12940,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
               <Plus size={15} /> مادة
             </button>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0 md:shrink-0">
             <div role="tablist" aria-label="الوحدات" className="flex items-center gap-1 p-1 rounded-xl overflow-x-auto min-w-0" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
               {gUnits.map((u) => {
                 const active = u.id === cls.id;
@@ -13064,7 +13081,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-2">
         {selectedRowIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 mb-3 p-2.5 rounded-xl" style={{ background: "#EAF3F0", border: "1px solid #C9E2DB" }}>
             <span className="text-sm font-bold px-2" style={{ color: "#0F6B5C" }}>{selectedRowIds.length} طالب محدد</span>
@@ -13079,9 +13096,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           </div>
         )}
 
-      <div className="rounded-2xl" style={isMobile && cls.columns.length > 0 && cls.rows.length > 0
+      <div ref={tableBoxRef} className="rounded-2xl" style={isMobile && cls.columns.length > 0 && cls.rows.length > 0
         ? { background: "transparent" }
-        : { background: "#fff", border: `1px solid ${LINE}`, maxHeight: "70vh", overflowX: "auto", overflowY: "auto" }}>
+        : { background: "#fff", border: `1px solid ${LINE}`, maxHeight: tableMaxH || "70vh", overflowX: "auto", overflowY: "auto", overscrollBehavior: "contain" }}>
         {cls.columns.length === 0 || cls.rows.length === 0 ? (
           <div className="text-center py-16" style={{ color: MUTED }}>
             <p className="font-semibold mb-1">لا توجد بيانات بعد</p>
