@@ -11960,9 +11960,21 @@ function UnitsSummary({ cls, groupSheets }) {
   const subjects = subjectsOf(groupSheets);
   const [subject, setSubject] = useState(cls.subject);
   const [mode, setMode] = useState("both"); // sum | avg | both
-  const units = groupSheets.filter((c) => c.subject === subject);
-  const base = units[0] || cls;
+  const allUnits = groupSheets.filter((c) => c.subject === subject);
+  // الوحدات الداخلة بالحساب (للعرض وللرصد في نور)
+  const [excluded, setExcluded] = useState([]);
+  const units = allUnits.filter((u) => !excluded.includes(u.id));
+  const base = allUnits[0] || cls;
   const fmt = (n) => (Math.round(n * 100) / 100).toString();
+  // الرصد في نور
+  const [scale, setScale] = useState("40");
+  const [roundInt, setRoundInt] = useState(true);
+  const [sendState, setSendState] = useState(""); // "" | sent | noext
+  useEffect(() => {
+    const onSaved = (e) => { if (e.source === window && e.data && e.data.source === "fosooli-extension" && e.data.type === "noor-grades-saved") setSendState(e.data.ok ? "sent" : "noext"); };
+    window.addEventListener("message", onSaved);
+    return () => window.removeEventListener("message", onSaved);
+  }, []);
   const rows = (base.rows || []).map((row) => {
     const per = units.map((u) => { const m = matchRow(u, row); return m ? totalGrade(u, m.id) : null; });
     const valid = per.filter(Boolean);
@@ -11973,6 +11985,18 @@ function UnitsSummary({ cls, groupSheets }) {
   });
   const band = (pct) => pct === null ? { c: MUTED, bg: PAPER } : pct >= 90 ? { c: "#0B5246", bg: "#E3F1EE" } : pct >= 65 ? { c: "#7A4F00", bg: "#FBF0D9" } : { c: "#A01E14", bg: "#FDE7E5" };
   const noGrades = units.every((u) => !u.columns.some((c) => c.type === "counter" && Number(c.maxValue) > 0));
+  const sendToNoor = () => {
+    const max = Number(scale) || 40;
+    const students = rows.map(({ row, sumScore, sumMax }) => {
+      const raw = sumMax ? (sumScore / sumMax) * max : null;
+      return { name: row.name, nationalId: row.nationalId || "", score: raw === null ? null : (roundInt ? Math.round(raw) : Math.round(raw * 100) / 100) };
+    });
+    const payload = { label: `${cls.grade} — ${subject}${units.length !== allUnits.length ? ` (${units.map(unitLabel).join("، ")})` : ""}`, max, round: roundInt, students };
+    if (!isNoorExtensionInstalled()) { setSendState("noext"); return; }
+    setSendState("sending");
+    window.postMessage({ source: "fosooli-app", type: "noor-grades", payload }, window.location.origin);
+    setTimeout(() => setSendState((st) => (st === "sending" ? "noext" : st)), 2500);
+  };
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -11989,6 +12013,20 @@ function UnitsSummary({ cls, groupSheets }) {
           ))}
         </div>
       </div>
+      {allUnits.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-xs font-semibold" style={{ color: MUTED }}>الوحدات الداخلة بالحساب:</span>
+          {allUnits.map((u) => {
+            const on = !excluded.includes(u.id);
+            return (
+              <label key={u.id} className="flex items-center gap-2 h-8 px-3 rounded-xl text-[13px] cursor-pointer" style={{ background: "#fff", border: `1px solid ${on ? DASH_GREEN : LINE}`, color: INK }}>
+                <input type="checkbox" checked={on} onChange={() => setExcluded((x) => (on ? (allUnits.length - x.length > 1 ? [...x, u.id] : x) : x.filter((id) => id !== u.id)))} className="w-4 h-4" />
+                {unitLabel(u)}
+              </label>
+            );
+          })}
+        </div>
+      )}
       {noGrades ? (
         <p className="text-sm p-4 rounded-xl" style={{ background: PAPER, color: INK }}>
           ما فيه أعمدة درجات بهذه المادة. عشان تنحسب الدرجات، حدّد «الدرجة القصوى» لأعمدة العدّاد (مثل الواجبات من 8) من تعديل العمود.
@@ -12031,6 +12069,41 @@ function UnitsSummary({ cls, groupSheets }) {
         </div>
       )}
       <p className="text-xs mt-3" style={{ color: MUTED }}>المجموع = جمع درجات الطالب بكل الوحدات. المتوسط = مجموعه مقسوم على عدد الوحدات اللي له فيها درجات.</p>
+
+      {!noGrades && (
+        <div className="mt-5 rounded-2xl p-4" style={{ background: "#EEF8F3", border: "1px solid #CBE9DA" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#0F8A5F" }}><Send size={17} color="#fff" /></span>
+            <div>
+              <p className="font-bold text-sm" style={{ color: INK }}>الرصد في نور</p>
+              <p className="text-xs" style={{ color: MUTED }}>نجهّز درجات «{subject}» وتعبّيها في نور بضغطة من الزر الأخضر «رصد من فصولي».</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold flex flex-col gap-1" style={{ color: INK }}>
+              الدرجة في نور من
+              <input type="number" min="1" value={scale} onChange={(e) => setScale(e.target.value)} style={{ ...inputStyle, width: 110, height: 40 }} />
+            </label>
+            <label className="flex items-center gap-2 h-10 text-sm" style={{ color: INK }}>
+              <input type="checkbox" checked={roundInt} onChange={(e) => setRoundInt(e.target.checked)} className="w-4 h-4" /> تقريب لأقرب عدد صحيح
+            </label>
+            <button type="button" onClick={sendToNoor} className="h-10 px-4 rounded-xl text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0F8A5F" }}>
+              <Send size={16} /> تجهيز للرصد في نور
+            </button>
+          </div>
+          <p className="text-xs mt-2" style={{ color: MUTED }}>الدرجة = نسبة الطالب من مجموع الوحدات المختارة × {Number(scale) || 40}. لو عمود نور من رقم ثاني، الإضافة تحوّلها بالنسبة تلقائيًا.</p>
+          {sendState === "sent" && (
+            <div className="mt-3 p-3 rounded-xl text-sm flex flex-wrap items-center gap-3" style={{ background: "#fff", color: INK, border: "1px solid #CBE9DA" }}>
+              <Check size={16} color="#0F8A5F" />
+              <span className="flex-1 min-w-[200px]">جاهزة! افتح صفحة «إدخال الدرجات» في نور، واختر الفصل والمادة، واضغط الزر الأخضر <b>«رصد من فصولي»</b>.</span>
+              <button type="button" onClick={() => window.open("https://noor.moe.gov.sa/", "_blank", "noopener")} className="h-9 px-3 rounded-xl text-[13px] font-semibold text-white flex items-center gap-1.5" style={{ background: "#0F8A5F" }}><ExternalLink size={14} /> فتح نور</button>
+            </div>
+          )}
+          {sendState === "noext" && (
+            <p className="mt-3 text-sm" style={{ color: "#A01E14" }}>إضافة فصولي مو مثبّتة أو تحتاج تحديث. ثبّتها (أو حدّثها) من نافذة «استيراد من نظام نور»، وحدّث هذي الصفحة.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
