@@ -12,7 +12,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
-  CalendarPlus, Moon, Sun, Filter, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
+  CalendarPlus, Moon, Sun, Filter, ArrowLeftRight, Sigma, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -295,6 +295,75 @@ function totalGrade(cls, rowId) {
   else if (pct >= 65) { band = "جيد"; bandColor = "#C97A2B"; bandBg = "#FBEEE0"; }
   else { band = "ضعيف"; bandColor = "#C0392B"; bandBg = "#FBEAE7"; }
   return { score: Math.round(score * 100) / 100, max, pct: Math.round(pct), band, bandColor, bandBg };
+}
+
+// ===== المواد والوحدات داخل الفصل الواحد =====
+// كل (مادة + وحدة) = "ورقة" مستقلة بنفس شكل الفصل القديم تمامًا (طلاب، أعمدة،
+// خانات، تقارير، حضور)، فكل ميزات الفصل تشتغل عليها بدون تغيير. الأوراق
+// اللي تتبع نفس الفصل تحمل groupId = معرّف الورقة الأساسية. البيانات القديمة
+// ما تحتاج أي تحويل: أي فصل بدون groupId هو ورقة أساسية (المادة الأولى /
+// الوحدة الأولى).
+const UNIT_ORDINALS = ["الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة", "السابعة", "الثامنة", "التاسعة", "العاشرة", "الحادية عشرة", "الثانية عشرة"];
+function groupKeyOf(c) { return c.groupId || c.id; }
+function isPrimarySheet(c) { return !c.groupId || c.groupId === c.id; }
+function unitLabel(c) { return c.unitName || "الوحدة الأولى"; }
+function sheetLabel(c) { return `${c.subject} — ${unitLabel(c)}`; }
+function sortSheets(list) {
+  return [...list].sort((a, b) => (Number(isPrimarySheet(b)) - Number(isPrimarySheet(a))) || ((a.sheetOrder || 0) - (b.sheetOrder || 0)));
+}
+function groupSheetsOf(classes, cls) {
+  const gid = groupKeyOf(cls);
+  return sortSheets(classes.filter((c) => groupKeyOf(c) === gid));
+}
+function subjectsOf(sheets) {
+  const out = [];
+  sheets.forEach((c) => { if (!out.includes(c.subject)) out.push(c.subject); });
+  return out;
+}
+// يلقى نفس الطالب بورقة ثانية: بنفس المعرّف، وإلا بنفس الاسم
+function matchRow(sheet, row) {
+  if (!sheet || !row) return null;
+  return (sheet.rows || []).find((r) => r.id === row.id) || (sheet.rows || []).find((r) => (r.name || "").trim() === (row.name || "").trim()) || null;
+}
+// ورقة جديدة مبنية على ورقة أخرى (نفس بيانات الفصل) بدون أي رصد
+function newSheetFrom(base, { subject, unitName, copyRows, copyColumns }) {
+  const cloneRow = (r) => ({ id: r.id, name: r.name, type: r.type, options: r.options || [], color: r.color, autoRenew: !!r.autoRenew, medicalNote: r.medicalNote || "", nationalId: r.nationalId || "", photo: r.photo });
+  return {
+    id: uid(),
+    groupId: groupKeyOf(base),
+    sheetOrder: Date.now(),
+    subject,
+    unitName,
+    grade: base.grade, teacher: base.teacher, yearHijri: base.yearHijri, yearGregorian: base.yearGregorian,
+    color: base.color, emoji: base.emoji || "",
+    archived: false, pinned: false, locked: false,
+    showRowNumbers: !!base.showRowNumbers,
+    rows: copyRows ? (base.rows || []).map(cloneRow) : [],
+    columns: copyColumns ? JSON.parse(JSON.stringify(base.columns || [])) : [],
+    cells: {}, reports: {}, reportTrash: {}, attendance: {}, trash: [], events: [],
+  };
+}
+// يحذف طلابًا (بمعرّفاتهم بهذه الورقة) مع حفظهم بسلة محذوفات الورقة
+function removeRowsFromSheet(c, ids) {
+  const items = [];
+  ids.forEach((rowId) => {
+    const idx = c.rows.findIndex((r) => r.id === rowId);
+    if (idx === -1) return;
+    items.push({ row: c.rows[idx], index: idx, cells: Object.fromEntries(Object.entries(c.cells || {}).filter(([k]) => k.startsWith(`${rowId}:`))), reports: c.reports?.[rowId] });
+  });
+  if (!items.length) return c;
+  const reports = { ...(c.reports || {}) };
+  ids.forEach((id) => delete reports[id]);
+  const next = {
+    ...c,
+    rows: c.rows.filter((r) => !ids.includes(r.id)),
+    cells: Object.fromEntries(Object.entries(c.cells || {}).filter(([k]) => !ids.some((id) => k.startsWith(`${id}:`)))),
+    reports,
+  };
+  const entry = items.length === 1
+    ? { id: uid(), type: "row", when: nowMeta(), data: items[0] }
+    : { id: uid(), type: "bulkRows", when: nowMeta(), data: { items } };
+  return { ...next, trash: [entry, ...(c.trash || [])].slice(0, 30) };
 }
 
 function attendancePercent(cls, rowId) {
@@ -2408,50 +2477,29 @@ function PrintStyles() {
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
       }
-      /* ===== نافذة الخيارات: تطير من الأيقونة للوسط وترجع لها ===== */
-      @keyframes amOverlayIn { from { background: rgba(16,24,22,0); backdrop-filter: blur(0); } to { background: rgba(16,24,22,0.38); backdrop-filter: blur(6px); } }
-      @keyframes amOverlayOut { from { background: rgba(16,24,22,0.38); backdrop-filter: blur(6px); } to { background: rgba(16,24,22,0); backdrop-filter: blur(0); } }
-      .am-overlay-in  { animation: amOverlayIn 0.35s ease-out both; -webkit-backdrop-filter: blur(6px); }
-      .am-overlay-out { animation: amOverlayOut 0.3s ease-in both; pointer-events: none; }
-      .am-window { will-change: transform, opacity, border-radius; }
-      @keyframes amIn {
-        0%   { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.06); border-radius: 50%; filter: blur(4px); }
-        30%  { opacity: 1; filter: blur(0); }
-        65%  { transform: translate(0, 0) scale(1.03); border-radius: 24px; }
-        82%  { transform: translate(0, 0) scale(0.99); }
-        100% { opacity: 1; transform: translate(0, 0) scale(1); border-radius: 24px; filter: blur(0); }
-      }
-      @keyframes amOut {
-        0%   { opacity: 1; transform: translate(0, 0) scale(1); border-radius: 24px; }
-        25%  { transform: translate(0, 0) scale(1.03); }
-        100% { opacity: 0.2; transform: translate(var(--dx), var(--dy)) scale(0.04); border-radius: 50%; filter: blur(3px); }
-      }
-      .am-in  { animation: amIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
-      .am-out { animation: amOut 0.3s cubic-bezier(0.55, 0, 0.75, 0.15) both; }
-      @keyframes amItemIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-      @keyframes amItemOut { to { opacity: 0; transform: translateY(6px); } }
-      .am-in .am-item  { animation: amItemIn 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(160ms + var(--i, 0) * 35ms); }
-      .am-out .am-item { animation: amItemOut 0.12s ease-in both; animation-delay: calc((var(--n, 1) - var(--i, 0)) * 8ms); }
+      /* ===== نافذة التحوّل من الزر ===== */
+      .fly-panel { will-change: transform, border-radius, background-color; }
+      @keyframes amItemIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+      .fly-open .am-item { animation: amItemIn 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(250ms + var(--i, 0) * 32ms); }
       .am-trigger { transition: background-color 0.2s, transform 0.2s; }
-      .am-trigger:active { transform: scale(0.9); }
+      .am-trigger:active { transform: scale(0.92); }
       .am-trigger:focus { outline: none; }
       .am-trigger:focus-visible { outline: 2px solid var(--am-ring); outline-offset: 2px; }
       .am-trigger-open { background-color: color-mix(in srgb, var(--am-ring) 35%, transparent) !important; }
       .am-dots { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
       .am-trigger-open .am-dots { transform: rotate(90deg) scale(1.1); }
-      .am-trigger[aria-haspopup="dialog"][aria-expanded="true"]:not(.am-trigger-open) .am-dots { transform: rotate(180deg); }
       @keyframes amLand {
         0%   { transform: scale(1);    box-shadow: 0 0 0 0 var(--am-ring); }
-        35%  { transform: scale(0.8); }
-        70%  { transform: scale(1.12); box-shadow: 0 0 0 10px transparent; }
+        30%  { transform: scale(0.86); }
+        65%  { transform: scale(1.08); box-shadow: 0 0 0 10px transparent; }
         100% { transform: scale(1);    box-shadow: 0 0 0 0 transparent; }
       }
-      .am-land { animation: amLand 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+      .am-land { animation: amLand 0.48s cubic-bezier(0.34, 1.56, 0.64, 1); }
       /* لوحة الألوان الصغيرة ببطاقة الفصل */
       @keyframes amPop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
       .am-pop { transform-origin: 20px -10px; animation: amPop 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
       @media (prefers-reduced-motion: reduce) {
-        .am-in, .am-out, .am-in .am-item, .am-out .am-item, .am-land, .am-pop, .am-overlay-in, .am-overlay-out { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+        .fly-open .am-item, .am-land, .am-pop { animation-duration: 1ms !important; animation-delay: 0ms !important; }
         .am-dots { transition: none; }
       }
       .data-row > td { transition: background-color 0.12s; }
@@ -2500,41 +2548,99 @@ function MiniIconBtn({ icon: Icon, onClick, title, color, disabled }) {
   );
 }
 
-// نافذة "طائرة": تطلع من زر معيّن لوسط الشاشة وترجع له عند الإغلاق.
-// تُستخدم لاختيار قيمة خانات القائمة المنسدلة ومستوى المهارة بالجدول.
+// ===== نافذة "التحوّل من الزر" =====
+// الزر نفسه يتحوّل لنافذة: يتمدّد بنفس شكله ولونه ويتحرك لوسط الشاشة ويصير
+// نافذة بيضاء، والمحتوى يظهر بعد ما تستقر. وعند الإغلاق يختفي المحتوى وترجع
+// النافذة تنكمش لنفس حجم الزر ولونه بمكانه بالضبط، والزر ينبض نبضة خفيفة.
+// نفس السلوك بالجوال والآيباد واللابتوب، ومع "تقليل الحركة" تظهر بتلاشي بسيط.
 function useFlyWindow() {
   const [phase, setPhase] = useState("closed"); // closed | open | closing
-  const [origin, setOrigin] = useState({ dx: 0, dy: 0 });
   const [landing, setLanding] = useState(false);
   const anchorRef = useRef(null);
-  const timerRef = useRef(null);
-  const measure = () => {
-    const r = anchorRef.current?.getBoundingClientRect();
-    if (!r) return;
-    setOrigin({ dx: r.left + r.width / 2 - window.innerWidth / 2, dy: r.top + r.height / 2 - window.innerHeight / 2 });
+  const landTimer = useRef(null);
+  const openWin = () => { clearTimeout(landTimer.current); setLanding(false); setPhase("open"); };
+  const closeWin = () => setPhase((p) => (p === "open" ? "closing" : p));
+  const finish = () => {
+    setPhase("closed");
+    setLanding(true);
+    clearTimeout(landTimer.current);
+    landTimer.current = setTimeout(() => setLanding(false), 480);
   };
-  const openWin = () => { clearTimeout(timerRef.current); measure(); setLanding(false); setPhase("open"); };
-  const closeWin = () => { measure(); setPhase((p) => (p === "open" ? "closing" : p)); };
-  useEffect(() => {
-    if (phase !== "closing") return;
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setPhase("closed");
-      setLanding(true);
-      timerRef.current = setTimeout(() => setLanding(false), 450);
-    }, 300);
-  }, [phase]);
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-  return { phase, origin, landing, anchorRef, openWin, closeWin };
+  useEffect(() => () => clearTimeout(landTimer.current), []);
+  return { phase, landing, anchorRef, openWin, closeWin, finish };
+}
+
+const FLY_SHADOW = "0 30px 80px rgba(16,24,22,0.28), 0 4px 12px rgba(16,24,22,0.08)";
+function flyGeometry(anchor, panel) {
+  const p = panel.getBoundingClientRect();
+  const a = anchor && anchor.isConnected ? anchor.getBoundingClientRect() : null;
+  if (!a || !a.width || !p.width) return null;
+  const sx = a.width / p.width, sy = a.height / p.height;
+  const dx = a.left + a.width / 2 - (p.left + p.width / 2);
+  const dy = a.top + a.height / 2 - (p.top + p.height / 2);
+  // نقرأ لون الزر النهائي (بدون انتقال اللون الجاري) عشان ترجع النافذة لنفس لونه الجديد
+  const prevTransition = anchor.style.transition;
+  anchor.style.transition = "none";
+  const cs = getComputedStyle(anchor);
+  const ar = Math.min(a.height / 2, parseFloat(cs.borderTopLeftRadius) || 12);
+  let bg = cs.backgroundColor;
+  anchor.style.transition = prevTransition;
+  if (!bg || bg === "transparent" || /rgba\(.+,\s*0\)$/.test(bg)) bg = hexToRgba(DASH_GREEN, 0.14);
+  return {
+    from: { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, borderRadius: `${ar / sx}px / ${ar / sy}px`, backgroundColor: bg, boxShadow: "0 0 0 rgba(0,0,0,0)" },
+    to: { transform: "translate(0px, 0px) scale(1, 1)", borderRadius: "24px / 24px", backgroundColor: "#ffffff", boxShadow: FLY_SHADOW },
+  };
 }
 
 function FlyWindow({ fly, title, icon: Icon = ListChecks, children, maxWidth = 380 }) {
+  const overlayRef = useRef(null);
   const panelRef = useRef(null);
-  const open = fly.phase === "open";
+  const contentRef = useRef(null);
+  const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // فتح: الزر يتحوّل للنافذة
+  React.useLayoutEffect(() => {
+    if (fly.phase !== "open") return;
+    const panel = panelRef.current, content = contentRef.current, overlay = overlayRef.current, anchor = fly.anchorRef.current;
+    if (!panel || !panel.animate) return;
+    overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: "ease-out", fill: "both" });
+    const g = reduce ? null : flyGeometry(anchor, panel);
+    if (g) {
+      if (anchor) anchor.style.visibility = "hidden";
+      panel.animate([g.from, g.to], { duration: 560, easing: "cubic-bezier(0.2, 1.12, 0.32, 1)", fill: "both" });
+      content.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 280, delay: 230, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", fill: "both" });
+    } else {
+      panel.animate([{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }], { duration: 200, fill: "both" });
+    }
+  }, [fly.phase]);
+
+  // إغلاق: النافذة ترجع تنكمش للزر
   useEffect(() => {
-    if (!open) return;
+    if (fly.phase !== "closing") return;
+    const panel = panelRef.current, content = contentRef.current, overlay = overlayRef.current, anchor = fly.anchorRef.current;
+    const done = () => { if (anchor) anchor.style.visibility = ""; fly.finish(); };
+    if (!panel || !panel.animate) { done(); return; }
+    const g = reduce ? null : flyGeometry(anchor, panel);
+    overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 360, delay: 40, easing: "ease-in", fill: "both" });
+    let anim;
+    if (g) {
+      content.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-in", fill: "both" });
+      anim = panel.animate([g.to, g.from], { duration: 400, delay: 70, easing: "cubic-bezier(0.5, 0, 0.15, 1)", fill: "both" });
+    } else {
+      anim = panel.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "both" });
+    }
+    let finished = false;
+    const end = () => { if (!finished) { finished = true; done(); } };
+    anim.finished.then(end, end);
+    const safety = setTimeout(end, 700);
+    return () => clearTimeout(safety);
+  }, [fly.phase]);
+
+  // لوحة المفاتيح + قفل تمرير الصفحة
+  useEffect(() => {
+    if (fly.phase !== "open") return;
     const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); fly.closeWin(); fly.anchorRef.current?.focus({ preventScroll: true }); return; }
+      if (e.key === "Escape") { e.stopPropagation(); fly.closeWin(); return; }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         const btns = Array.from(panelRef.current?.querySelectorAll("[data-fly-item]:not(:disabled)") || []);
         if (!btns.length) return;
@@ -2546,40 +2652,48 @@ function FlyWindow({ fly, title, icon: Icon = ListChecks, children, maxWidth = 3
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const t = setTimeout(() => (panelRef.current?.querySelector("[data-fly-item][aria-checked=true]") || panelRef.current?.querySelector("[data-fly-item]"))?.focus({ preventScroll: true }), 60);
-    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
-  }, [open]);
+    const t = setTimeout(() => (panelRef.current?.querySelector("[data-fly-item][aria-checked=true]") || panelRef.current?.querySelector("[data-fly-item]:not(:disabled)"))?.focus({ preventScroll: true }), 320);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      if (fly.anchorRef.current && fly.phase === "open") { /* focus returns after close */ }
+    };
+  }, [fly.phase]);
+  useEffect(() => {
+    if (fly.phase === "closed" && fly.landing) fly.anchorRef.current?.focus?.({ preventScroll: true });
+  }, [fly.phase]);
+
   if (fly.phase === "closed") return null;
   return createPortal(
     <div
       dir="rtl"
-      className={`fixed inset-0 flex items-center justify-center p-4 ${fly.phase === "closing" ? "am-overlay-out" : "am-overlay-in"}`}
+      className="fixed inset-0 flex items-center justify-center p-4"
       style={{ zIndex: 80 }}
-      onPointerDown={(e) => { if (e.target === e.currentTarget) fly.closeWin(); }}
+      onPointerDown={(e) => { if (e.target === e.currentTarget || e.target === overlayRef.current) fly.closeWin(); }}
       onClick={(e) => e.stopPropagation()}
     >
+      <div ref={overlayRef} className="absolute inset-0" style={{ background: "rgba(16,24,22,0.36)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", opacity: 0 }} />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`am-window w-full rounded-3xl overflow-hidden ${fly.phase === "closing" ? "am-out" : "am-in"}`}
-        style={{
-          maxWidth, maxHeight: "calc(100vh - 32px)", background: "#fff", border: `1px solid ${LINE}`,
-          boxShadow: "0 30px 80px rgba(16,24,22,0.28), 0 4px 12px rgba(16,24,22,0.08)",
-          "--dx": `${fly.origin.dx}px`, "--dy": `${fly.origin.dy}px`, "--n": 8,
-        }}
+        className={`relative w-full overflow-hidden fly-panel ${fly.phase === "open" ? "fly-open" : ""}`}
+        style={{ maxWidth, maxHeight: "calc(100vh - 32px)", background: "#fff", borderRadius: 24, boxShadow: FLY_SHADOW, transformOrigin: "50% 50%" }}
       >
-        <div className="flex items-center gap-3 px-5 pt-5 pb-3 am-item" style={{ "--i": 0 }}>
-          <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}>
-            <Icon size={20} color={DASH_GREEN} />
-          </span>
-          <h3 className="flex-1 min-w-0 font-bold text-base truncate" style={{ color: INK }}>{title}</h3>
-          <button type="button" onClick={fly.closeWin} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
-            <X size={18} color={MUTED} />
-          </button>
+        <div ref={contentRef}>
+          <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+            <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}>
+              <Icon size={20} color={DASH_GREEN} />
+            </span>
+            <h3 className="flex-1 min-w-0 font-bold text-base truncate" style={{ color: INK }}>{title}</h3>
+            <button type="button" onClick={fly.closeWin} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
+              <X size={18} color={MUTED} />
+            </button>
+          </div>
+          <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>{children}</div>
         </div>
-        <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>{children}</div>
       </div>
     </div>,
     fly.anchorRef.current?.closest("[data-app-root]") || document.body
@@ -2611,157 +2725,55 @@ function FlyChoice({ index, color, label, selected, onPick, muted = false }) {
   );
 }
 
-// قائمة "⋯" موحّدة لكل الإجراءات الثانوية (صف طالب، عمود، بطاقة فصل، أدوات).
-// الضغط على الأيقونة يفتح نافذة بوسط الشاشة (بالجوال والآيباد واللابتوب):
-// النافذة "تطير" من الأيقونة نفسها وتكبر لين توصل الوسط مع ارتداد خفيف،
-// والعناصر تظهر بالتتابع. وعند الإغلاق ترجع تنكمش وتدخل بالأيقونة، والأيقونة
-// تنبض نبضة صغيرة كأنها استقبلتها. وتختفي الحركة لمن فعّل "تقليل الحركة".
+// قائمة "⋯" موحّدة لكل الإجراءات الثانوية (صف طالب، عمود، بطاقة فصل، أدوات):
+// تفتح نافذة الخيارات بنفس حركة التحوّل من الزر.
 // items: [{ icon, label, onClick, danger?, disabled? } | "sep" | false]
-const MENU_OUT_MS = 300;
-function ActionMenu({ items, label = "خيارات", title = null, size = 18, triggerClassName = "w-8 h-8", triggerStyle = undefined, triggerContent = null }) {
-  const [phase, setPhase] = useState("closed"); // closed | open | closing
-  const [origin, setOrigin] = useState({ dx: 0, dy: 0 });
-  const [landing, setLanding] = useState(false);
-  const btnRef = useRef(null);
-  const panelRef = useRef(null);
-  const timerRef = useRef(null);
+function ActionMenu({ items, label = "خيارات", title = null, size = 18, triggerClassName = "w-8 h-8", triggerStyle = undefined, triggerContent = null, windowIcon = MoreHorizontal }) {
+  const fly = useFlyWindow();
   const list = (items || []).filter(Boolean);
-  const open = phase === "open";
-
-  // نحسب مكان مركز الأيقونة منسوبًا لوسط الشاشة — منه تطلع النافذة وله ترجع
-  const measure = () => {
-    const r = btnRef.current?.getBoundingClientRect();
-    if (!r) return;
-    setOrigin({ dx: r.left + r.width / 2 - window.innerWidth / 2, dy: r.top + r.height / 2 - window.innerHeight / 2 });
-  };
-
-  const close = () => {
-    measure(); // لو تحرّكت الصفحة، ترجع للمكان الصحيح للأيقونة
-    setPhase((p) => (p === "open" ? "closing" : p));
-  };
-
-  useEffect(() => {
-    if (phase !== "closing") return;
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setPhase("closed");
-      setLanding(true);
-      timerRef.current = setTimeout(() => setLanding(false), 450);
-    }, MENU_OUT_MS);
-  }, [phase]);
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-
-  const toggle = (e) => {
-    e.stopPropagation();
-    if (phase === "open") { close(); return; }
-    clearTimeout(timerRef.current);
-    measure();
-    setLanding(false);
-    setPhase("open");
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); close(); btnRef.current?.focus({ preventScroll: true }); return; }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        const btns = Array.from(panelRef.current?.querySelectorAll("[role=menuitem]:not(:disabled)") || []);
-        if (!btns.length) return;
-        e.preventDefault();
-        const i = btns.indexOf(document.activeElement);
-        const next = e.key === "ArrowDown" ? (i + 1) % btns.length : (i - 1 + btns.length) % btns.length;
-        btns[next].focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    // نقفل تمرير الصفحة خلف النافذة
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const t = setTimeout(() => panelRef.current?.querySelector("[role=menuitem]:not(:disabled)")?.focus({ preventScroll: true }), 60);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open]);
-
+  const active = fly.phase !== "closed";
   let itemIndex = 0;
-  const itemCount = list.filter((it) => it !== "sep").length;
-  const heading = title || label;
-
   return (
     <>
       <button
-        ref={btnRef}
+        ref={fly.anchorRef}
         type="button"
         aria-label={label}
         title={label}
         aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={toggle}
-        className={`${triggerClassName} am-trigger ${phase !== "closed" ? "am-trigger-open" : ""} ${landing ? "am-land" : ""} rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5`}
+        aria-expanded={fly.phase === "open"}
+        onClick={(e) => { e.stopPropagation(); fly.phase === "open" ? fly.closeWin() : fly.openWin(); }}
+        className={`${triggerClassName} am-trigger ${active ? "am-trigger-open" : ""} ${fly.landing ? "am-land" : ""} rounded-lg flex items-center justify-center shrink-0 hover:bg-black/5`}
         style={{ ...(triggerStyle || {}), "--am-ring": hexToRgba(DASH_GREEN, 0.35) }}
       >
-        {triggerContent || <MoreHorizontal size={size} color={phase !== "closed" ? DASH_GREEN : MUTED} className="am-dots" />}
+        {triggerContent || <MoreHorizontal size={size} color={active ? DASH_GREEN : MUTED} className="am-dots" />}
       </button>
-      {phase !== "closed" && createPortal(
-        <div
-          dir="rtl"
-          className={`fixed inset-0 flex items-center justify-center p-4 ${phase === "closing" ? "am-overlay-out" : "am-overlay-in"}`}
-          style={{ zIndex: 80 }}
-          onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={heading}
-            className={`am-window w-full rounded-3xl overflow-hidden ${phase === "closing" ? "am-out" : "am-in"}`}
-            style={{
-              maxWidth: 380, maxHeight: "calc(100vh - 32px)",
-              background: "#fff", border: `1px solid ${LINE}`,
-              boxShadow: "0 30px 80px rgba(16,24,22,0.28), 0 4px 12px rgba(16,24,22,0.08)",
-              "--dx": `${origin.dx}px`, "--dy": `${origin.dy}px`, "--n": itemCount,
-            }}
-          >
-            <div className="flex items-center gap-3 px-5 pt-5 pb-3 am-item" style={{ "--i": 0 }}>
-              <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}>
-                <MoreHorizontal size={20} color={DASH_GREEN} />
-              </span>
-              <h3 className="flex-1 min-w-0 font-bold text-base truncate" style={{ color: INK }}>{heading}</h3>
-              <button type="button" onClick={close} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
-                <X size={18} color={MUTED} />
+      <FlyWindow fly={fly} title={title || label} icon={windowIcon}>
+        <div role="menu" aria-label={title || label}>
+          {list.map((it, i) => {
+            if (it === "sep") return <div key={`sep${i}`} className="my-2 mx-2 h-px am-item" style={{ background: LINE, "--i": itemIndex + 1 }} />;
+            const idx = ++itemIndex;
+            return (
+              <button
+                key={`${it.label}${i}`}
+                type="button"
+                role="menuitem"
+                data-fly-item=""
+                disabled={it.disabled}
+                onClick={() => { fly.closeWin(); it.onClick(); }}
+                className="am-item w-full flex items-center gap-3 px-2 h-12 rounded-xl text-[15px] text-right hover:bg-black/[0.04] focus:bg-black/[0.05] outline-none disabled:opacity-35 disabled:pointer-events-none"
+                style={{ color: it.danger ? "#A01E14" : INK, "--i": idx }}
+              >
+                <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: it.danger ? "#FDECEA" : PAPER }}>
+                  {it.icon && <it.icon size={17} color={it.danger ? "#A01E14" : INK} />}
+                </span>
+                <span className="flex-1 font-medium">{it.label}</span>
+                <ChevronLeft size={16} color={it.danger ? "#A01E14" : "#A3ADAA"} className="shrink-0" />
               </button>
-            </div>
-            <div role="menu" aria-label={heading} className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>
-              {list.map((it, i) => {
-                if (it === "sep") return <div key={`sep${i}`} className="my-2 mx-2 h-px am-item" style={{ background: LINE, "--i": itemIndex + 1 }} />;
-                const idx = ++itemIndex;
-                return (
-                  <button
-                    key={`${it.label}${i}`}
-                    type="button"
-                    role="menuitem"
-                    disabled={it.disabled}
-                    onClick={() => { close(); it.onClick(); }}
-                    className="am-item w-full flex items-center gap-3 px-2 h-12 rounded-xl text-[15px] text-right hover:bg-black/[0.04] focus:bg-black/[0.05] outline-none disabled:opacity-35 disabled:pointer-events-none"
-                    style={{ color: it.danger ? "#A01E14" : INK, "--i": idx }}
-                  >
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: it.danger ? "#FDECEA" : PAPER }}>
-                      {it.icon && <it.icon size={17} color={it.danger ? "#A01E14" : INK} />}
-                    </span>
-                    <span className="flex-1 font-medium">{it.label}</span>
-                    <ChevronLeft size={16} color={it.danger ? "#A01E14" : "#A3ADAA"} className="shrink-0" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>,
-        // داخل غلاف التطبيق (عشان يتأثر بالوضع الليلي)، وإلا body
-        btnRef.current?.closest("[data-app-root]") || document.body
-      )}
+            );
+          })}
+        </div>
+      </FlyWindow>
     </>
   );
 }
@@ -6729,7 +6741,7 @@ function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
 
   return (
     <div className="flex items-center justify-center gap-1.5">
-      <button onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
+      <button aria-label="إنقاص" onClick={() => bump(-1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Minus size={12} /></button>
       <input
         id={rowId && colId ? cellDomId(rowId, colId) : undefined}
         type="number"
@@ -6742,7 +6754,7 @@ function CounterCell({ value, onChange, rowId, colId, nextRowId }) {
         className="w-9 text-center font-semibold text-sm bg-transparent"
         style={{ outline: "none", color: INK }}
       />
-      <button onClick={() => bump(1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Plus size={12} /></button>
+      <button aria-label="زيادة" onClick={() => bump(1)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-black/5 shrink-0" style={{ border: `1px solid ${LINE}` }}><Plus size={12} /></button>
     </div>
   );
 }
@@ -9577,11 +9589,44 @@ function BadgesModal({ cls, updateClass, onClose }) {
   );
 }
 
-function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
+function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare, groupSheets = [], updateSheetsByIds = null }) {
   const [dateKey, setDateKey] = useState(todayKey());
-
-  const setAbsent = (rowId) => updateClass(markAbsentUpdater(rowId, dateKey));
-  const setPresent = (rowId) => updateClass(clearAbsentUpdater(rowId, dateKey));
+  // نطاق التحضير: هذه الوحدة، أو كل وحدات المادة، أو كل المواد
+  const others = groupSheets.filter((c) => c.id !== cls.id);
+  const sameSubjectIds = others.filter((c) => c.subject === cls.subject).map((c) => c.id);
+  const allIds = others.map((c) => c.id);
+  const [scope, setScope] = useState("this");
+  const scopeIds = scope === "subject" ? sameSubjectIds : scope === "all" ? allIds : [];
+  const [synced, setSynced] = useState(false);
+  const applyOthers = (row, absent) => {
+    if (!scopeIds.length || !updateSheetsByIds) return;
+    updateSheetsByIds(scopeIds, (sh) => {
+      const m = matchRow(sh, row);
+      if (!m) return sh;
+      return absent ? markAbsentUpdater(m.id, dateKey)(sh) : clearAbsentUpdater(m.id, dateKey)(sh);
+    });
+  };
+  const setAbsent = (row) => { updateClass(markAbsentUpdater(row.id, dateKey)); applyOthers(row, true); };
+  const setPresent = (row) => { updateClass(clearAbsentUpdater(row.id, dateKey)); applyOthers(row, false); };
+  const syncDay = () => {
+    if (!scopeIds.length || !updateSheetsByIds) return;
+    updateSheetsByIds(scopeIds, (sh) => {
+      let n = sh;
+      cls.rows.forEach((row) => {
+        const m = matchRow(n, row);
+        if (!m) return;
+        n = attendanceStatus(cls, row.id, dateKey) === "absent" ? markAbsentUpdater(m.id, dateKey)(n) : clearAbsentUpdater(m.id, dateKey)(n);
+      });
+      return n;
+    });
+    setSynced(true);
+    setTimeout(() => setSynced(false), 2500);
+  };
+  const scopeOptions = [
+    { k: "this", l: "هذه الوحدة" },
+    sameSubjectIds.length > 0 && { k: "subject", l: `كل وحدات ${cls.subject}` },
+    allIds.length > sameSubjectIds.length && { k: "all", l: "كل المواد والوحدات" },
+  ].filter(Boolean);
 
   const statuses = cls.rows.map((row) => attendanceStatus(cls, row.id, dateKey));
   const absentCount = statuses.filter((s) => s === "absent").length;
@@ -9598,6 +9643,25 @@ function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
           <IconBtn icon={Share2} label="مشاركة" onClick={() => onShare(dateKey)} />
         </div>
       </div>
+      {scopeOptions.length > 1 && (
+        <div className="rounded-2xl p-3 mb-4" style={{ background: PAPER }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: MUTED }}>التحضير يُطبَّق على:</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="radiogroup" aria-label="نطاق التحضير" className="flex flex-wrap items-center gap-1 p-1 rounded-xl" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+              {scopeOptions.map((o) => (
+                <button key={o.k} type="button" role="radio" aria-checked={scope === o.k} onClick={() => setScope(o.k)} className="h-8 px-3 rounded-lg text-[13px] font-semibold"
+                  style={scope === o.k ? { background: DASH_GREEN, color: "#fff" } : { color: MUTED }}>{o.l}</button>
+              ))}
+            </div>
+            {scope !== "this" && (
+              <button type="button" onClick={syncDay} className="h-9 px-3 rounded-xl text-[13px] font-semibold flex items-center gap-1.5" style={{ background: "#fff", border: `1px solid ${LINE}`, color: INK }}>
+                {synced ? <Check size={15} color={DASH_GREEN} /> : <RefreshCw size={15} />} {synced ? "تم التطبيق" : "طبّق تحضير هذا اليوم عليها"}
+              </button>
+            )}
+          </div>
+          {scope !== "this" && <p className="text-xs mt-2" style={{ color: MUTED }}>أي غياب أو حضور تسجّله الحين يتسجّل تلقائيًا بـ {scopeIds.length + 1} وحدات.</p>}
+        </div>
+      )}
       <p className="text-xs mb-3" style={{ color: MUTED }}>أي طالب لا يُحدَّد له غياب يُعتبر حاضرًا تلقائيًا لهذا اليوم.</p>
       {cls.rows.length === 0 ? (
         <p className="text-sm text-center py-10" style={{ color: MUTED }}>أضف صفوفًا (طلابًا) أولًا من صفحة الفصل.</p>
@@ -9615,15 +9679,15 @@ function AttendanceModal({ cls, updateClass, onClose, onPrint, onShare }) {
                 >{status === "present" ? "حاضر" : "غائب"}</span>
                 {status === "absent" ? (
                   <>
-                    <button title="تعديل (تراجع عن الغياب)" onClick={() => setPresent(row.id)} className="p-1.5 rounded-lg hover:bg-black/5">
+                    <button title="تعديل (تراجع عن الغياب)" onClick={() => setPresent(row)} className="p-1.5 rounded-lg hover:bg-black/5">
                       <Pencil size={14} color={MUTED} />
                     </button>
-                    <button title="حذف رصد الغياب" onClick={() => setPresent(row.id)} className="p-1.5 rounded-lg hover:bg-black/5">
+                    <button title="حذف رصد الغياب" onClick={() => setPresent(row)} className="p-1.5 rounded-lg hover:bg-black/5">
                       <Trash2 size={14} color="#C0392B" />
                     </button>
                   </>
                 ) : (
-                  <button onClick={() => setAbsent(row.id)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: "#C0392B" }}>تحديد كغائب</button>
+                  <button onClick={() => setAbsent(row)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: "#C0392B" }}>تحديد كغائب</button>
                 )}
               </div>
             );
@@ -10721,7 +10785,7 @@ function PrintContent({ job }) {
 
 // ---------- Home page ----------
 
-function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplicate, onTogglePin, onToggleLock, onMove, onNewTerm, animating, isFirst, isLast }) {
+function ClassCard({ cls, subjectsCount = 1, onOpen, onEdit, onColor, onDelete, onArchive, onDuplicate, onTogglePin, onToggleLock, onMove, onNewTerm, animating, isFirst, isLast }) {
   const [showColors, setShowColors] = useState(false);
   const menuRef = useRef(null);
   const locked = !!cls.locked;
@@ -10776,7 +10840,7 @@ function ClassCard({ cls, onOpen, onEdit, onColor, onDelete, onArchive, onDuplic
               {cls.pinned && <Pin size={13} color={DASH_GREEN} className="shrink-0" aria-label="مثبّت" />}
               {locked && <Lock size={13} color="#A01E14" className="shrink-0" aria-label="مقفل" />}
             </div>
-            <p className="text-sm" style={{ color: MUTED }}>{cls.grade}{studentCount ? ` · ${studentCount} طالب` : ""}</p>
+            <p className="text-sm" style={{ color: MUTED }}>{cls.grade}{studentCount ? ` · ${studentCount} طالب` : ""}{subjectsCount > 1 ? ` · ${subjectsCount} مواد` : ""}</p>
           </div>
           <div className="w-10 shrink-0" aria-hidden="true" />
         </div>
@@ -10883,19 +10947,26 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
   const removeFooterContact = (id) => updateSiteSettings((s) => ({ ...s, footerContacts: (s.footerContacts || []).filter((c) => c.id !== id) }));
   const addFooterBadge = (image) => updateSiteSettings((s) => ({ ...s, footerBadges: [...(s.footerBadges || []), { id: uid(), image }] }));
   const removeFooterBadge = (id) => updateSiteSettings((s) => ({ ...s, footerBadges: (s.footerBadges || []).filter((b) => b.id !== id) }));
-  const classes = data.classes.filter((c) => (tab === "active" ? !c.archived : c.archived));
+  // الصفحة الرئيسية تعرض بطاقة وحدة لكل فصل (الورقة الأساسية)، والمواد والوحدات داخله
+  const homeIds = new Set(data.classes.map((c) => c.id));
+  const classes = data.classes.filter((c) => isPrimarySheet(c) || !homeIds.has(c.groupId)).filter((c) => (tab === "active" ? !c.archived : c.archived));
+  const inGroup = (gid) => (c) => groupKeyOf(c) === gid;
   const displayClasses = [...classes.filter((c) => c.pinned), ...classes.filter((c) => !c.pinned)];
   const unpinnedIds = classes.filter((c) => !c.pinned).map((c) => c.id);
 
   const saveClass = (payload) => {
     setData((d) => {
-      if (modal.mode === "edit") return { ...d, classes: d.classes.map((c) => (c.id === modal.data.id ? { ...c, ...payload } : c)) };
+      if (modal.mode === "edit") {
+        // بيانات الفصل (الصف، المعلم، السنة، اللون) تتحدّث بكل مواده ووحداته، واسم المادة للورقة الأساسية فقط
+        const { subject, ...shared } = payload;
+        return { ...d, classes: d.classes.map((c) => (c.id === modal.data.id ? { ...c, ...payload } : groupKeyOf(c) === modal.data.id ? { ...c, ...shared } : c)) };
+      }
       const newClass = { id: uid(), ...payload, archived: false, columns: [], rows: [], cells: {}, reports: {}, showRowNumbers: false, emoji: payload.emoji || "" };
       return { ...d, classes: [newClass, ...d.classes] };
     });
     setModal(null);
   };
-  const updateColor = (id, hex) => setData((d) => ({ ...d, classes: d.classes.map((c) => (c.id === id ? { ...c, color: hex } : c)) }));
+  const updateColor = (id, hex) => setData((d) => ({ ...d, classes: d.classes.map((c) => (groupKeyOf(c) === id ? { ...c, color: hex } : c)) }));
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [animatingClassId, setAnimatingClassId] = useState(null);
   const deleteClass = (id) => setConfirmDeleteId(id);
@@ -10908,25 +10979,32 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
         const idx = d.classes.findIndex((c) => c.id === id);
         if (idx === -1) return d;
         const cls = d.classes[idx];
-        const trashEntry = { id: uid(), type: "class", when: nowMeta(), data: { cls, index: idx } };
-        return { ...d, classes: d.classes.filter((c) => c.id !== id), trash: [trashEntry, ...(d.trash || [])].slice(0, 30) };
+        const group = d.classes.filter((c) => groupKeyOf(c) === id);
+        const trashEntry = group.length > 1
+          ? { id: uid(), type: "classesBulk", when: nowMeta(), data: { classes: group } }
+          : { id: uid(), type: "class", when: nowMeta(), data: { cls, index: idx } };
+        return { ...d, classes: d.classes.filter((c) => groupKeyOf(c) !== id), trash: [trashEntry, ...(d.trash || [])].slice(0, 30) };
       });
       setAnimatingClassId(null);
     }, 450);
   };
-  const toggleArchive = (id) => setData((d) => ({ ...d, classes: d.classes.map((c) => (c.id === id ? { ...c, archived: !c.archived } : c)) }));
+  const toggleArchive = (id) => setData((d) => {
+    const target = d.classes.find((c) => c.id === id);
+    if (!target) return d;
+    return { ...d, classes: d.classes.map((c) => (groupKeyOf(c) === id ? { ...c, archived: !target.archived } : c)) };
+  });
   const archiveAllClasses = () => {
     const ids = classes.map((c) => c.id);
     if (ids.length === 0) return;
-    setData((d) => ({ ...d, classes: d.classes.map((c) => (ids.includes(c.id) ? { ...c, archived: true } : c)) }));
+    setData((d) => ({ ...d, classes: d.classes.map((c) => (ids.includes(groupKeyOf(c)) ? { ...c, archived: true } : c)) }));
   };
   const [confirmDeleteAllClasses, setConfirmDeleteAllClasses] = useState(false);
   const deleteAllClasses = () => {
     const ids = classes.map((c) => c.id);
     if (ids.length === 0) return;
     setData((d) => {
-      const removed = d.classes.filter((c) => ids.includes(c.id));
-      const remaining = d.classes.filter((c) => !ids.includes(c.id));
+      const removed = d.classes.filter((c) => ids.includes(groupKeyOf(c)));
+      const remaining = d.classes.filter((c) => !ids.includes(groupKeyOf(c)));
       const trashEntry = { id: uid(), type: "classesBulk", when: nowMeta(), data: { classes: removed } };
       return { ...d, classes: remaining, trash: [trashEntry, ...(d.trash || [])].slice(0, 30) };
     });
@@ -10940,7 +11018,9 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       copy.id = uid();
       copy.subject = `${original.subject} (نسخة)`;
       copy.archived = false;
-      return { ...d, classes: [copy, ...d.classes] };
+      // ننسخ كل مواد ووحدات الفصل معه
+      const children = d.classes.filter((c) => c.groupId === id && c.id !== id).map((c) => ({ ...JSON.parse(JSON.stringify(c)), id: uid(), groupId: copy.id, archived: false }));
+      return { ...d, classes: [copy, ...d.classes, ...children] };
     });
   };
   const [newTermModalCls, setNewTermModalCls] = useState(null);
@@ -10961,8 +11041,13 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       fresh.pinned = false;
       if (years?.yearHijri) fresh.yearHijri = years.yearHijri;
       if (years?.yearGregorian) fresh.yearGregorian = years.yearGregorian;
-      const classes = d.classes.map((c) => (c.id === id ? { ...c, archived: true } : c));
-      return { ...d, classes: [fresh, ...classes] };
+      // نفس الشي لكل مواد ووحدات الفصل: نفس الطلاب والأعمدة بدون رصد
+      const children = d.classes.filter((c) => c.groupId === id && c.id !== id).map((c) => ({
+        ...JSON.parse(JSON.stringify(c)), id: uid(), groupId: fresh.id, cells: {}, reports: {}, reportTrash: {}, attendance: {}, trash: [], events: [], archived: false, locked: false, pinned: false,
+        yearHijri: years?.yearHijri || c.yearHijri, yearGregorian: years?.yearGregorian || c.yearGregorian,
+      }));
+      const classes = d.classes.map((c) => (groupKeyOf(c) === id ? { ...c, archived: true } : c));
+      return { ...d, classes: [fresh, ...classes, ...children] };
     });
     setNewTermModalCls(null);
   };
@@ -10982,7 +11067,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
     setData((d) => {
       const target = d.classes.find((c) => c.id === id);
       if (!target || target.pinned) return d;
-      const groupIds = d.classes.filter((c) => c.archived === target.archived && !c.pinned).map((c) => c.id);
+      const groupIds = d.classes.filter((c) => isPrimarySheet(c) && c.archived === target.archived && !c.pinned).map((c) => c.id);
       const pos = groupIds.indexOf(id);
       const swapWithId = groupIds[pos + direction];
       if (!swapWithId) return d;
@@ -11206,6 +11291,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
             <ClassCard
               key={cls.id}
               cls={cls}
+              subjectsCount={subjectsOf(data.classes.filter(inGroup(cls.id))).length}
               onOpen={onOpen}
               onEdit={(c) => setModal({ mode: "edit", data: c })}
               onColor={updateColor}
@@ -11555,7 +11641,416 @@ const TOOL_GROUPS = [
   { key: "table", label: "إدارة الجدول", icon: LayoutGrid },
 ];
 
-function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, onApplyEventToClasses, isOwner, density, isOnline, syncStatus, onRetrySave, shawahed, onLinkShawahed }) {
+// نافذة اختيار "على أي مواد/وحدات يطبّق هذا الإجراء؟"
+function SheetScopeModal({ title, message, current, sheets, confirmLabel = "تأكيد", danger = false, defaultMode = "this", onConfirm, onCancel }) {
+  const others = sheets.filter((c) => c.id !== current.id);
+  const sameSubject = others.filter((c) => c.subject === current.subject).map((c) => c.id);
+  const all = others.map((c) => c.id);
+  const initial = defaultMode === "all" ? all : defaultMode === "subject" ? sameSubject : [];
+  const [picked, setPicked] = useState(initial);
+  const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+  const quick = [
+    { key: "this", label: "هذه الوحدة فقط", ids: [] },
+    sameSubject.length > 0 && { key: "subject", label: "كل وحدات المادة", ids: sameSubject },
+    all.length > sameSubject.length && { key: "all", label: "كل المواد والوحدات", ids: all },
+  ].filter(Boolean);
+  const subjects = subjectsOf(others).sort((x, y) => (y === current.subject) - (x === current.subject));
+  return (
+    <Modal title={title} onClose={onCancel}>
+      {message && <p className="text-sm mb-4" style={{ color: INK }}>{message}</p>}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {quick.map((q) => {
+          const on = same(picked, q.ids);
+          return (
+            <button key={q.key} type="button" onClick={() => setPicked(q.ids)} className="h-9 px-3.5 rounded-xl text-[13px] font-semibold"
+              style={on ? { background: DASH_GREEN, color: "#fff", border: `1px solid ${DASH_GREEN}` } : { background: "#fff", color: INK, border: `1px solid ${LINE}` }}>
+              {q.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="rounded-2xl p-3 mb-5 space-y-3" style={{ background: PAPER }}>
+        <label className="flex items-center gap-2.5 text-sm font-semibold" style={{ color: INK }}>
+          <input type="checkbox" checked disabled className="w-4 h-4" />
+          {sheetLabel(current)} <span className="text-xs font-normal" style={{ color: MUTED }}>(الحالية)</span>
+        </label>
+        {subjects.map((subj) => (
+          <div key={subj}>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: MUTED }}>{subj}</p>
+            <div className="flex flex-wrap gap-2">
+              {others.filter((c) => c.subject === subj).map((c) => (
+                <label key={c.id} className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm cursor-pointer" style={{ background: "#fff", border: `1px solid ${picked.includes(c.id) ? DASH_GREEN : LINE}`, color: INK }}>
+                  <input type="checkbox" checked={picked.includes(c.id)} onChange={() => toggle(c.id)} className="w-4 h-4" />
+                  {unitLabel(c)}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => onConfirm(picked)} className="flex-1 h-11 rounded-xl text-sm font-semibold text-white" style={{ background: danger ? "#B42318" : DASH_GREEN }}>
+          {confirmLabel}{picked.length ? ` (${picked.length + 1})` : ""}
+        </button>
+        <button type="button" onClick={onCancel} className="h-11 px-5 rounded-xl text-sm font-semibold" style={{ background: "#fff", color: INK, border: `1px solid ${LINE}` }}>إلغاء</button>
+      </div>
+    </Modal>
+  );
+}
+
+// إضافة مادة جديدة للفصل
+function AddSubjectModal({ current, existingSubjects, onSave, onClose }) {
+  const [name, setName] = useState("");
+  const [mode, setMode] = useState("rowsAndColumns");
+  const trimmed = name.trim();
+  const dup = existingSubjects.includes(trimmed);
+  const options = [
+    { key: "rowsAndColumns", title: "نفس الطلاب وترتيب الجدول", desc: `نفس أسماء الطلاب بنفس الترتيب، ونفس أعمدة «${current.subject}»، بخانات فاضية.` },
+    { key: "rows", title: "نفس الطلاب فقط", desc: "نفس الأسماء والترتيب، وتضيف أعمدتها بنفسك." },
+    { key: "empty", title: "مادة فاضية", desc: "تبدأ بدون طلاب ولا أعمدة." },
+  ];
+  return (
+    <Modal title="إضافة مادة" onClose={onClose}>
+      <Field label="اسم المادة">
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: الرياضيات" style={inputStyle} />
+      </Field>
+      {dup && <p className="text-xs -mt-2 mb-3" style={{ color: "#A01E14" }}>هذه المادة موجودة بالفصل. لإضافة وحدة لها استخدم «+ وحدة».</p>}
+      {trimmed && !dup && (
+        <div className="mb-5">
+          <p className="text-sm font-semibold mb-2" style={{ color: INK }}>تبي نفس الأسماء وترتيب الجدول من «{current.subject}»؟</p>
+          <div role="radiogroup" className="space-y-2">
+            {options.map((o) => (
+              <button key={o.key} type="button" role="radio" aria-checked={mode === o.key} onClick={() => setMode(o.key)}
+                className="w-full text-right flex items-start gap-3 p-3 rounded-xl transition-colors"
+                style={{ background: mode === o.key ? hexToRgba(DASH_GREEN, 0.08) : "#fff", border: `1.5px solid ${mode === o.key ? DASH_GREEN : LINE}` }}>
+                <span className="w-5 h-5 mt-0.5 rounded-full flex items-center justify-center shrink-0" style={{ border: `2px solid ${mode === o.key ? DASH_GREEN : "#A3ADAA"}` }}>
+                  {mode === o.key && <span className="w-2.5 h-2.5 rounded-full" style={{ background: DASH_GREEN }} />}
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold" style={{ color: INK }}>{o.title}</span>
+                  <span className="block text-xs mt-0.5" style={{ color: MUTED }}>{o.desc}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <button type="button" disabled={!trimmed || dup} onClick={() => onSave(trimmed, mode)} className="w-full h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: DASH_GREEN }}>
+        إضافة المادة
+      </button>
+    </Modal>
+  );
+}
+
+// إضافة / إعادة تسمية (وحدة أو مادة)
+function NameModal({ title, label, initial, placeholder, hint, saveLabel = "حفظ", onSave, onClose }) {
+  const [name, setName] = useState(initial || "");
+  return (
+    <Modal title={title} onClose={onClose}>
+      <Field label={label} hint={hint}>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} style={inputStyle}
+          onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onSave(name.trim()); }} />
+      </Field>
+      <button type="button" disabled={!name.trim()} onClick={() => onSave(name.trim())} className="w-full h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: DASH_GREEN }}>{saveLabel}</button>
+    </Modal>
+  );
+}
+
+// ===== نافذة "درجات الوحدات والنقل" =====
+function GroupDataModal({ cls, groupSheets, otherClasses, selectedRowIds, setAllClasses, onClose }) {
+  const [tab, setTab] = useState("summary");
+  return (
+    <Modal title="درجات الوحدات والنقل" onClose={onClose} xl>
+      <div role="tablist" className="flex items-center gap-1 p-1 rounded-xl mb-5 w-fit max-w-full overflow-x-auto" style={{ background: PAPER }}>
+        {[{ key: "summary", label: "درجات جميع الوحدات", icon: Sigma }, { key: "transfer", label: "نسخ ونقل البيانات", icon: ArrowLeftRight }].map((t) => (
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
+            className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-semibold whitespace-nowrap"
+            style={tab === t.key ? { background: "#fff", color: DASH_GREEN_DARK, boxShadow: "0 1px 2px rgba(16,24,22,0.10)" } : { color: MUTED }}>
+            <t.icon size={16} /> {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "summary"
+        ? <UnitsSummary cls={cls} groupSheets={groupSheets} />
+        : <TransferPanel cls={cls} groupSheets={groupSheets} otherClasses={otherClasses} selectedRowIds={selectedRowIds} setAllClasses={setAllClasses} />}
+    </Modal>
+  );
+}
+
+function UnitsSummary({ cls, groupSheets }) {
+  const subjects = subjectsOf(groupSheets);
+  const [subject, setSubject] = useState(cls.subject);
+  const [mode, setMode] = useState("both"); // sum | avg | both
+  const units = groupSheets.filter((c) => c.subject === subject);
+  const base = units[0] || cls;
+  const fmt = (n) => (Math.round(n * 100) / 100).toString();
+  const rows = (base.rows || []).map((row) => {
+    const per = units.map((u) => { const m = matchRow(u, row); return m ? totalGrade(u, m.id) : null; });
+    const valid = per.filter(Boolean);
+    const sumScore = valid.reduce((a, g) => a + g.score, 0);
+    const sumMax = valid.reduce((a, g) => a + g.max, 0);
+    const pct = sumMax ? Math.round((sumScore / sumMax) * 100) : null;
+    return { row, per, valid, sumScore, sumMax, avgScore: valid.length ? sumScore / valid.length : null, avgMax: valid.length ? sumMax / valid.length : null, pct };
+  });
+  const band = (pct) => pct === null ? { c: MUTED, bg: PAPER } : pct >= 90 ? { c: "#0B5246", bg: "#E3F1EE" } : pct >= 65 ? { c: "#7A4F00", bg: "#FBF0D9" } : { c: "#A01E14", bg: "#FDE7E5" };
+  const noGrades = units.every((u) => !u.columns.some((c) => c.type === "counter" && Number(c.maxValue) > 0));
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap gap-2">
+          {subjects.map((sj) => (
+            <button key={sj} type="button" onClick={() => setSubject(sj)} className="h-9 px-3.5 rounded-xl text-[13px] font-semibold"
+              style={subject === sj ? { background: DASH_GREEN, color: "#fff" } : { background: "#fff", color: INK, border: `1px solid ${LINE}` }}>{sj}</button>
+          ))}
+        </div>
+        <div role="radiogroup" aria-label="طريقة العرض" className="flex items-center gap-1 p-1 rounded-xl" style={{ background: PAPER }}>
+          {[{ k: "sum", l: "المجموع" }, { k: "avg", l: "المتوسط" }, { k: "both", l: "الاثنين" }].map((o) => (
+            <button key={o.k} type="button" role="radio" aria-checked={mode === o.k} onClick={() => setMode(o.k)} className="h-8 px-3 rounded-lg text-[13px] font-semibold"
+              style={mode === o.k ? { background: "#fff", color: DASH_GREEN_DARK, boxShadow: "0 1px 2px rgba(16,24,22,0.10)" } : { color: MUTED }}>{o.l}</button>
+          ))}
+        </div>
+      </div>
+      {noGrades ? (
+        <p className="text-sm p-4 rounded-xl" style={{ background: PAPER, color: INK }}>
+          ما فيه أعمدة درجات بهذه المادة. عشان تنحسب الدرجات، حدّد «الدرجة القصوى» لأعمدة العدّاد (مثل الواجبات من 8) من تعديل العمود.
+        </p>
+      ) : (
+        <div className="rounded-2xl overflow-auto" style={{ border: `1px solid ${LINE}`, maxHeight: "60vh" }}>
+          <table className="w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+            <thead>
+              <tr>
+                <th className="p-2.5 text-right sticky top-0" style={{ background: "#F8FAF9", borderBottom: `1px solid ${LINE}`, color: INK, minWidth: 160 }}>الطالب</th>
+                {units.map((u) => <th key={u.id} className="p-2.5 text-center sticky top-0 whitespace-nowrap" style={{ background: "#F8FAF9", borderBottom: `1px solid ${LINE}`, color: INK }}>{unitLabel(u)}</th>)}
+                {mode !== "avg" && <th className="p-2.5 text-center sticky top-0" style={{ background: hexToRgba(DASH_GREEN, 0.1), borderBottom: `1px solid ${LINE}`, color: DASH_GREEN_DARK }}>المجموع</th>}
+                {mode !== "sum" && <th className="p-2.5 text-center sticky top-0" style={{ background: hexToRgba(DASH_GREEN, 0.1), borderBottom: `1px solid ${LINE}`, color: DASH_GREEN_DARK }}>المتوسط</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ row, per, sumScore, sumMax, avgScore, avgMax, pct }) => {
+                const b = band(pct);
+                return (
+                  <tr key={row.id}>
+                    <td className="p-2.5 font-medium" style={{ borderBottom: `1px solid ${LINE}`, color: INK }}>{row.name}</td>
+                    {per.map((g, i) => (
+                      <td key={i} className="p-2.5 text-center" style={{ borderBottom: `1px solid ${LINE}`, color: g ? INK : MUTED }}>{g ? `${g.score}/${g.max}` : "—"}</td>
+                    ))}
+                    {mode !== "avg" && (
+                      <td className="p-2.5 text-center" style={{ borderBottom: `1px solid ${LINE}` }}>
+                        {sumMax ? <span className="inline-block px-2.5 py-1 rounded-lg font-bold" style={{ background: b.bg, color: b.c }}>{fmt(sumScore)}/{fmt(sumMax)}</span> : "—"}
+                      </td>
+                    )}
+                    {mode !== "sum" && (
+                      <td className="p-2.5 text-center" style={{ borderBottom: `1px solid ${LINE}` }}>
+                        {avgScore !== null ? <span className="inline-block px-2.5 py-1 rounded-lg font-bold" style={{ background: b.bg, color: b.c }}>{fmt(avgScore)}/{fmt(avgMax)}</span> : "—"}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-xs mt-3" style={{ color: MUTED }}>المجموع = جمع درجات الطالب بكل الوحدات. المتوسط = مجموعه مقسوم على عدد الوحدات اللي له فيها درجات.</p>
+    </div>
+  );
+}
+
+const SPECIAL_ITEMS = [
+  { key: "__attendance", label: "الحضور والغياب" },
+  { key: "__notes", label: "الملاحظات بتقرير الطالب" },
+  { key: "__badges", label: "أوسمة التميز" },
+];
+function TransferPanel({ cls, groupSheets, otherClasses, selectedRowIds, setAllClasses }) {
+  const [what, setWhat] = useState([]);
+  const [targets, setTargets] = useState([]);
+  const [mode, setMode] = useState("copy"); // copy | move
+  const [overwrite, setOverwrite] = useState(true);
+  const [onlySelected, setOnlySelected] = useState(selectedRowIds.length > 0);
+  const [showOtherClasses, setShowOtherClasses] = useState(false);
+  const [done, setDone] = useState(null); // { message, snapshot }
+  const allKeys = [...cls.columns.map((c) => c.id), ...SPECIAL_ITEMS.map((x) => x.key)];
+  const toggle = (list, setList, id) => setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  const groupTargets = groupSheets.filter((c) => c.id !== cls.id);
+  const rows = onlySelected ? cls.rows.filter((r) => selectedRowIds.includes(r.id)) : cls.rows;
+  const isNote = (e) => !e.colId || e.colId === "note";
+
+  const run = () => {
+    let snapshot = {};
+    let copied = 0, skippedStudents = 0;
+    setAllClasses((list) => {
+      const byId = Object.fromEntries(list.map((c) => [c.id, c]));
+      const src = byId[cls.id];
+      if (!src) return list;
+      const srcRows = onlySelected ? src.rows.filter((r) => selectedRowIds.includes(r.id)) : src.rows;
+      const cols = src.columns.filter((c) => what.includes(c.id));
+      const updated = {};
+      snapshot = { [src.id]: src };
+      targets.forEach((tid) => {
+        let t = byId[tid];
+        if (!t) return;
+        snapshot[tid] = t;
+        t = { ...t, columns: [...t.columns], cells: { ...(t.cells || {}) }, reports: { ...(t.reports || {}) }, attendance: { ...(t.attendance || {}) }, rows: [...t.rows] };
+        // نطابق الأعمدة بالاسم، ونضيف العمود للهدف لو ما كان موجود
+        const colMap = {};
+        cols.forEach((col) => {
+          let tc = t.columns.find((x) => x.name.trim() === col.name.trim());
+          if (!tc) { tc = { ...JSON.parse(JSON.stringify(col)), id: uid(), pinned: false }; t.columns.push(tc); }
+          colMap[col.id] = tc.id;
+        });
+        srcRows.forEach((r) => {
+          const tr = matchRow(t, r);
+          if (!tr) { skippedStudents += 1; return; }
+          cols.forEach((col) => {
+            const v = (src.cells || {})[`${r.id}:${col.id}`];
+            const key = `${tr.id}:${colMap[col.id]}`;
+            if (v === undefined || v === "") return;
+            if (!overwrite && t.cells[key] !== undefined && t.cells[key] !== "") return;
+            t.cells[key] = v;
+            copied += 1;
+          });
+          const srcEntries = (src.reports || {})[r.id] || [];
+          const moveEntries = srcEntries.filter((e) =>
+            (cols.some((c) => c.id === e.colId)) ||
+            (what.includes("__notes") && isNote(e)) ||
+            (what.includes("__attendance") && e.colId === ATTEND_COL_ID));
+          if (moveEntries.length) {
+            const mapped = moveEntries.map((e) => ({ ...e, id: uid(), colId: colMap[e.colId] || e.colId }));
+            t.reports[tr.id] = [...(t.reports[tr.id] || []), ...mapped];
+          }
+          if (what.includes("__attendance")) {
+            Object.entries(src.attendance || {}).forEach(([day, rec]) => {
+              if (rec && rec[r.id] === "absent") { t.attendance[day] = { ...(t.attendance[day] || {}), [tr.id]: "absent" }; copied += 1; }
+            });
+          }
+          if (what.includes("__badges") && r.badge) {
+            t.rows = t.rows.map((x) => (x.id === tr.id ? { ...x, badge: r.badge } : x));
+            copied += 1;
+          }
+        });
+        updated[tid] = t;
+      });
+      if (mode === "move" && targets.length) {
+        const ids = srcRows.map((r) => r.id);
+        const cells = { ...(src.cells || {}) };
+        const reports = { ...(src.reports || {}) };
+        const attendance = JSON.parse(JSON.stringify(src.attendance || {}));
+        ids.forEach((rid) => {
+          cols.forEach((col) => delete cells[`${rid}:${col.id}`]);
+          if (reports[rid]) reports[rid] = reports[rid].filter((e) => !(
+            cols.some((c) => c.id === e.colId) || (what.includes("__notes") && isNote(e)) || (what.includes("__attendance") && e.colId === ATTEND_COL_ID)));
+          if (what.includes("__attendance")) Object.keys(attendance).forEach((day) => { if (attendance[day]) delete attendance[day][rid]; });
+        });
+        const rowsNext = what.includes("__badges") ? src.rows.map((x) => (ids.includes(x.id) ? { ...x, badge: null } : x)) : src.rows;
+        updated[src.id] = { ...src, cells, reports, attendance, rows: rowsNext };
+      }
+      return list.map((c) => updated[c.id] || c);
+    });
+    setTimeout(() => {
+      setDone({
+        message: `تم ${mode === "move" ? "نقل" : "نسخ"} ${copied} قيمة إلى ${targets.length} ${targets.length === 1 ? "وجهة" : "وجهات"}${skippedStudents ? ` — ${skippedStudents} طالب ما لقيناه بالوجهة وتجاوزناه` : ""}.`,
+        snapshot,
+      });
+    }, 0);
+  };
+  const undo = () => {
+    const snap = done?.snapshot || {};
+    setAllClasses((list) => list.map((c) => snap[c.id] || c));
+    setDone(null);
+  };
+
+  const box = { background: PAPER, borderRadius: 16, padding: 14 };
+  const chip = (on) => ({ background: "#fff", border: `1px solid ${on ? DASH_GREEN : LINE}`, color: INK });
+  const canRun = what.length > 0 && targets.length > 0 && rows.length > 0;
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div style={box}>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-bold" style={{ color: INK }}>1. وش تنقل من «{sheetLabel(cls)}»؟</p>
+          <button type="button" onClick={() => setWhat(what.length === allKeys.length ? [] : allKeys)} className="text-xs font-semibold" style={{ color: DASH_GREEN }}>
+            {what.length === allKeys.length ? "إلغاء الكل" : "تحديد الكل"}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {cls.columns.map((c) => (
+            <label key={c.id} className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm cursor-pointer" style={chip(what.includes(c.id))}>
+              <input type="checkbox" checked={what.includes(c.id)} onChange={() => toggle(what, setWhat, c.id)} className="w-4 h-4" />
+              <span className="w-2 h-2 rounded-full" style={{ background: c.color }} />{c.name}
+            </label>
+          ))}
+          {SPECIAL_ITEMS.map((x) => (
+            <label key={x.key} className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm cursor-pointer" style={chip(what.includes(x.key))}>
+              <input type="checkbox" checked={what.includes(x.key)} onChange={() => toggle(what, setWhat, x.key)} className="w-4 h-4" />{x.label}
+            </label>
+          ))}
+        </div>
+        <p className="text-sm font-bold mt-4 mb-2" style={{ color: INK }}>الطلاب</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setOnlySelected(false)} className="h-9 px-3 rounded-xl text-[13px] font-semibold" style={!onlySelected ? { background: DASH_GREEN, color: "#fff" } : chip(false)}>كل الطلاب ({cls.rows.length})</button>
+          <button type="button" disabled={!selectedRowIds.length} onClick={() => setOnlySelected(true)} className="h-9 px-3 rounded-xl text-[13px] font-semibold disabled:opacity-40" style={onlySelected ? { background: DASH_GREEN, color: "#fff" } : chip(false)}>المحددين فقط ({selectedRowIds.length})</button>
+        </div>
+      </div>
+
+      <div style={box}>
+        <p className="text-sm font-bold mb-2" style={{ color: INK }}>2. إلى وين؟</p>
+        {groupTargets.length === 0 && <p className="text-xs mb-2" style={{ color: MUTED }}>ما فيه مواد أو وحدات ثانية بهذا الفصل بعد. أضفها من «+ مادة» أو «+ وحدة».</p>}
+        {subjectsOf(groupTargets).map((subj) => (
+          <div key={subj} className="mb-2">
+            <p className="text-xs font-semibold mb-1.5" style={{ color: MUTED }}>{subj}</p>
+            <div className="flex flex-wrap gap-2">
+              {groupTargets.filter((c) => c.subject === subj).map((c) => (
+                <label key={c.id} className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm cursor-pointer" style={chip(targets.includes(c.id))}>
+                  <input type="checkbox" checked={targets.includes(c.id)} onChange={() => toggle(targets, setTargets, c.id)} className="w-4 h-4" />{unitLabel(c)}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        {otherClasses.length > 0 && (
+          <div className="mt-2">
+            <button type="button" onClick={() => setShowOtherClasses((v) => !v)} className="text-xs font-semibold flex items-center gap-1" style={{ color: DASH_GREEN }}>
+              {showOtherClasses ? <ChevronUp size={14} /> : <ChevronDown size={14} />} فصول أخرى
+            </button>
+            {showOtherClasses && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {otherClasses.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm cursor-pointer" style={chip(targets.includes(c.id))}>
+                    <input type="checkbox" checked={targets.includes(c.id)} onChange={() => toggle(targets, setTargets, c.id)} className="w-4 h-4" />{c.grade} · {sheetLabel(c)}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="text-sm font-bold mt-4 mb-2" style={{ color: INK }}>3. الطريقة</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button type="button" onClick={() => setMode("copy")} className="h-9 px-3 rounded-xl text-[13px] font-semibold" style={mode === "copy" ? { background: DASH_GREEN, color: "#fff" } : chip(false)}>نسخ (الأصل يبقى)</button>
+          <button type="button" onClick={() => setMode("move")} className="h-9 px-3 rounded-xl text-[13px] font-semibold" style={mode === "move" ? { background: "#B42318", color: "#fff" } : chip(false)}>نقل (يُمسح من هنا)</button>
+        </div>
+        <label className="flex items-center gap-2 text-sm" style={{ color: INK }}>
+          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} className="w-4 h-4" />
+          استبدال القيم الموجودة بالوجهة
+        </label>
+      </div>
+
+      <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+        <button type="button" disabled={!canRun} onClick={run} className="h-11 px-6 rounded-xl text-sm font-semibold text-white disabled:opacity-40 flex items-center gap-2" style={{ background: mode === "move" ? "#B42318" : DASH_GREEN }}>
+          <ArrowLeftRight size={17} /> {mode === "move" ? "نقل" : "نسخ"} {what.length ? `${what.length} عنصر` : ""} لـ {rows.length} طالب
+        </button>
+        {done && (
+          <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm" style={{ background: hexToRgba(DASH_GREEN, 0.08), color: DASH_GREEN_DARK }}>
+            <Check size={16} /> {done.message}
+            <button type="button" onClick={undo} className="font-bold underline">تراجع</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, schoolName, principalName, countryName, ministryName, logoImage, allClasses, onMoveRowsToClass, onApplyColumnToClasses, onApplyEventToClasses, isOwner, density, isOnline, syncStatus, onRetrySave, shawahed, onLinkShawahed, setAllClasses, onSwitchSheet, setAppData }) {
   const [colModal, setColModal] = useState(null);
   const [rowModal, setRowModal] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -11743,12 +12238,17 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   };
 
   const saveRowsMany = (drafts) => {
-    updateClass((c) => ({ ...c, rows: [...c.rows, ...drafts.map((d) => ({ id: uid(), name: d.name.trim(), type: d.type, options: d.options, color: d.color, autoRenew: !!d.autoRenew, medicalNote: d.medicalNote || "", nationalId: d.nationalId || "" }))] }));
+    const newRows = drafts.map((d) => ({ id: uid(), name: d.name.trim(), type: d.type, options: d.options, color: d.color, autoRenew: !!d.autoRenew, medicalNote: d.medicalNote || "", nationalId: d.nationalId || "" }));
+    updateClass((c) => ({ ...c, rows: [...c.rows, ...newRows] }));
     setRowModal(null);
+    if (otherSheets.length && newRows.length) setScopeAsk({ kind: "addRows", rows: newRows });
   };
   const saveRowOne = (payload) => {
-    updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === rowModal.data.id ? { ...r, ...payload, name: payload.name.trim() } : r)) }));
+    const before = rowModal.data;
+    const newName = payload.name.trim();
+    updateClass((c) => ({ ...c, rows: c.rows.map((r) => (r.id === before.id ? { ...r, ...payload, name: newName } : r)) }));
     setRowModal(null);
+    if (otherSheets.length && newName && newName !== (before.name || "").trim()) setScopeAsk({ kind: "rename", row: before, newName });
   };
   const removeRowById = (rowId) => {
     updateClass((c) => {
@@ -11842,9 +12342,9 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const deleteRow = () => {
     const row = rowModal.data;
     setRowModal(null);
-    setConfirmAction({ type: "deleteRow", row });
+    askDeleteRow(row);
   };
-  const quickDeleteRow = (row) => setConfirmAction({ type: "deleteRow", row });
+  const quickDeleteRow = (row) => askDeleteRow(row);
 
   const deleteAll = () => setConfirmAction({ type: "deleteAll" });
   const clearAllStudents = () => setConfirmAction({ type: "clearStudents" });
@@ -12058,6 +12558,91 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const behaviorReportEntries = behaviorReportRowId ? (cls.reports?.[behaviorReportRowId] || []).filter((e) => behaviorColumnIds.includes(e.colId)) : [];
 
   const isMobile = useIsMobile();
+
+  // ===== المواد والوحدات =====
+  const gSheets = groupSheetsOf(allClasses, cls);
+  const gSubjects = subjectsOf(gSheets);
+  const gUnits = gSheets.filter((c) => c.subject === cls.subject);
+  const otherSheets = gSheets.filter((c) => c.id !== cls.id);
+  const otherClassesForTransfer = allClasses.filter((c) => groupKeyOf(c) !== groupKeyOf(cls) && !c.archived);
+  const updateSheetsByIds = (ids, fn) => { if (ids && ids.length) setAllClasses((list) => list.map((c) => (ids.includes(c.id) ? fn(c) : c))); };
+  const [groupModal, setGroupModal] = useState(null);
+  const [scopeAsk, setScopeAsk] = useState(null);
+  const [showGroupData, setShowGroupData] = useState(false);
+
+  const switchSubject = (subject) => {
+    if (subject === cls.subject) return;
+    const units = gSheets.filter((c) => c.subject === subject);
+    const myIndex = gUnits.findIndex((u) => u.id === cls.id);
+    onSwitchSheet((units[myIndex] || units[0]).id);
+  };
+  const addSubject = (name, mode) => {
+    const sheet = newSheetFrom(cls, { subject: name, unitName: "الوحدة الأولى", copyRows: mode !== "empty", copyColumns: mode === "rowsAndColumns" });
+    setAllClasses((list) => [...list, sheet]);
+    setGroupModal(null);
+    onSwitchSheet(sheet.id);
+    showToast(`تمت إضافة مادة «${name}»`);
+  };
+  const addUnit = (name) => {
+    const base = gUnits[0] || cls;
+    const sheet = newSheetFrom(base, { subject: cls.subject, unitName: name, copyRows: true, copyColumns: true });
+    setAllClasses((list) => [...list, sheet]);
+    setGroupModal(null);
+    onSwitchSheet(sheet.id);
+    showToast(`تمت إضافة «${name}» بنفس طلاب وأعمدة ${unitLabel(base)}`);
+  };
+  const renameUnit = (name) => { updateClass((c) => ({ ...c, unitName: name })); setGroupModal(null); };
+  const renameSubject = (name) => {
+    updateSheetsByIds(gUnits.map((u) => u.id), (c) => ({ ...c, subject: name }));
+    setGroupModal(null);
+  };
+  const deleteSheets = (ids) => {
+    const remaining = gSheets.filter((c) => !ids.includes(c.id));
+    if (!remaining.length) return;
+    const nextOpen = ids.includes(cls.id) ? (remaining.find((c) => c.subject === cls.subject) || remaining[0]).id : null;
+    setAppData((d) => {
+      const removed = d.classes.filter((c) => ids.includes(c.id));
+      let classes = d.classes.filter((c) => !ids.includes(c.id));
+      const oldPrimary = removed.find(isPrimarySheet);
+      if (oldPrimary) {
+        const rest = sortSheets(classes.filter((c) => groupKeyOf(c) === oldPrimary.id));
+        if (rest.length) {
+          const np = { ...rest[0], groupId: undefined, pinned: oldPrimary.pinned, archived: oldPrimary.archived, locked: oldPrimary.locked };
+          const oldIdx = Math.min(d.classes.findIndex((c) => c.id === oldPrimary.id), classes.length);
+          classes = classes.filter((c) => c.id !== np.id).map((c) => (groupKeyOf(c) === oldPrimary.id ? { ...c, groupId: np.id } : c));
+          classes.splice(Math.max(0, oldIdx), 0, np);
+        }
+      }
+      const trashEntry = { id: uid(), type: "classesBulk", when: nowMeta(), data: { classes: removed } };
+      return { ...d, classes, trash: [trashEntry, ...(d.trash || [])].slice(0, 30) };
+    });
+    setGroupModal(null);
+    if (nextOpen) onSwitchSheet(nextOpen);
+    showToast("تم الحذف — تقدر تستعيده من «استعادة المحذوفات» بالصفحة الرئيسية");
+  };
+
+  // تأكيد نطاق الإجراء (هذه الوحدة / وحدات المادة / كل المواد)
+  const askDeleteRow = (row) => (otherSheets.length ? setScopeAsk({ kind: "deleteRow", row }) : setConfirmAction({ type: "deleteRow", row }));
+  const runScope = (ids) => {
+    const a = scopeAsk;
+    setScopeAsk(null);
+    if (!a) return;
+    if (a.kind === "deleteRow") {
+      setAnimatingRowId(a.row.id);
+      setTimeout(() => { removeRowById(a.row.id); setAnimatingRowId(null); }, 450);
+      updateSheetsByIds(ids, (sh) => { const m = matchRow(sh, a.row); return m ? removeRowsFromSheet(sh, [m.id]) : sh; });
+      showToast(ids.length ? `تم حذف ${a.row.name} من ${ids.length + 1} وحدات` : `تم حذف ${a.row.name}`);
+    } else if (a.kind === "bulkDelete") {
+      const rows = cls.rows.filter((r) => a.ids.includes(r.id));
+      bulkDeleteSelected();
+      updateSheetsByIds(ids, (sh) => removeRowsFromSheet(sh, rows.map((r) => matchRow(sh, r)).filter(Boolean).map((m) => m.id)));
+    } else if (a.kind === "addRows") {
+      updateSheetsByIds(ids, (sh) => ({ ...sh, rows: [...sh.rows, ...a.rows.filter((r) => !matchRow(sh, r)).map((r) => ({ ...r }))] }));
+      if (ids.length) showToast(`تمت إضافة الطلاب إلى ${ids.length} وحدات أخرى`);
+    } else if (a.kind === "rename") {
+      updateSheetsByIds(ids, (sh) => ({ ...sh, rows: sh.rows.map((r) => (r.id === a.row.id || (r.name || "").trim() === (a.row.name || "").trim() ? { ...r, name: a.newName } : r)) }));
+    }
+  };
   const rowMenuItems = (row, i) => [
     { icon: FileText, label: "تقرير الطالب", onClick: () => setReportRowId(row.id) },
     { icon: Pencil, label: "تعديل بيانات الطالب", disabled: examLocked, onClick: () => setRowModal({ mode: "edit", data: row }) },
@@ -12119,7 +12704,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <div className="min-w-0">
             <h1 className="text-xl md:text-2xl font-bold leading-tight truncate" style={{ color: INK }}>{cls.subject}</h1>
             <p className="text-sm truncate" style={{ color: MUTED }}>
-              {[cls.grade, `${cls.rows.length} طالب`, cls.teacher, cls.yearHijri && `${cls.yearHijri} هـ`].filter(Boolean).join(" · ")}
+              {[cls.grade, unitLabel(cls), `${cls.rows.length} طالب`, cls.teacher, cls.yearHijri && `${cls.yearHijri} هـ`].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
@@ -12132,6 +12717,75 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         )}
 
         <EventsTicker events={cls.events} speed={cls.tickerSpeed || 14} />
+
+        {/* ===== تبويبات المواد والوحدات ===== */}
+        <div className="flex flex-col gap-2 mb-3">
+          <div role="tablist" aria-label="المواد" className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
+            {gSubjects.map((sj) => {
+              const active = sj === cls.subject;
+              return (
+                <div key={sj} className="flex items-center shrink-0 rounded-xl transition-colors" style={active ? { background: DASH_GREEN, border: `1px solid ${DASH_GREEN}` } : { background: "#fff", border: `1px solid ${LINE}` }}>
+                  <button type="button" role="tab" aria-selected={active} onClick={() => switchSubject(sj)} className="h-9 ps-3.5 pe-3 text-[13px] font-semibold flex items-center gap-1.5 whitespace-nowrap" style={{ color: active ? "#fff" : INK }}>
+                    <BookOpen size={15} /> {sj}
+                  </button>
+                  {active && (
+                    <ActionMenu
+                      label={`خيارات مادة ${sj}`}
+                      title={`مادة ${sj}`}
+                      windowIcon={BookOpen}
+                      triggerClassName="w-8 h-9 -ms-1"
+                      triggerContent={<MoreHorizontal size={16} color="#fff" />}
+                      items={[
+                        { icon: Pencil, label: "إعادة تسمية المادة", onClick: () => setGroupModal({ type: "renameSubject" }) },
+                        { icon: Plus, label: "إضافة وحدة لهذه المادة", onClick: () => setGroupModal({ type: "addUnit" }) },
+                        gSubjects.length > 1 && "sep",
+                        gSubjects.length > 1 && { icon: Trash2, label: `حذف المادة بكل وحداتها (${gUnits.length})`, danger: true, onClick: () => setGroupModal({ type: "confirmDelete", ids: gUnits.map((u) => u.id), label: `مادة «${sj}» بكل وحداتها` }) },
+                      ]}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            <button type="button" onClick={() => setGroupModal({ type: "addSubject" })} className="h-9 px-3 rounded-xl text-[13px] font-semibold flex items-center gap-1 shrink-0 whitespace-nowrap hover:bg-black/[0.03]" style={{ border: `1.5px dashed ${hexToRgba(DASH_GREEN, 0.45)}`, color: DASH_GREEN_DARK }}>
+              <Plus size={15} /> مادة
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div role="tablist" aria-label="الوحدات" className="flex items-center gap-1 p-1 rounded-xl overflow-x-auto min-w-0" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
+              {gUnits.map((u) => {
+                const active = u.id === cls.id;
+                return (
+                  <div key={u.id} className="flex items-center shrink-0 rounded-lg" style={active ? { background: hexToRgba(DASH_GREEN, 0.12) } : undefined}>
+                    <button type="button" role="tab" aria-selected={active} onClick={() => !active && onSwitchSheet(u.id)} className="h-8 px-3 text-[13px] font-semibold whitespace-nowrap" style={{ color: active ? DASH_GREEN_DARK : MUTED }}>
+                      {unitLabel(u)}
+                    </button>
+                    {active && (
+                      <ActionMenu
+                        label={`خيارات ${unitLabel(u)}`}
+                        title={`${unitLabel(u)} — ${u.subject}`}
+                        windowIcon={Layers}
+                        size={15}
+                        triggerClassName="w-7 h-8 -ms-1.5"
+                        items={[
+                          { icon: Pencil, label: "إعادة تسمية الوحدة", onClick: () => setGroupModal({ type: "renameUnit" }) },
+                          gUnits.length > 1 && "sep",
+                          gUnits.length > 1 && { icon: Trash2, label: "حذف هذه الوحدة", danger: true, onClick: () => setGroupModal({ type: "confirmDelete", ids: [u.id], label: `«${unitLabel(u)}» من ${u.subject}` }) },
+                        ]}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              <button type="button" onClick={() => setGroupModal({ type: "addUnit" })} className="h-8 px-2.5 rounded-lg text-[13px] font-semibold flex items-center gap-1 shrink-0 whitespace-nowrap hover:bg-black/[0.04]" style={{ color: DASH_GREEN_DARK }}>
+                <Plus size={14} /> وحدة
+              </button>
+            </div>
+            <button type="button" onClick={() => setShowGroupData(true)} title="درجات الوحدات والنقل" aria-label="درجات الوحدات والنقل"
+              className="h-10 px-3 rounded-xl flex items-center gap-1.5 shrink-0 text-[13px] font-semibold hover:brightness-95" style={{ background: hexToRgba(DASH_GREEN, 0.1), color: DASH_GREEN_DARK, border: `1px solid ${hexToRgba(DASH_GREEN, 0.22)}` }}>
+              <ArrowLeftRight size={16} /> <span className="hidden sm:inline">درجات الوحدات والنقل</span>
+            </button>
+          </div>
+        </div>
 
         <div className="rounded-2xl p-2 mb-2" style={{ background: "#fff", border: `1px solid ${LINE}` }}>
           <div className="flex flex-wrap items-center gap-2">
@@ -12246,7 +12900,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
               <IconBtn icon={Send} label="نقل إلى فصل آخر" disabled={examLocked} onClick={() => setShowMoveModal(true)} />
               <IconBtn icon={Award} label="شهادات جماعية" onClick={() => setShowBulkCertificateModal(true)} />
               <IconBtn icon={Users} label="رصد جماعي" onClick={() => setShowBulkRecordModal(true)} />
-              <IconBtn icon={Trash2} label="حذف المحددين" tone="danger" disabled={examLocked} onClick={() => setConfirmBulkDelete(true)} />
+              <IconBtn icon={Trash2} label="حذف المحددين" tone="danger" disabled={examLocked} onClick={() => (otherSheets.length ? setScopeAsk({ kind: "bulkDelete", ids: [...selectedRowIds] }) : setConfirmBulkDelete(true))} />
             </div>
           </div>
         )}
@@ -12654,6 +13308,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         <AttendanceModal
           cls={cls}
           updateClass={updateClass}
+          groupSheets={gSheets}
+          updateSheetsByIds={updateSheetsByIds}
           onClose={() => setShowAttendance(false)}
           onPrint={(dateKey) => openPrintPreview({ type: "attendance", cls, dateKey })}
           onShare={(dateKey) => exportPdfShare({ type: "attendance", cls, dateKey })}
@@ -12787,6 +13443,62 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           onClose={() => setShowRowColorRule(false)}
           onSave={(rule) => updateClass((c) => ({ ...c, rowColorRule: rule }))}
           onClear={() => updateClass((c) => ({ ...c, rowColorRule: null }))}
+        />
+      )}
+      {groupModal?.type === "addSubject" && (
+        <AddSubjectModal current={cls} existingSubjects={gSubjects} onSave={addSubject} onClose={() => setGroupModal(null)} />
+      )}
+      {groupModal?.type === "addUnit" && (
+        <NameModal
+          title={`إضافة وحدة — ${cls.subject}`}
+          label="اسم الوحدة"
+          initial={`الوحدة ${UNIT_ORDINALS[gUnits.length] || gUnits.length + 1}`}
+          hint={`راح تاخذ نفس طلاب وأعمدة «${unitLabel(gUnits[0] || cls)}»، بخانات فاضية.`}
+          saveLabel="إضافة الوحدة"
+          onSave={addUnit}
+          onClose={() => setGroupModal(null)}
+        />
+      )}
+      {groupModal?.type === "renameUnit" && (
+        <NameModal title="إعادة تسمية الوحدة" label="اسم الوحدة" initial={unitLabel(cls)} onSave={renameUnit} onClose={() => setGroupModal(null)} />
+      )}
+      {groupModal?.type === "renameSubject" && (
+        <NameModal title="إعادة تسمية المادة" label="اسم المادة" initial={cls.subject} hint="يتغيّر الاسم بكل وحدات المادة." onSave={renameSubject} onClose={() => setGroupModal(null)} />
+      )}
+      {groupModal?.type === "confirmDelete" && (
+        <ConfirmDialog
+          title="تأكيد الحذف"
+          message={`سيتم حذف ${groupModal.label} وكل بياناتها. تقدر تستعيدها من «استعادة المحذوفات» بالصفحة الرئيسية.`}
+          onCancel={() => setGroupModal(null)}
+          onConfirm={() => deleteSheets(groupModal.ids)}
+        />
+      )}
+      {scopeAsk && (
+        <SheetScopeModal
+          current={cls}
+          sheets={gSheets}
+          title={{ deleteRow: `حذف ${scopeAsk.row?.name || ""}`, bulkDelete: `حذف ${scopeAsk.ids?.length || 0} طالب`, addRows: "إضافة الطلاب لمواد ووحدات أخرى؟", rename: "تعديل الاسم بباقي الوحدات؟" }[scopeAsk.kind]}
+          message={{
+            deleteRow: "من وين تبي تحذفه؟ (يمكن استعادته من سلة المحذوفات بكل وحدة)",
+            bulkDelete: "من وين تبي تحذف الطلاب المحددين؟",
+            addRows: `أضفت ${scopeAsk.rows?.length || 0} طالب لهذه الوحدة. تبي تضيفهم أيضًا لـ:`,
+            rename: `تغيير «${scopeAsk.row?.name || ""}» إلى «${scopeAsk.newName || ""}» أيضًا في:`,
+          }[scopeAsk.kind]}
+          confirmLabel={{ deleteRow: "حذف", bulkDelete: "حذف", addRows: "إضافة", rename: "تعديل" }[scopeAsk.kind]}
+          danger={scopeAsk.kind === "deleteRow" || scopeAsk.kind === "bulkDelete"}
+          defaultMode={scopeAsk.kind === "addRows" || scopeAsk.kind === "rename" ? "all" : "this"}
+          onConfirm={runScope}
+          onCancel={() => setScopeAsk(null)}
+        />
+      )}
+      {showGroupData && (
+        <GroupDataModal
+          cls={cls}
+          groupSheets={gSheets}
+          otherClasses={otherClassesForTransfer}
+          selectedRowIds={selectedRowIds}
+          setAllClasses={setAllClasses}
+          onClose={() => setShowGroupData(false)}
         />
       )}
       {confirmBulkDelete && (
@@ -13458,7 +14170,7 @@ function AuthenticatedApp() {
     <>
       <PrintStyles />
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} historySnapshots={historySnapshots} onRestoreSnapshot={restoreFromSnapshot} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} onApplyEventToClasses={applyEventToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} onApplyEventToClasses={applyEventToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} setAllClasses={(fn) => setData((d) => ({ ...d, classes: fn(d.classes) }))} onSwitchSheet={openClass} setAppData={setData} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
