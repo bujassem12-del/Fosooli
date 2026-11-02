@@ -2042,6 +2042,193 @@ async function buildShawahedReportCanvasV2(shawahed, selectedKeys, meta = {}) {
   return { canvas, logicalWidth: width, logicalHeight: height };
 }
 
+// ===== التقرير الشامل للفصل: ملخص واحد مرتب بدل سجل كل طالب =====
+// صف لكل طالب: الحضور، الغياب، كل عمود (القيمة الحالية أو عدد الملاحظات)،
+// المجموع والمستوى، وعدد ملاحظات السلوك. يُستخدم للـ PDF/PNG والـ Excel.
+function classSummaryData(cls) {
+  const cols = cls.columns || [];
+  const behaviorIds = cols.filter((c) => c.behaviorFlag).map((c) => c.id);
+  const hasTotal = cols.some((c) => c.type === "counter" && Number(c.maxValue) > 0);
+  const colLabel = (c) => (c.type === "counter" && Number(c.maxValue) > 0 ? `${c.name} (${c.maxValue})` : c.name);
+  const headers = ["#", "الطالب", "الحضور", "الغياب", ...cols.map(colLabel), ...(hasTotal ? ["المجموع", "المستوى"] : []), "السلوك"];
+  const rows = (cls.rows || []).map((row, i) => {
+    const entries = cls.reports?.[row.id] || [];
+    const pct = attendancePercent(cls, row.id);
+    const absences = entries.filter((e) => e.colId === ATTEND_COL_ID).length;
+    const vals = cols.map((c) => {
+      const v = cls.cells?.[`${row.id}:${c.id}`];
+      if (c.type === "text") {
+        const n = entries.filter((e) => e.colId === c.id).length;
+        return n ? `${n} ملاحظة` : "—";
+      }
+      return v === undefined || v === "" ? "—" : String(v);
+    });
+    const tg = hasTotal ? totalGrade(cls, row.id) : null;
+    const behavior = entries.filter((e) => behaviorIds.includes(e.colId)).length;
+    return {
+      cells: [String(i + 1), row.name, pct === null ? "—" : `${pct}٪`, absences ? String(absences) : "—", ...vals, ...(hasTotal ? [tg ? `${tg.score}/${tg.max}` : "—", tg ? tg.band : "—"] : []), behavior ? String(behavior) : "—"],
+      pct, absences, tg, behavior,
+    };
+  });
+  const withPct = rows.filter((r) => r.pct !== null);
+  const withTg = rows.filter((r) => r.tg);
+  const stats = {
+    students: rows.length,
+    avgAttendance: withPct.length ? Math.round(withPct.reduce((a, r) => a + r.pct, 0) / withPct.length) : null,
+    avgTotal: withTg.length ? Math.round(withTg.reduce((a, r) => a + r.tg.pct, 0) / withTg.length) : null,
+    absences: rows.reduce((a, r) => a + r.absences, 0),
+    behavior: rows.reduce((a, r) => a + r.behavior, 0),
+    needFollow: withTg.filter((r) => r.tg.pct < 65).length,
+  };
+  return { headers, rows, stats, hasTotal, colCount: cols.length };
+}
+
+async function buildClassSummaryCanvas(cls) {
+  try { await Promise.all([document.fonts?.load("700 16px 'IBM Plex Sans Arabic'"), document.fonts?.load("400 14px 'IBM Plex Sans Arabic'")]); } catch (e) { /* نكمل بالخط الاحتياطي */ }
+  const FONT = "'IBM Plex Sans Arabic', Tahoma, Arial, sans-serif";
+  const { headers, rows, stats, hasTotal } = classSummaryData(cls);
+  const scale = 2;
+  const pad = 36;
+  // عرض الأعمدة: رقم صغير، اسم عريض، والباقي متساوي
+  const widths = headers.map((h, i) => (i === 0 ? 40 : i === 1 ? 230 : h === "المستوى" ? 86 : h === "المجموع" ? 92 : 84));
+  let tableW = widths.reduce((a, b) => a + b, 0);
+  const W = Math.max(1000, tableW + pad * 2);
+  // لو فيه مساحة زايدة نوزعها على الأعمدة عشان العناوين ما تنقص
+  if (tableW < W - pad * 2 && widths.length > 2) {
+    const extra = (W - pad * 2 - tableW) / (widths.length - 2);
+    for (let i = 2; i < widths.length; i++) widths[i] += extra;
+    tableW = W - pad * 2;
+  }
+  const tableX = (W - tableW) / 2; // نوسّط الجدول
+  const headH = 150, kpiH = 96, thH = 46, rowH = 36, footH = 56;
+  const H = headH + kpiH + 24 + thH + rows.length * rowH + footH;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+  ctx.direction = "rtl";
+  ctx.textBaseline = "middle";
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const fit = (text, maxW) => { let t = String(text); if (ctx.measureText(t).width <= maxW) return t; while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1); return t + "…"; };
+
+  // ---- الرأس
+  ctx.fillStyle = DASH_GREEN;
+  ctx.fillRect(0, 0, W, 8);
+  ctx.textAlign = "right";
+  ctx.fillStyle = INK;
+  ctx.font = `700 30px ${FONT}`;
+  ctx.fillText(`التقرير الشامل — ${cls.subject}`, W - pad, 54);
+  ctx.font = `400 15px ${FONT}`;
+  ctx.fillStyle = MUTED;
+  const meta = [cls.grade, cls.unitName || null, cls.teacher, cls.yearHijri ? `${cls.yearHijri} هـ` : null].filter(Boolean).join("  •  ");
+  ctx.fillText(meta, W - pad, 92);
+  ctx.textAlign = "left";
+  ctx.font = `700 18px ${FONT}`;
+  ctx.fillStyle = DASH_GREEN;
+  ctx.fillText("فصولي", pad, 54);
+  ctx.font = `400 13px ${FONT}`;
+  ctx.fillStyle = MUTED;
+  ctx.fillText(formatDateDisplay(todayKey()), pad, 92);
+  ctx.fillStyle = LINE;
+  ctx.fillRect(pad, headH - 22, W - pad * 2, 1);
+
+  // ---- بطاقات الأرقام
+  const kpis = [
+    { l: "عدد الطلاب", v: String(stats.students) },
+    { l: "متوسط الحضور", v: stats.avgAttendance === null ? "—" : `${stats.avgAttendance}٪` },
+    hasTotal ? { l: "متوسط المجموع", v: stats.avgTotal === null ? "—" : `${stats.avgTotal}٪` } : { l: "مرات الغياب", v: String(stats.absences) },
+    hasTotal ? { l: "يحتاجون متابعة", v: String(stats.needFollow), warn: stats.needFollow > 0 } : { l: "ملاحظات السلوك", v: String(stats.behavior), warn: stats.behavior > 0 },
+  ];
+  const kGap = 14;
+  const kW = (W - pad * 2 - kGap * (kpis.length - 1)) / kpis.length;
+  kpis.forEach((k, i) => {
+    const x = W - pad - (i + 1) * kW - i * kGap;
+    const y = headH - 6;
+    rr(x, y, kW, kpiH - 14, 14);
+    ctx.fillStyle = k.warn ? "#FDF1EF" : "#F5F7F6";
+    ctx.fill();
+    ctx.textAlign = "right";
+    ctx.font = `400 13px ${FONT}`;
+    ctx.fillStyle = MUTED;
+    ctx.fillText(k.l, x + kW - 16, y + 24);
+    ctx.font = `700 26px ${FONT}`;
+    ctx.fillStyle = k.warn ? "#A01E14" : INK;
+    ctx.fillText(k.v, x + kW - 16, y + 56);
+  });
+
+  // ---- الجدول (العمود الأول على اليمين)
+  let y = headH + kpiH + 24;
+  const colXs = [];
+  let cx = tableX + tableW;
+  widths.forEach((w) => { cx -= w; colXs.push(cx); });
+  rr(tableX, y, tableW, thH, 10);
+  ctx.fillStyle = "#EEF3F1";
+  ctx.fill();
+  ctx.font = `700 13px ${FONT}`;
+  ctx.fillStyle = INK;
+  headers.forEach((h, i) => {
+    ctx.textAlign = i === 1 ? "right" : "center";
+    const tx = i === 1 ? colXs[i] + widths[i] - 12 : colXs[i] + widths[i] / 2;
+    const maxW = widths[i] - 10;
+    if (ctx.measureText(h).width <= maxW) { ctx.fillText(h, tx, y + thH / 2); return; }
+    // عنوان طويل: نقسمه على سطرين بدل ما ينقص
+    const words = String(h).split(" ");
+    let l1 = "", k = 0;
+    while (k < words.length && ctx.measureText((l1 ? l1 + " " : "") + words[k]).width <= maxW) { l1 = (l1 ? l1 + " " : "") + words[k]; k += 1; }
+    if (!l1) { l1 = words[0]; k = 1; }
+    const l2 = words.slice(k).join(" ");
+    ctx.fillText(fit(l1, maxW), tx, y + thH / 2 - 9);
+    ctx.fillText(fit(l2, maxW), tx, y + thH / 2 + 9);
+  });
+  y += thH;
+  const iTotal = hasTotal ? headers.indexOf("المجموع") : -1;
+  const iBand = hasTotal ? headers.indexOf("المستوى") : -1;
+  rows.forEach((r, ri) => {
+    if (ri % 2 === 1) { ctx.fillStyle = "#F8FAF9"; ctx.fillRect(tableX, y, tableW, rowH); }
+    ctx.fillStyle = LINE;
+    ctx.fillRect(tableX, y + rowH - 1, tableW, 1);
+    r.cells.forEach((val, ci) => {
+      const cxm = colXs[ci] + widths[ci] / 2;
+      if ((ci === iTotal || ci === iBand) && r.tg) {
+        // شارة ملونة حسب المستوى
+        ctx.font = `700 13px ${FONT}`;
+        const tw = Math.min(widths[ci] - 12, ctx.measureText(val).width + 18);
+        rr(cxm - tw / 2, y + 7, tw, rowH - 14, 8);
+        ctx.fillStyle = r.tg.bandBg;
+        ctx.fill();
+        ctx.fillStyle = r.tg.bandColor;
+        ctx.textAlign = "center";
+        ctx.fillText(val, cxm, y + rowH / 2);
+        return;
+      }
+      if (ci === 2 && r.pct !== null) {
+        ctx.fillStyle = r.pct >= 90 ? "#0B5246" : r.pct >= 75 ? "#8A5A00" : "#A01E14";
+        ctx.font = `700 13px ${FONT}`;
+      } else if (ci === 1) {
+        ctx.fillStyle = INK;
+        ctx.font = `700 14px ${FONT}`;
+      } else {
+        ctx.fillStyle = val === "—" ? "#A3ADAA" : INK;
+        ctx.font = `400 13px ${FONT}`;
+      }
+      if (ci === 1) { ctx.textAlign = "right"; ctx.fillText(fit(val, widths[ci] - 20), colXs[ci] + widths[ci] - 12, y + rowH / 2); }
+      else { ctx.textAlign = "center"; ctx.fillText(fit(val, widths[ci] - 8), cxm, y + rowH / 2); }
+    });
+    y += rowH;
+  });
+
+  // ---- التذييل
+  ctx.textAlign = "center";
+  ctx.font = `400 12px ${FONT}`;
+  ctx.fillStyle = MUTED;
+  ctx.fillText("الحضور = نسبة الأيام اللي حضرها الطالب • الغياب = عدد مرات الغياب المسجلة • السلوك = عدد الملاحظات السلوكية", W / 2, y + 30);
+  return { canvas, logicalWidth: W, logicalHeight: H };
+}
+
 async function jobToCanvas(job) {
   if (job.type === "shawahedReport") {
     return buildShawahedReportCanvas(job.shawahed, job.meta || {});
@@ -2067,81 +2254,7 @@ async function jobToCanvas(job) {
     return buildProgramReportCanvas({ entry, cat, meta: meta || {} });
   }
   if (job.type === "classFullReport") {
-    const cls = job.cls;
-    const studentCanvases = [];
-    const failedStudents = [];
-    for (const row of cls.rows) {
-      try {
-        const entries = cls.reports?.[row.id] || [];
-        const groups = groupEntries(entries);
-        let photoImageElement = null;
-        if (row.photo) {
-          try { photoImageElement = await loadImage(row.photo); } catch (e) { photoImageElement = null; }
-        }
-        const { canvas } = buildReportCanvas({ title: row.name, subtitle: `${cls.subject} • ${cls.grade}`, groups, photoImageElement, badge: row.badge });
-        if (canvas && canvas.width > 0 && canvas.height > 0) {
-          studentCanvases.push(canvas);
-        } else {
-          failedStudents.push({ name: row.name, reason: "لوحة رسم فارغة (٠×٠)" });
-        }
-      } catch (e) {
-        console.error(`تعذّر بناء تقرير الطالب "${row.name}":`, e);
-        failedStudents.push({ name: row.name, reason: e?.message || "خطأ غير معروف" });
-      }
-    }
-    if (failedStudents.length > 0) {
-      console.warn(`تخطّينا ${failedStudents.length} طالب/طلاب بسبب مشكلة ببياناتهم:`, failedStudents);
-    }
-    if (studentCanvases.length === 0) {
-      const sample = failedStudents.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join(" | ");
-      throw new Error(`تعذّر بناء أي تقرير طالب لهذا الفصل (${failedStudents.length} طالب فشلوا). أمثلة: ${sample}`);
-    }
-    const scale = 3;
-    const pad = 24 * scale;
-    const headerH = 90 * scale;
-    const gap = 30 * scale;
-    const maxW = Math.max(headerH, ...studentCanvases.map((c) => c.width), 0) + pad * 2;
-    const totalH = headerH + studentCanvases.reduce((sum, c) => sum + c.height + gap, pad);
-
-    // متصفحات الجوال (خصوصًا Safari) عندها حد أقصى لحجم اللوحة (Canvas) —
-    // فصل فيه رصد كثير جدًا لعدد كبير من الطلاب ممكن يتجاوزه فيفشل التصدير
-    // بصمت. نقلّص المقياس تلقائيًا لو اقتربنا من هذا الحد، بدل ما نفشل.
-    const MAX_SAFE_DIMENSION = 14000;
-    const MAX_SAFE_AREA = 16 * 1024 * 1024;
-    let finalScale = 1;
-    if (maxW > MAX_SAFE_DIMENSION || totalH > MAX_SAFE_DIMENSION) {
-      finalScale = Math.min(finalScale, MAX_SAFE_DIMENSION / Math.max(maxW, totalH));
-    }
-    if (maxW * totalH * finalScale * finalScale > MAX_SAFE_AREA) {
-      finalScale = Math.min(finalScale, Math.sqrt(MAX_SAFE_AREA / (maxW * totalH)));
-    }
-    const finalW = Math.floor(maxW * finalScale);
-    const finalH = Math.floor(totalH * finalScale);
-
-    const combined = document.createElement("canvas");
-    combined.width = finalW;
-    combined.height = finalH;
-    const ctx = combined.getContext("2d");
-    ctx.scale(finalScale, finalScale);
-    ctx.fillStyle = PAPER;
-    ctx.fillRect(0, 0, maxW, totalH);
-    ctx.direction = "rtl";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = INK;
-    ctx.font = "bold 34px Tahoma, Arial";
-    ctx.fillText(`تقرير شامل — ${cls.subject}`, maxW / 2, pad / 2 + 10 * scale);
-    ctx.font = "20px Tahoma, Arial";
-    ctx.fillStyle = MUTED;
-    ctx.fillText(`${cls.grade} • ${cls.teacher} — ${cls.rows.length} طالب`, maxW / 2, pad / 2 + 44 * scale);
-
-    let y = headerH;
-    studentCanvases.forEach((c) => {
-      const x = (maxW - c.width) / 2;
-      ctx.drawImage(c, x, y);
-      y += c.height + gap;
-    });
-    return { canvas: combined, logicalWidth: finalW / scale, logicalHeight: finalH / scale };
+    return buildClassSummaryCanvas(job.cls);
   }
   const table = jobToTable(job);
   return buildTableCanvas(table);
@@ -2167,6 +2280,11 @@ function exportExcel(job) {
   if (job.type === "classFullReport") {
     const cls = job.cls;
     const wb = XLSX.utils.book_new();
+    const sum = classSummaryData(cls);
+    const sumWs = XLSX.utils.aoa_to_sheet([sum.headers, ...sum.rows.map((r) => r.cells)]);
+    sumWs["!cols"] = sum.headers.map((h, i) => ({ wch: i === 1 ? 32 : 14 }));
+    sumWs["!views"] = [{ RTL: true }];
+    XLSX.utils.book_append_sheet(wb, sumWs, "الملخص");
     cls.rows.forEach((row) => {
       const entries = cls.reports?.[row.id] || [];
       const grouped = groupEntries(entries).flatMap((g) => g.items);
@@ -3141,8 +3259,8 @@ function PrintPreviewModal({ job, format, onClose, onExport }) {
       </div>
       <button
         onClick={() => onExport(format)}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white mb-2 transition-all hover:brightness-110 active:scale-95"
-        style={{ background: `linear-gradient(135deg, ${GOLD}, ${DASH_GREEN})`, boxShadow: "0 2px 8px rgba(15,107,92,0.28)" }}
+        className="w-full flex items-center justify-center gap-2 h-12 rounded-xl text-sm font-semibold text-white mb-2 transition-all hover:brightness-95 active:scale-[0.98]"
+        style={{ background: DASH_GREEN }}
       >
         <PrimaryIcon size={16} /> تصدير كـ {formatLabels[format]}
       </button>
