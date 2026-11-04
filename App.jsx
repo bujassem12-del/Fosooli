@@ -12134,9 +12134,59 @@ function SheetScopeModal({ title, message, current, sheets, confirmLabel = "تأ
 }
 
 // إضافة مادة جديدة للفصل
-function AddSubjectModal({ current, existingSubjects, onSave, onClose }) {
+// اختيار فصول أخرى يُطبَّق عليها نفس الإجراء (مادة/وحدة جديدة)
+// options: [{ id, label, disabled?, note? }]
+function OtherClassesPicker({ options, picked, setPicked, title }) {
+  if (!options.length) return null;
+  const enabled = options.filter((o) => !o.disabled).map((o) => o.id);
+  const all = enabled.length > 0 && enabled.every((id) => picked.includes(id));
+  const toggle = (id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
+  return (
+    <div className="rounded-2xl p-3 mb-5" style={{ background: PAPER }}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-sm font-semibold" style={{ color: INK }}>{title}</p>
+        {enabled.length > 1 && (
+          <button type="button" onClick={() => setPicked(all ? [] : enabled)} className="text-xs font-semibold" style={{ color: DASH_GREEN }}>{all ? "إلغاء الكل" : "تحديد الكل"}</button>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {options.map((o) => (
+          <label key={o.id} className={`flex items-center gap-2.5 min-h-[40px] px-3 py-1.5 rounded-xl text-sm ${o.disabled ? "opacity-50" : "cursor-pointer"}`}
+            style={{ background: "#fff", border: `1px solid ${picked.includes(o.id) ? DASH_GREEN : LINE}`, color: INK }}>
+            <input type="checkbox" disabled={o.disabled} checked={picked.includes(o.id)} onChange={() => toggle(o.id)} className="w-4 h-4 shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block truncate">{o.label}</span>
+              {o.note && <span className="block text-xs" style={{ color: MUTED }}>{o.note}</span>}
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// إضافة وحدة (مع إمكانية إضافتها لفصول أخرى فيها نفس المادة)
+function AddUnitModal({ current, initial, hint, otherOptions, onSave, onClose }) {
+  const [name, setName] = useState(initial || "");
+  const [picked, setPicked] = useState([]);
+  const trimmed = name.trim();
+  return (
+    <Modal title={`إضافة وحدة — ${current.subject}`} onClose={onClose}>
+      <Field label="اسم الوحدة" hint={hint}>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} onKeyDown={(e) => { if (e.key === "Enter" && trimmed) onSave(trimmed, picked); }} />
+      </Field>
+      <OtherClassesPicker title="أضفها أيضًا لفصول أخرى؟" options={otherOptions(trimmed)} picked={picked} setPicked={setPicked} />
+      <button type="button" disabled={!trimmed} onClick={() => onSave(trimmed, picked)} className="w-full h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: DASH_GREEN }}>
+        إضافة الوحدة{picked.length ? ` (+${picked.length} فصول)` : ""}
+      </button>
+    </Modal>
+  );
+}
+
+function AddSubjectModal({ current, existingSubjects, onSave, onClose, otherOptions = () => [] }) {
   const [name, setName] = useState("");
   const [mode, setMode] = useState("rowsAndColumns");
+  const [picked, setPicked] = useState([]);
   const trimmed = name.trim();
   const dup = existingSubjects.includes(trimmed);
   const options = [
@@ -12170,8 +12220,11 @@ function AddSubjectModal({ current, existingSubjects, onSave, onClose }) {
           </div>
         </div>
       )}
-      <button type="button" disabled={!trimmed || dup} onClick={() => onSave(trimmed, mode)} className="w-full h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: DASH_GREEN }}>
-        إضافة المادة
+      {trimmed && !dup && (
+        <OtherClassesPicker title="أضف المادة أيضًا لفصول أخرى؟ (كل فصل بطلابه هو)" options={otherOptions(trimmed)} picked={picked} setPicked={setPicked} />
+      )}
+      <button type="button" disabled={!trimmed || dup} onClick={() => onSave(trimmed, mode, picked)} className="w-full h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: DASH_GREEN }}>
+        إضافة المادة{picked.length ? ` (+${picked.length} فصول)` : ""}
       </button>
     </Modal>
   );
@@ -13120,20 +13173,49 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
     const myIndex = gUnits.findIndex((u) => u.id === cls.id);
     onSwitchSheet((units[myIndex] || units[0]).id);
   };
-  const addSubject = (name, mode) => {
+  // الفصول الأخرى (بطاقة وحدة لكل فصل) لخيار "طبّقها على فصول أخرى"
+  const otherClassPrimaries = allClasses.filter((c) => isPrimarySheet(c) && !c.archived && groupKeyOf(c) !== groupKeyOf(cls));
+  const classLabel = (c) => `${c.grade} — ${c.subject}`;
+  const subjectOptions = (name) => otherClassPrimaries.map((c) => {
+    const has = subjectsOf(groupSheetsOf(allClasses, c)).includes(name);
+    return { id: c.id, label: classLabel(c), disabled: has, note: has ? `فيها مادة «${name}» من قبل` : `${(c.rows || []).length} طالب` };
+  });
+  const unitOptions = (name) => otherClassPrimaries.map((c) => {
+    const units = groupSheetsOf(allClasses, c).filter((x) => x.subject === cls.subject);
+    const dupUnit = units.some((u) => unitLabel(u) === name);
+    return {
+      id: c.id, label: classLabel(c),
+      disabled: !units.length || dupUnit,
+      note: !units.length ? `ما فيها مادة «${cls.subject}»` : dupUnit ? `فيها «${name}» من قبل` : `بنفس طلاب وأعمدة ${unitLabel(units[0])} فيها`,
+    };
+  });
+  const addSubject = (name, mode, targets = []) => {
     const sheet = newSheetFrom(cls, { subject: name, unitName: "الوحدة الأولى", copyRows: mode !== "empty", copyColumns: mode === "rowsAndColumns" });
-    setAllClasses((list) => [...list, sheet]);
+    // بالفصول الأخرى: نفس المادة ونفس ترتيب الأعمدة، بطلاب كل فصل
+    const extra = targets.map((id) => allClasses.find((c) => c.id === id)).filter(Boolean)
+      .filter((t) => !subjectsOf(groupSheetsOf(allClasses, t)).includes(name))
+      .map((t) => {
+        const sh = newSheetFrom(t, { subject: name, unitName: "الوحدة الأولى", copyRows: mode !== "empty", copyColumns: false });
+        if (mode === "rowsAndColumns") sh.columns = JSON.parse(JSON.stringify(cls.columns || []));
+        return sh;
+      });
+    setAllClasses((list) => [...list, sheet, ...extra]);
     setGroupModal(null);
     onSwitchSheet(sheet.id);
-    showToast(`تمت إضافة مادة «${name}»`);
+    showToast(`تمت إضافة مادة «${name}»${extra.length ? ` لهذا الفصل و${extra.length} فصول أخرى` : ""}`);
   };
-  const addUnit = (name) => {
+  const addUnit = (name, targets = []) => {
     const base = gUnits[0] || cls;
     const sheet = newSheetFrom(base, { subject: cls.subject, unitName: name, copyRows: true, copyColumns: true });
-    setAllClasses((list) => [...list, sheet]);
+    const extra = targets.map((id) => allClasses.find((c) => c.id === id)).filter(Boolean).map((t) => {
+      const units = groupSheetsOf(allClasses, t).filter((x) => x.subject === cls.subject);
+      if (!units.length || units.some((u) => unitLabel(u) === name)) return null;
+      return newSheetFrom(units[0], { subject: cls.subject, unitName: name, copyRows: true, copyColumns: true });
+    }).filter(Boolean);
+    setAllClasses((list) => [...list, sheet, ...extra]);
     setGroupModal(null);
     onSwitchSheet(sheet.id);
-    showToast(`تمت إضافة «${name}» بنفس طلاب وأعمدة ${unitLabel(base)}`);
+    showToast(`تمت إضافة «${name}»${extra.length ? ` لهذا الفصل و${extra.length} فصول أخرى` : ` بنفس طلاب وأعمدة ${unitLabel(base)}`}`);
   };
   const renameUnit = (name) => { updateClass((c) => ({ ...c, unitName: name })); setGroupModal(null); };
   const renameSubject = (name) => {
@@ -14016,15 +14098,14 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
         />
       )}
       {groupModal?.type === "addSubject" && (
-        <AddSubjectModal current={cls} existingSubjects={gSubjects} onSave={addSubject} onClose={() => setGroupModal(null)} />
+        <AddSubjectModal current={cls} existingSubjects={gSubjects} otherOptions={subjectOptions} onSave={addSubject} onClose={() => setGroupModal(null)} />
       )}
       {groupModal?.type === "addUnit" && (
-        <NameModal
-          title={`إضافة وحدة — ${cls.subject}`}
-          label="اسم الوحدة"
+        <AddUnitModal
+          current={cls}
           initial={`الوحدة ${UNIT_ORDINALS[gUnits.length] || gUnits.length + 1}`}
           hint={`راح تاخذ نفس طلاب وأعمدة «${unitLabel(gUnits[0] || cls)}»، بخانات فاضية.`}
-          saveLabel="إضافة الوحدة"
+          otherOptions={unitOptions}
           onSave={addUnit}
           onClose={() => setGroupModal(null)}
         />
