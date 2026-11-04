@@ -12,7 +12,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
-  CalendarPlus, Moon, Sun, Filter, ArrowLeftRight, Sigma, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
+  CalendarPlus, Moon, Sun, Filter, ArrowLeftRight, Sigma, ZoomIn, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -2964,6 +2964,7 @@ function FlyWindow({ fly, title, icon: Icon = ListChecks, children, maxWidth = 3
               <Icon size={20} color={DASH_GREEN} />
             </span>
             <h3 className="flex-1 min-w-0 font-bold text-base truncate" style={{ color: INK }}>{title}</h3>
+            <MagnifierButton targetRef={panelRef} />
             <button type="button" onClick={fly.closeWin} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5">
               <X size={18} color={MUTED} />
             </button>
@@ -3195,6 +3196,132 @@ function DateField({ value, onChange }) {
   );
 }
 
+// ===== المكبّرة: زر بجانب ✕ بكل نافذة =====
+// تضغطه فتطلع عدسة دائرية تكبّر أي جزء من النافذة تمرّ عليه بالفأرة (أو
+// تسحب إصبعك فوقه بالجوال). تنقفل بنفس الزر أو Esc.
+// تشتغل بأخذ نسخة من محتوى النافذة وعرضها مكبّرة داخل العدسة، وتتحدّث
+// تلقائيًا لما يتغيّر المحتوى أو تتمرّر النافذة.
+function MagnifierButton({ targetRef, zoom = 2.2 }) {
+  const [on, setOn] = useState(false);
+  const lensRef = useRef(null);
+  const innerRef = useRef(null);
+  const pairsRef = useRef([]); // [عنصر حي، نسخته] للعناصر اللي تتمرّر
+  const lastRef = useRef(null);
+
+  useEffect(() => {
+    if (!on) return;
+    const target = targetRef.current;
+    const lens = lensRef.current;
+    const inner = innerRef.current;
+    if (!target || !lens || !inner) return;
+    const touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    const R = (touch ? 140 : 180) / 2;
+    lens.style.width = lens.style.height = `${R * 2}px`;
+
+    const rebuild = () => {
+      const r = target.getBoundingClientRect();
+      const clone = target.cloneNode(true);
+      clone.setAttribute("aria-hidden", "true");
+      clone.setAttribute("inert", "");
+      clone.removeAttribute("id");
+      clone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+      clone.querySelectorAll("[data-magnifier-lens]").forEach((el) => el.remove());
+      Object.assign(clone.style, { position: "absolute", top: "0", left: "0", margin: "0", width: `${r.width}px`, height: `${r.height}px`, maxHeight: "none", transform: "none", animation: "none", boxShadow: "none" });
+      clone.classList.remove("dlg-in", "modal-panel-in", "fly-open");
+      // قيم الخانات (اللي كتبها المستخدم) ما تنسخ تلقائيًا
+      const liveInputs = target.querySelectorAll("input, textarea, select");
+      const cloneInputs = clone.querySelectorAll("input, textarea, select");
+      liveInputs.forEach((el, i) => { const c = cloneInputs[i]; if (!c) return; if (el.type === "checkbox" || el.type === "radio") c.checked = el.checked; else c.value = el.value; });
+      // نحفظ أزواج العناصر المتمرّرة عشان ننسخ مكان التمرير
+      const live = [target, ...target.querySelectorAll("*")];
+      const copy = [clone, ...clone.querySelectorAll("*")];
+      pairsRef.current = live.map((el, i) => [el, copy[i]]).filter(([el, c]) => c && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1));
+      inner.replaceChildren(clone);
+      inner.style.width = `${r.width}px`;
+      inner.style.height = `${r.height}px`;
+      syncScroll();
+    };
+    const syncScroll = () => pairsRef.current.forEach(([el, c]) => { c.scrollTop = el.scrollTop; c.scrollLeft = el.scrollLeft; });
+
+    const place = (x, y) => {
+      const r = target.getBoundingClientRect();
+      const px = x - r.left, py = y - r.top;
+      if (px < 0 || py < 0 || px > r.width || py > r.height) { lens.style.opacity = "0"; return; }
+      lens.style.opacity = "1";
+      const ly = touch ? y - R * 2 - 24 : y - R; // بالجوال فوق الإصبع
+      lens.style.transform = `translate(${x - R}px, ${Math.max(4, ly)}px)`;
+      inner.style.transform = `translate(${R - px * zoom}px, ${R - py * zoom}px) scale(${zoom})`;
+    };
+    const onMove = (e) => { lastRef.current = [e.clientX, e.clientY]; place(e.clientX, e.clientY); };
+    const onLeave = () => { lens.style.opacity = "0"; };
+    const onScroll = () => { syncScroll(); if (lastRef.current) place(...lastRef.current); };
+    let t;
+    const mo = new MutationObserver((list) => {
+      if (list.every((m) => lens.contains(m.target))) return;
+      clearTimeout(t);
+      t = setTimeout(rebuild, 120);
+    });
+    const onInput = () => { clearTimeout(t); t = setTimeout(rebuild, 120); };
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); setOn(false); } };
+
+    rebuild();
+    lens.style.opacity = "0";
+    const prevTouch = target.style.touchAction;
+    if (touch) target.style.touchAction = "none"; // بالجوال السحب يحرّك العدسة بدل التمرير
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerdown", onMove);
+    target.addEventListener("pointerleave", onLeave);
+    target.addEventListener("scroll", onScroll, true);
+    target.addEventListener("input", onInput, true);
+    window.addEventListener("resize", rebuild);
+    document.addEventListener("keydown", onKey, true);
+    mo.observe(target, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "src"] });
+    return () => {
+      clearTimeout(t);
+      mo.disconnect();
+      target.style.touchAction = prevTouch;
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerdown", onMove);
+      target.removeEventListener("pointerleave", onLeave);
+      target.removeEventListener("scroll", onScroll, true);
+      target.removeEventListener("input", onInput, true);
+      window.removeEventListener("resize", rebuild);
+      document.removeEventListener("keydown", onKey, true);
+      inner.replaceChildren();
+      pairsRef.current = [];
+    };
+  }, [on, zoom]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOn((v) => !v)}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-pressed={on}
+        aria-label={on ? "إيقاف المكبّرة" : "المكبّرة"}
+        title={on ? "إيقاف المكبّرة" : "المكبّرة — مرّر على أي جزء لتكبيره"}
+        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors hover:bg-black/5"
+        style={{ touchAction: "auto", ...(on ? { background: hexToRgba(DASH_GREEN, 0.14) } : {}) }}
+      >
+        <ZoomIn size={18} color={on ? DASH_GREEN : MUTED} strokeWidth={on ? 2.4 : 2} />
+      </button>
+      {on && createPortal(
+        <div
+          ref={lensRef}
+          data-magnifier-lens=""
+          aria-hidden="true"
+          className="fixed top-0 left-0 rounded-full overflow-hidden pointer-events-none"
+          style={{ zIndex: 2147483000, opacity: 0, transition: "opacity 0.15s", background: "#fff", border: `3px solid ${DASH_GREEN}`, boxShadow: "0 12px 34px rgba(16,24,22,0.28), inset 0 0 0 1px rgba(255,255,255,0.6)" }}
+        >
+          <div ref={innerRef} style={{ position: "absolute", top: 0, left: 0, transformOrigin: "0 0", direction: "rtl" }} />
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = "حذف" }) {
   return (
     <div
@@ -3282,6 +3409,7 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
   const widthClass = xl ? "max-w-6xl" : lg ? "max-w-5xl" : wide ? "max-w-3xl" : "max-w-md md:max-w-lg";
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [entered, setEntered] = useState(false);
+  const modalPanelRef = useRef(null);
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, startPos: { x: 0, y: 0 } });
   const isMagic = accent === "magic";
 
@@ -3320,6 +3448,7 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        ref={modalPanelRef}
         className={`dlg-panel rounded-2xl w-full ${widthClass} overflow-y-auto ${entered ? "" : "dlg-in"}`}
         style={{ background: "#fff", border: `1px solid ${LINE}`, ...(pos.x || pos.y ? { transform: `translate(${pos.x}px, ${pos.y}px)` } : {}), boxShadow: "0 24px 60px rgba(16,24,22,0.22)" }}
       >
@@ -3343,6 +3472,8 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
             {isMagic && <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: hexToRgba(DASH_GREEN, 0.1) }}><Sparkles size={16} color={DASH_GREEN} /></span>}
             <span className="truncate">{title}</span>
           </h3>
+          <div className="flex items-center gap-1 shrink-0">
+          <MagnifierButton targetRef={modalPanelRef} />
           <button
             onClick={onClose}
             onPointerDown={(e) => e.stopPropagation()}
@@ -3352,6 +3483,7 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
           >
             <X size={18} color={MUTED} />
           </button>
+          </div>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -5493,15 +5625,19 @@ function PeriodComparisonModal({ cls, onClose, onPrint }) {
 // نافذة "ورقة سفلية" (Bottom Sheet) تنزلق من أسفل الشاشة بدل الظهور بوسطها
 // — مناسبة لشاشات المحتوى الطويلة (زي فتح شاهد فيه ملفات ومجلدات).
 function BottomSheetModal({ title, onClose, onBack, children }) {
+  const sheetRef = useRef(null);
   return (
     <div className="dlg-wrap modal-backdrop-in" style={{ background: "rgba(16,24,22,0.5)", zIndex: 55 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="dlg-panel dlg-in rounded-2xl overflow-hidden w-full" style={{ background: "#fff", maxWidth: 720, display: "flex", flexDirection: "column", border: `1px solid ${LINE}`, boxShadow: "0 24px 60px rgba(16,24,22,0.22)" }}>
+      <div ref={sheetRef} className="dlg-panel dlg-in rounded-2xl overflow-hidden w-full" style={{ background: "#fff", maxWidth: 720, display: "flex", flexDirection: "column", border: `1px solid ${LINE}`, boxShadow: "0 24px 60px rgba(16,24,22,0.22)" }}>
         <div className="flex items-center justify-between gap-3 px-5 py-4 shrink-0" style={{ borderBottom: `1px solid ${LINE}` }}>
           <div className="flex items-center gap-2 min-w-0">
             {onBack && <button onClick={onBack} aria-label="رجوع" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5"><ArrowRight size={18} color={MUTED} /></button>}
             <h3 className="font-bold text-lg truncate" style={{ color: INK }}>{title}</h3>
           </div>
-          <button onClick={onClose} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5"><X size={18} color={MUTED} /></button>
+          <div className="flex items-center gap-1 shrink-0">
+            <MagnifierButton targetRef={sheetRef} />
+            <button onClick={onClose} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 hover:bg-black/5"><X size={18} color={MUTED} /></button>
+          </div>
         </div>
         <div className="overflow-y-auto p-5" style={{ flex: 1 }}>
           {children}
@@ -10926,6 +11062,7 @@ function BoardTable({ cls, dateKey }) {
 }
 
 function DisplayBoard({ cls, onClose, onPrint, onExtractAll }) {
+  const boardPanelRef = useRef(null);
   const [boardDate, setBoardDate] = useState(todayKey());
   const [shareError, setShareError] = useState("");
   const shareReadOnly = () => {
@@ -10964,7 +11101,7 @@ function DisplayBoard({ cls, onClose, onPrint, onExtractAll }) {
   };
   return (
     <div className="dlg-wrap z-50 modal-backdrop-in" style={{ background: "rgba(16,24,22,0.5)" }}>
-      <div className="dlg-panel rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col dlg-in" style={{ background: "#fff" }}>
+      <div ref={boardPanelRef} className="dlg-panel rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col dlg-in" style={{ background: "#fff" }}>
         <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-2" style={{ borderBottom: `1px solid ${LINE}` }}>
           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: INK }}>{cls.emoji && <span>{cls.emoji}</span>}لوحة العرض — {cls.subject}</h3>
           <div className="flex items-center flex-wrap gap-2">
@@ -10972,7 +11109,8 @@ function DisplayBoard({ cls, onClose, onPrint, onExtractAll }) {
             <IconBtn icon={Printer} label="طباعة" onClick={() => onPrint(boardDate)} />
             <IconBtn icon={FileSpreadsheet} label="استخراج جميع المعلومات (كل الطلاب)" tone="primary" onClick={onExtractAll} />
             <IconBtn icon={Share2} label="مشاركة نسخة للقراءة فقط" onClick={shareReadOnly} />
-            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-black/5 active:scale-90 transition-transform"><X size={18} color={MUTED} /></button>
+            <MagnifierButton targetRef={boardPanelRef} />
+            <button onClick={onClose} aria-label="إغلاق" className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-black/5 active:scale-95 transition-transform"><X size={18} color={MUTED} /></button>
           </div>
         </div>
         {shareError && <p className="text-xs px-5 pt-2" style={{ color: "#C0392B" }}>{shareError}</p>}
