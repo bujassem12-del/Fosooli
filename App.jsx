@@ -184,6 +184,11 @@ function nowMeta() {
   }
 }
 // Groups flat report entries into one section per column, preserving first-appearance order.
+// "اليوم، التاريخ — الوحدة" (الوحدة تظهر بس بالتقارير اللي تجمع أكثر من وحدة)
+function entryWhen(e) {
+  const when = `${e.day ? e.day + "، " : ""}${e.date || ""}`;
+  return [when, e.unit].filter(Boolean).join(" — ");
+}
 function groupEntries(entries) {
   const map = new Map();
   entries.forEach((e) => {
@@ -195,7 +200,7 @@ function groupEntries(entries) {
 }
 // Compiles a ready-to-copy behavior report draft from one flagged category's entries.
 function buildBehaviorDraft(cls, row, group) {
-  const lines = group.items.map((e, i) => `${i + 1}. ${e.day ? `${e.day}، ` : ""}${e.date || ""} — ${e.time || ""}: ${e.value}`);
+  const lines = group.items.map((e, i) => `${i + 1}. ${entryWhen(e)} — ${e.time || ""}: ${e.value}`);
   const today = nowMeta();
   return [
     "مسودة تقرير سلوكي",
@@ -595,7 +600,7 @@ function buildReportCanvas({ title, subtitle, groups, photoImageElement, badge }
       const rh = groupRowHeights[gi][ri];
       ctx.fillStyle = ri % 2 ? "#F8FAF9" : "#fff";
       ctx.fillRect(pad, y, tableW, rh);
-      const dayDate = `${it.day ? it.day + "، " : ""}${it.date || ""}`;
+      const dayDate = entryWhen(it);
       let xx = pad;
       ctx.strokeStyle = LINE;
       ctx.strokeRect(xx, y, colWidths[0], rh);
@@ -1615,7 +1620,7 @@ function jobToTable(job) {
     const { cls, row, entries } = job;
     const grouped = groupEntries(entries).flatMap((g) => g.items);
     const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
-    const rows = grouped.map((e) => [e.colName, `${e.day ? e.day + "، " : ""}${e.date || ""}`, e.time || "", e.value]);
+    const rows = grouped.map((e) => [e.colName, entryWhen(e), e.time || "", e.value]);
     return { title: `تقرير ولي الأمر: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `تقرير-ولي-الأمر-${row.name}` };
   }
   if (job.type === "programReport") {
@@ -1637,7 +1642,7 @@ function jobToTable(job) {
   const { cls, row, entries } = job;
   const grouped = groupEntries(entries).flatMap((g) => g.items);
   const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
-  const rows = grouped.map((e) => [e.colName, `${e.day ? e.day + "، " : ""}${e.date || ""}`, e.time || "", e.value]);
+  const rows = grouped.map((e) => [e.colName, entryWhen(e), e.time || "", e.value]);
   return { title: `تقرير الطالب: ${row.name}`, subtitle: `${cls.subject} • ${cls.grade}`, headers, rows, filename: `تقرير-${row.name}` };
 }
 
@@ -2289,7 +2294,7 @@ function exportExcel(job) {
       const entries = cls.reports?.[row.id] || [];
       const grouped = groupEntries(entries).flatMap((g) => g.items);
       const headers = ["العمود", "اليوم والتاريخ", "الوقت", "القيمة"];
-      const rows = grouped.map((e) => [e.colName, `${e.day ? e.day + "، " : ""}${e.date || ""}`, e.time || "", e.value]);
+      const rows = grouped.map((e) => [e.colName, entryWhen(e), e.time || "", e.value]);
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       ws["!cols"] = headers.map((_, i) => ({ wch: i === headers.length - 1 ? 45 : 18 }));
       // أسماء أوراق Excel محدودة بـ٣١ حرفًا وممنوع فيها بعض الرموز
@@ -2361,7 +2366,7 @@ function buildReadOnlyStudentHtml(cls, row, entries) {
   const sectionsHtml = groups.map((g) => {
     const rowsHtml = g.items.map((e, i) => `
       <tr style="background:${i % 2 ? "#F8FAF9" : "#fff"}">
-        <td style="padding:8px;border:1px solid ${LINE};">${escapeHtml(e.day ? `${e.day}، ` : "")}${escapeHtml(e.date || "")}</td>
+        <td style="padding:8px;border:1px solid ${LINE};">${escapeHtml(entryWhen(e))}</td>
         <td style="padding:8px;text-align:center;border:1px solid ${LINE};">${escapeHtml(e.time || "")}</td>
         <td style="padding:8px;border:1px solid ${LINE};">${escapeHtml(e.value)}</td>
       </tr>`).join("");
@@ -10703,7 +10708,7 @@ function LinkToShawahedModal({ cls, row, entries, shawahed, onLink, onClose }) {
   );
 }
 
-function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent, onSaveShareId, shawahed, onLinkShawahed, titleOverride }) {
+function ReportModal({ scope = "this", scopeOptions = [], onScopeChange = () => {}, cls, row, entries, reportTrash, schoolName, principalName, countryName, ministryName, logoImage, onClose, onBack, onEditEntry, onDeleteEntry, onDeleteCategory, onDeleteAllEntries, onAddNote, onRestoreLatest, onRestoreEntry, onClearTrash, onPrint, onPrintParent, onSaveShareId, shawahed, onLinkShawahed, titleOverride }) {
   const [editing, setEditing] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showTrash, setShowTrash] = useState(false);
@@ -10769,6 +10774,17 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
 
   return (
     <Modal title={titleOverride ? `${titleOverride} — ${row.name}` : `تقرير الطالب — ${row.name}`} onClose={onClose} onBack={onBack} lg>
+      {scopeOptions.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs font-semibold" style={{ color: MUTED }}>التقرير يشمل:</span>
+          <div role="radiogroup" aria-label="نطاق التقرير" className="flex flex-wrap items-center gap-1 p-1 rounded-xl" style={{ background: PAPER }}>
+            {scopeOptions.map((o) => (
+              <button key={o.k} type="button" role="radio" aria-checked={scope === o.k} onClick={() => onScopeChange(o.k)} className="h-8 px-3 rounded-lg text-[13px] font-semibold"
+                style={scope === o.k ? { background: "#fff", color: DASH_GREEN_DARK, boxShadow: "0 1px 2px rgba(16,24,22,0.10)" } : { color: MUTED }}>{o.l}</button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="rounded-2xl p-4 mb-3" style={{ background: "#EEF2F1", border: `1px solid ${LINE}` }}>
         <div className="flex flex-wrap items-center gap-4 mb-3">
           {row.photo ? (
@@ -10916,7 +10932,7 @@ function ReportModal({ cls, row, entries, reportTrash, schoolName, principalName
                 <tbody>
                   {g.items.map((e, i) => (
                     <tr key={e.id} style={{ background: i % 2 ? "#F8FAF9" : "#fff" }}>
-                      <td className="p-2 text-xs" style={{ borderTop: `1px solid ${LINE}`, color: INK }}>{e.day ? `${e.day}، ` : ""}{e.date}</td>
+                      <td className="p-2 text-xs" style={{ borderTop: `1px solid ${LINE}`, color: INK }}>{entryWhen(e)}</td>
                       <td className="p-2 text-xs text-center" style={{ borderTop: `1px solid ${LINE}`, color: MUTED }}>{e.time}</td>
                       <td className="p-2" style={{ borderTop: `1px solid ${LINE}`, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
                         {editing ? (
@@ -11158,7 +11174,7 @@ function PrintContent({ job }) {
               <tbody>
                 {g.items.map((e) => (
                   <tr key={e.id}>
-                    <td className="p-2" style={{ border: "1px solid #ddd" }}>{e.day ? `${e.day}، ` : ""}{e.date}</td>
+                    <td className="p-2" style={{ border: "1px solid #ddd" }}>{entryWhen(e)}</td>
                     <td className="p-2" style={{ border: "1px solid #ddd" }}>{e.time}</td>
                     <td className="p-2" style={{ border: "1px solid #ddd" }}>{e.value}</td>
                   </tr>
@@ -13019,8 +13035,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
 
   // Per-student report-entry trash: deleting a single record from the
   // student's report keeps it recoverable, same pattern as the class-level trash.
-  const removeReportEntry = (rowId, entryId) => {
-    updateClass((c) => {
+  // يطبّق تعديل سجلات التقرير على الوحدة اللي فيها السجل (الحالية أو غيرها)
+  const sheetUpd = (sheetId) => (fn) => (!sheetId || sheetId === cls.id ? updateClass(fn) : updateSheetsByIds([sheetId], fn));
+  const removeReportEntry = (rowId, entryId, sheetId) => {
+    sheetUpd(sheetId)((c) => {
       const list = c.reports?.[rowId] || [];
       const entry = list.find((e) => e.id === entryId);
       if (!entry) return c;
@@ -13049,31 +13067,33 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const clearReportTrash = (rowId) => {
     updateClass((c) => ({ ...c, reportTrash: { ...(c.reportTrash || {}), [rowId]: [] } }));
   };
-  const updateReportEntryValue = (rowId, entryId, value) => {
-    updateClass((c) => ({ ...c, reports: { ...(c.reports || {}), [rowId]: (c.reports?.[rowId] || []).map((e) => (e.id === entryId ? { ...e, value } : e)) } }));
+  const updateReportEntryValue = (rowId, entryId, value, sheetId) => {
+    sheetUpd(sheetId)((c) => ({ ...c, reports: { ...(c.reports || {}), [rowId]: (c.reports?.[rowId] || []).map((e) => (e.id === entryId ? { ...e, value } : e)) } }));
   };
   const addManualReportNote = (rowId, entry) => {
     updateClass((c) => ({ ...c, reports: { ...(c.reports || {}), [rowId]: [...(c.reports?.[rowId] || []), entry] } }));
   };
   // Delete every entry in ONE category (e.g. all "المشاركات" records) for a
   // student, or the student's entire report — both recoverable as one trash item.
-  const removeReportCategory = (rowId, colId) => {
-    updateClass((c) => {
+  const removeReportCategory = (rowId, colId, sheetId, matchFn) => {
+    sheetUpd(sheetId)((c) => {
       const list = c.reports?.[rowId] || [];
-      const toRemove = list.filter((e) => (e.colId || "note") === colId);
+      const hit = matchFn || ((e) => (e.colId || "note") === colId);
+      const toRemove = list.filter(hit);
       if (toRemove.length === 0) return c;
-      const reports = { ...(c.reports || {}), [rowId]: list.filter((e) => (e.colId || "note") !== colId) };
+      const reports = { ...(c.reports || {}), [rowId]: list.filter((e) => !hit(e)) };
       const trashItem = { id: uid(), type: "reportBulk", when: nowMeta(), data: { entries: toRemove } };
       const rowTrash = [trashItem, ...((c.reportTrash || {})[rowId] || [])].slice(0, 30);
       const reportTrash = { ...(c.reportTrash || {}), [rowId]: rowTrash };
       return { ...c, reports, reportTrash };
     });
   };
-  const removeAllReportEntries = (rowId) => {
-    updateClass((c) => {
-      const list = c.reports?.[rowId] || [];
+  const removeAllReportEntries = (rowId, sheetId, matchFn) => {
+    sheetUpd(sheetId)((c) => {
+      const all = c.reports?.[rowId] || [];
+      const list = matchFn ? all.filter(matchFn) : all;
       if (list.length === 0) return c;
-      const reports = { ...(c.reports || {}), [rowId]: [] };
+      const reports = { ...(c.reports || {}), [rowId]: matchFn ? all.filter((e) => !matchFn(e)) : [] };
       const trashItem = { id: uid(), type: "reportBulk", when: nowMeta(), data: { entries: list } };
       const rowTrash = [trashItem, ...((c.reportTrash || {})[rowId] || [])].slice(0, 30);
       const reportTrash = { ...(c.reportTrash || {}), [rowId]: rowTrash };
@@ -13112,10 +13132,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   };
 
   const reportRow = reportRowId ? cls.rows.find((r) => r.id === reportRowId) : null;
-  const reportEntries = reportRowId ? cls.reports?.[reportRowId] || [] : [];
   const behaviorColumnIds = cls.columns.filter((c) => c.behaviorFlag).map((c) => c.id);
   const behaviorReportRow = behaviorReportRowId ? cls.rows.find((r) => r.id === behaviorReportRowId) : null;
-  const behaviorReportEntries = behaviorReportRowId ? (cls.reports?.[behaviorReportRowId] || []).filter((e) => behaviorColumnIds.includes(e.colId)) : [];
 
   const isMobile = useIsMobile();
 
@@ -13126,6 +13144,65 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
   const otherSheets = gSheets.filter((c) => c.id !== cls.id);
   const otherClassesForTransfer = allClasses.filter((c) => groupKeyOf(c) !== groupKeyOf(cls) && !c.archived);
   const updateSheetsByIds = (ids, fn) => { if (ids && ids.length) setAllClasses((list) => list.map((c) => (ids.includes(c.id) ? fn(c) : c))); };
+
+  // ===== تقرير الطالب يجمع كل الوحدات =====
+  // subject = كل وحدات المادة (الافتراضي) | all = كل المواد | this = هذه الوحدة فقط
+  const [reportScope, setReportScope] = useState("subject");
+  const reportSheets = () => {
+    if (gSheets.length < 2 || reportScope === "this") return [cls];
+    const list = reportScope === "all" ? gSheets : gSheets.filter((sh) => sh.subject === cls.subject);
+    return list.length ? list : [cls];
+  };
+  const aggregateEntries = (row, filterFn) => {
+    if (!row) return [];
+    const sheets = reportSheets();
+    const many = sheets.length > 1;
+    const multiSubject = new Set(sheets.map((sh) => sh.subject)).size > 1;
+    const out = [];
+    sheets.forEach((sh) => {
+      const m = sh.id === cls.id ? row : matchRow(sh, row);
+      if (!m) return;
+      (sh.reports?.[m.id] || []).forEach((e) => {
+        if (filterFn && !filterFn(e, sh)) return;
+        // نوحّد عمود السجل مع عمود بنفس الاسم بهذه الوحدة عشان يتجمّعون مع بعض
+        let colId = e.colId;
+        if (sh.id !== cls.id && colId && colId !== "note" && colId !== ATTEND_COL_ID && !cls.columns.some((c) => c.id === colId)) {
+          const same = cls.columns.find((c) => c.name.trim() === (e.colName || "").trim());
+          if (same) colId = same.id;
+        }
+        out.push({ ...e, id: many ? `${sh.id}::${e.id}` : e.id, _id: e.id, colId, _sheetId: sh.id, _rowId: m.id, _colId: e.colId, unit: many ? (multiSubject ? `${sh.subject} — ${unitLabel(sh)}` : unitLabel(sh)) : undefined });
+      });
+    });
+    return out.map((e, i) => [e, i]).sort((x, y) => (x[0].dateKey || "").localeCompare(y[0].dateKey || "") || x[1] - y[1]).map((x) => x[0]);
+  };
+  const reportEntries = aggregateEntries(reportRow);
+  const behaviorReportEntries = aggregateEntries(behaviorReportRow, (e, sh) => !!(sh.columns || []).find((c) => c.id === e.colId)?.behaviorFlag);
+  const entryLoc = (list, entryId) => list.find((e) => e.id === entryId);
+  // أفعال التقرير على السجلات المجمّعة: كل سجل يتعدّل بوحدته الأصلية
+  const aggActions = (row, list) => ({
+    onEditEntry: (entryId, value) => { const e = entryLoc(list, entryId); if (e) updateReportEntryValue(e._rowId, e._id, value, e._sheetId); },
+    onDeleteEntry: (entryId) => { const e = entryLoc(list, entryId); if (e) removeReportEntry(e._rowId, e._id, e._sheetId); },
+    onDeleteCategory: (colId) => {
+      const bySheet = {};
+      list.filter((e) => (e.colId || "note") === colId).forEach((e) => { (bySheet[e._sheetId] = bySheet[e._sheetId] || { rowId: e._rowId, ids: new Set() }).ids.add(e._id); });
+      Object.entries(bySheet).forEach(([sid, v]) => removeReportCategory(v.rowId, colId, sid, (x) => v.ids.has(x.id)));
+    },
+    onDeleteAllEntries: () => {
+      const bySheet = {};
+      list.forEach((e) => { (bySheet[e._sheetId] = bySheet[e._sheetId] || { rowId: e._rowId, ids: new Set() }).ids.add(e._id); });
+      Object.entries(bySheet).forEach(([sid, v]) => removeAllReportEntries(v.rowId, sid, (x) => v.ids.has(x.id)));
+    },
+  });
+  const reportScopeOptions = gSheets.length < 2 ? [] : [
+    gUnits.length > 1 && { k: "subject", l: `كل وحدات ${cls.subject}` },
+    gSubjects.length > 1 && { k: "all", l: "كل المواد" },
+    { k: "this", l: "هذه الوحدة فقط" },
+  ].filter(Boolean);
+  useEffect(() => {
+    // لو المادة فيها وحدة وحدة بس، الافتراضي يصير "كل المواد" بدل "كل الوحدات"
+    if (reportScope === "subject" && gUnits.length < 2 && gSubjects.length > 1) setReportScope("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gUnits.length, gSubjects.length]);
   const [groupModal, setGroupModal] = useState(null);
   const [scopeAsk, setScopeAsk] = useState(null);
   const [showGroupData, setShowGroupData] = useState(false);
@@ -13836,10 +13913,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           logoImage={logoImage}
           onClose={() => setReportRowId(null)}
           onBack={() => { setReportRowId(null); setShowReportPicker(true); }}
-          onEditEntry={(entryId, value) => updateReportEntryValue(reportRow.id, entryId, value)}
-          onDeleteEntry={(entryId) => removeReportEntry(reportRow.id, entryId)}
-          onDeleteCategory={(colId) => removeReportCategory(reportRow.id, colId)}
-          onDeleteAllEntries={() => removeAllReportEntries(reportRow.id)}
+          {...aggActions(reportRow, reportEntries)}
+          scope={reportScope}
+          scopeOptions={reportScopeOptions}
+          onScopeChange={setReportScope}
           onAddNote={(entry) => addManualReportNote(reportRow.id, entry)}
           onRestoreLatest={() => restoreLatestReportEntry(reportRow.id)}
           onRestoreEntry={(trashId) => restoreReportEntryFromTrash(reportRow.id, trashId)}
@@ -13882,10 +13959,10 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           titleOverride="تقرير السلوك"
           onClose={() => setBehaviorReportRowId(null)}
           onBack={() => { setBehaviorReportRowId(null); setShowBehaviorReportPicker(true); }}
-          onEditEntry={(entryId, value) => updateReportEntryValue(behaviorReportRow.id, entryId, value)}
-          onDeleteEntry={(entryId) => removeReportEntry(behaviorReportRow.id, entryId)}
-          onDeleteCategory={(colId) => removeReportCategory(behaviorReportRow.id, colId)}
-          onDeleteAllEntries={() => removeAllReportEntries(behaviorReportRow.id)}
+          {...aggActions(behaviorReportRow, behaviorReportEntries)}
+          scope={reportScope}
+          scopeOptions={reportScopeOptions}
+          onScopeChange={setReportScope}
           onAddNote={(entry) => addManualReportNote(behaviorReportRow.id, entry)}
           onRestoreLatest={() => restoreLatestReportEntry(behaviorReportRow.id)}
           onRestoreEntry={(trashId) => restoreReportEntryFromTrash(behaviorReportRow.id, trashId)}
@@ -14443,7 +14520,7 @@ function SharedReportView({ shareId }) {
                 <div>
                   {g.items.map((it, i) => (
                     <div key={it.id} className="flex items-center justify-between px-4 py-2" style={{ borderTop: i > 0 ? `1px solid ${LINE}` : "none" }}>
-                      <span className="text-xs" style={{ color: MUTED }}>{it.day ? `${it.day}، ` : ""}{it.date}</span>
+                      <span className="text-xs" style={{ color: MUTED }}>{entryWhen(it)}</span>
                       <span className="text-sm font-medium" style={{ color: INK }}>{it.value}</span>
                     </div>
                   ))}
