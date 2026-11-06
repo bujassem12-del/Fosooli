@@ -12,7 +12,7 @@ import {
   Lock, Unlock, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ImageDown, FileOutput,
   Camera, ImageOff, Settings, Volume2, VolumeX, BarChart3, Users,
   Shuffle, AlertTriangle, MessageSquareWarning, ClipboardCopy, Eye, EyeOff, Award, Download, Target, BookMarked, WifiOff, QrCode, Layers, Gamepad2,
-  CalendarPlus, Moon, Sun, Filter, ArrowLeftRight, Sigma, ZoomIn, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
+  CalendarPlus, Moon, Sun, Filter, ArrowLeftRight, Sigma, ZoomIn, ArrowUp, ListTodo, HelpCircle, Send, Activity, Info, ShieldCheck, Pipette, Bell, Move, User, ListPlus, LogOut, MoreHorizontal, Home, MoreVertical, Sparkles, ExternalLink, FileCheck
 } from "lucide-react";
 
 // Anon/public key — safe to keep in client code by design (Supabase protects
@@ -107,6 +107,7 @@ function applyThemeColor(hex) {
   const safe = hex && /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : "#0F6B5C";
   DASH_GREEN = safe;
   DASH_GREEN_DARK = darkenHex(safe, 0.32);
+  if (typeof document !== "undefined") document.documentElement.style.setProperty("--brand", safe);
 }
 
 // يحوّل لونًا سداسيًا لصيغة rgba بشفافية محددة — يُستخدم لمد لون الهوية
@@ -193,7 +194,7 @@ function groupEntries(entries) {
   const map = new Map();
   entries.forEach((e) => {
     const key = e.colId || "note";
-    if (!map.has(key)) map.set(key, { colId: key, colName: e.colName, colColor: e.colColor, items: [] });
+    if (!map.has(key)) map.set(key, { colId: key, colName: e.colName || "ملاحظة", colColor: e.colColor || "#56625F", items: [] });
     map.get(key).items.push(e);
   });
   return Array.from(map.values());
@@ -310,6 +311,25 @@ function totalGrade(cls, rowId) {
 // الوحدة الأولى).
 const UNIT_ORDINALS = ["الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة", "السابعة", "الثامنة", "التاسعة", "العاشرة", "الحادية عشرة", "الثانية عشرة"];
 function groupKeyOf(c) { return c.groupId || c.id; }
+// ===== حجم الواجهة (يُغيَّر بمقبض السحب أعلى الصفحة) =====
+let UI_ZOOM = 1;
+const UI_ZOOM_MIN = 0.6;
+const UI_ZOOM_KEY = "fosooli-ui-zoom";
+const uiZoom = () => UI_ZOOM;
+function applyUiZoom(z, { persist = false } = {}) {
+  const v = Math.round(Math.min(1, Math.max(UI_ZOOM_MIN, z)) * 100) / 100;
+  UI_ZOOM = v;
+  if (typeof document !== "undefined") document.documentElement.style.setProperty("--ui-zoom", String(v));
+  if (persist) { try { localStorage.setItem(UI_ZOOM_KEY, String(v)); } catch (e) { /* ignore */ } }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("resize"));
+  return v;
+}
+// اسم الفصل بالقوائم: إذا فيه أكثر من مادة/وحدة نوضّح أيها
+function classOptLabel(c, all) {
+  const many = (all || []).filter((x) => groupKeyOf(x) === groupKeyOf(c)).length > 1;
+  return `${c.subject} — ${c.grade}${many ? ` (${unitLabel(c)})` : ""}`;
+}
+
 function isPrimarySheet(c) { return !c.groupId || c.groupId === c.id; }
 function unitLabel(c) { return c.unitName || "الوحدة الأولى"; }
 function sheetLabel(c) { return `${c.subject} — ${unitLabel(c)}`; }
@@ -2527,8 +2547,9 @@ function useViewportVars() {
     const update = () => {
       const h = vv ? vv.height : window.innerHeight;
       const top = vv ? vv.offsetTop : 0;
-      root.style.setProperty("--vv-h", `${Math.round(h)}px`);
-      root.style.setProperty("--vv-top", `${Math.round(top)}px`);
+      const z = uiZoom() || 1;
+      root.style.setProperty("--vv-h", `${Math.round(h / z)}px`);
+      root.style.setProperty("--vv-top", `${Math.round(top / z)}px`);
     };
     update();
     const onFocus = (e) => {
@@ -2614,13 +2635,137 @@ function NoorPendingBanner() {
   );
 }
 
+// ===== مقبض حجم الواجهة: أعلى الصفحة بالنص =====
+// اسحبه يمين يصغر الموقع، يسار يرجع يكبر لحجمه الطبيعي. ضغطتين ترجعه ١٠٠٪.
+function UiZoomHandle() {
+  const [z, setZ] = useState(1);
+  const [drag, setDrag] = useState(false);
+  const [flash, setFlash] = useState(false); // يظهر الرقم شوي بعد التغيير
+  const flashT = useRef(null);
+  const pulse = () => { setFlash(true); clearTimeout(flashT.current); flashT.current = setTimeout(() => setFlash(false), 1400); };
+  useEffect(() => () => clearTimeout(flashT.current), []);
+  const startRef = useRef(null);
+  useEffect(() => {
+    let saved = 1;
+    try { saved = parseFloat(localStorage.getItem(UI_ZOOM_KEY)) || 1; } catch (e) { /* ignore */ }
+    setZ(applyUiZoom(saved));
+  }, []);
+  const onDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    startRef.current = { x: e.clientX, z: uiZoom() };
+    setDrag(true);
+  };
+  const onMove = (e) => {
+    if (!startRef.current) return;
+    const dx = e.clientX - startRef.current.x; // يمين = موجب = أصغر
+    const next = startRef.current.z - dx / 450;
+    if (Math.abs(next - uiZoom()) >= 0.01 || next <= UI_ZOOM_MIN || next >= 1) setZ(applyUiZoom(next));
+  };
+  const onUp = () => {
+    if (!startRef.current) return;
+    startRef.current = null;
+    setDrag(false);
+    setZ(applyUiZoom(uiZoom(), { persist: true }));
+    pulse();
+  };
+  const reset = () => { setZ(applyUiZoom(1, { persist: true })); pulse(); };
+  const step = (d) => { setZ(applyUiZoom(uiZoom() + d, { persist: true })); pulse(); };
+  const pct = Math.round(z * 100);
+  const fill = (z - UI_ZOOM_MIN) / (1 - UI_ZOOM_MIN); // ١ = الحجم الطبيعي
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="ui-zoom-wrap" dir="rtl" data-dragging={drag ? "" : undefined} data-small={z < 1 ? "" : undefined}>
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label="حجم الموقع — اسحب يمين للتصغير ويسار للتكبير"
+        aria-valuemin={UI_ZOOM_MIN * 100}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        aria-valuetext={`${pct}٪`}
+        title={`حجم الموقع ${pct}٪ — اسحب يمين للتصغير، يسار للتكبير (ضغطتين للحجم الطبيعي)`}
+        className="ui-zoom-handle"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onDoubleClick={reset}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") { e.preventDefault(); step(-0.05); }
+          else if (e.key === "ArrowLeft") { e.preventDefault(); step(0.05); }
+          else if (e.key === "Home" || e.key === "Enter") { e.preventDefault(); reset(); }
+        }}
+      >
+        <span className="ui-zoom-track"><span className="ui-zoom-fill" style={{ width: `${Math.max(8, fill * 100)}%` }} /></span>
+      </div>
+      {(drag || flash) && (
+        <span className="ui-zoom-chip" aria-hidden="true">{pct}٪</span>
+      )}
+    </div>,
+    document.body
+  );
+}
+
+// زر "للأعلى" يطلع لما تنزل كثير بالصفحة
+function BackToTopButton() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const scroller = () => document.querySelector("[data-app-root][style*='fixed']") || window;
+    const read = () => { const sc = scroller(); const y = sc === window ? window.scrollY : sc.scrollTop; setShow(y > 900); };
+    const sc = scroller();
+    sc.addEventListener("scroll", read, { passive: true });
+    read();
+    return () => sc.removeEventListener("scroll", read);
+  }, []);
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      aria-label="للأعلى"
+      title="للأعلى"
+      onClick={() => { const sc = document.querySelector("[data-app-root][style*='fixed']"); (sc || window).scrollTo({ top: 0, behavior: "smooth" }); }}
+      className="fixed left-4 bottom-24 md:bottom-6 z-[45] w-11 h-11 rounded-full flex items-center justify-center fade-in-soft print:hidden"
+      style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 10px 26px rgba(16,24,22,0.16)" }}
+    >
+      <ArrowUp size={19} color={INK} />
+    </button>
+  );
+}
+
 function PrintStyles() {
   useViewportVars();
   useNoorExtensionBridge();
   return (
     <>
     <NoorPendingBanner />
+    <UiZoomHandle />
+    <BackToTopButton />
     <style>{`
+      /* ===== حجم الواجهة ===== */
+      @media screen {
+        [data-app-root][dir] { zoom: var(--ui-zoom, 1); }
+        [data-app-root][dir].min-h-screen { min-height: calc(100vh / var(--ui-zoom, 1)); }
+      }
+      .ui-zoom-wrap { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 46; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+      .ui-zoom-handle { pointer-events: auto; touch-action: none; cursor: ew-resize; width: 84px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 0 0 12px 12px; outline: none; -webkit-tap-highlight-color: transparent; }
+      .ui-zoom-track { position: relative; display: block; width: 44px; height: 5px; border-radius: 999px; background: rgba(22,32,30,0.16); overflow: hidden; transition: width .2s ease, height .2s ease, background .2s; }
+      .ui-zoom-fill { position: absolute; top: 0; bottom: 0; right: 0; border-radius: 999px; background: rgba(22,32,30,0.34); transition: background .2s; }
+      .ui-zoom-handle:hover .ui-zoom-track, .ui-zoom-handle:focus-visible .ui-zoom-track, .ui-zoom-wrap[data-dragging] .ui-zoom-track { width: 64px; height: 7px; background: rgba(22,32,30,0.12); }
+      .ui-zoom-handle:hover .ui-zoom-fill, .ui-zoom-handle:focus-visible .ui-zoom-fill, .ui-zoom-wrap[data-dragging] .ui-zoom-fill { background: var(--brand, #0F6B5C); }
+      .ui-zoom-wrap[data-small] .ui-zoom-fill { background: var(--brand, #0F6B5C); }
+      .ui-zoom-handle:focus-visible { box-shadow: 0 0 0 2px var(--brand, #0F6B5C) inset; }
+      .ui-zoom-chip { pointer-events: auto; margin-top: 2px; font: 600 11px/1 'IBM Plex Sans Arabic', sans-serif; padding: 4px 9px; border-radius: 999px; background: rgba(22,32,30,0.82); color: #fff; box-shadow: 0 4px 14px rgba(16,24,22,0.2); direction: rtl; }
+      @media (pointer: coarse) { .ui-zoom-handle { width: 104px; height: 22px; } }
+      @media print { .ui-zoom-wrap { display: none !important; } }
+
+      /* ===== حلقة تركيز واضحة لمستخدمي لوحة المفاتيح ===== */
+      button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [role="tab"]:focus-visible, [role="radio"]:focus-visible, summary:focus-visible {
+        outline: 2px solid var(--brand, #0F6B5C); outline-offset: 2px;
+      }
+      .fade-in-soft { animation: fadeInSoft .2s ease-out; }
+      @keyframes fadeInSoft { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
       /* ===== النوافذ: تظهر من فوق، وتنحصر بالمساحة الظاهرة فوق الكيبورد ===== */
       .dlg-wrap {
         position: fixed; left: 0; right: 0;
@@ -2857,8 +3002,9 @@ function flyGeometry(anchor, panel) {
   const a = anchor && anchor.isConnected ? anchor.getBoundingClientRect() : null;
   if (!a || !a.width || !p.width) return null;
   const sx = a.width / p.width, sy = a.height / p.height;
-  const dx = a.left + a.width / 2 - (p.left + p.width / 2);
-  const dy = a.top + a.height / 2 - (p.top + p.height / 2);
+  const zf = uiZoom() || 1;
+  const dx = (a.left + a.width / 2 - (p.left + p.width / 2)) / zf;
+  const dy = (a.top + a.height / 2 - (p.top + p.height / 2)) / zf;
   // نقرأ لون الزر النهائي (بدون انتقال اللون الجاري) عشان ترجع النافذة لنفس لونه الجديد
   const prevTransition = anchor.style.transition;
   anchor.style.transition = "none";
@@ -3231,7 +3377,8 @@ function MagnifierButton({ targetRef, zoom = 2.2 }) {
       clone.removeAttribute("id");
       clone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
       clone.querySelectorAll("[data-magnifier-lens]").forEach((el) => el.remove());
-      Object.assign(clone.style, { position: "absolute", top: "0", left: "0", margin: "0", width: `${r.width}px`, height: `${r.height}px`, maxHeight: "none", transform: "none", animation: "none", boxShadow: "none" });
+      const zf = uiZoom() || 1;
+      Object.assign(clone.style, { position: "absolute", top: "0", left: "0", margin: "0", width: `${r.width / zf}px`, height: `${r.height / zf}px`, maxHeight: "none", transform: "none", animation: "none", boxShadow: "none" });
       clone.classList.remove("dlg-in", "modal-panel-in", "fly-open");
       // قيم الخانات (اللي كتبها المستخدم) ما تنسخ تلقائيًا
       const liveInputs = target.querySelectorAll("input, textarea, select");
@@ -3242,8 +3389,8 @@ function MagnifierButton({ targetRef, zoom = 2.2 }) {
       const copy = [clone, ...clone.querySelectorAll("*")];
       pairsRef.current = live.map((el, i) => [el, copy[i]]).filter(([el, c]) => c && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1));
       inner.replaceChildren(clone);
-      inner.style.width = `${r.width}px`;
-      inner.style.height = `${r.height}px`;
+      inner.style.width = `${r.width / zf}px`;
+      inner.style.height = `${r.height / zf}px`;
       syncScroll();
     };
     const syncScroll = () => pairsRef.current.forEach(([el, c]) => { c.scrollTop = el.scrollTop; c.scrollLeft = el.scrollLeft; });
@@ -3255,7 +3402,7 @@ function MagnifierButton({ targetRef, zoom = 2.2 }) {
       lens.style.opacity = "1";
       const ly = touch ? y - R * 2 - 24 : y - R; // بالجوال فوق الإصبع
       lens.style.transform = `translate(${x - R}px, ${Math.max(4, ly)}px)`;
-      inner.style.transform = `translate(${R - px * zoom}px, ${R - py * zoom}px) scale(${zoom})`;
+      inner.style.transform = `translate(${R - px * zoom}px, ${R - py * zoom}px) scale(${zoom * (uiZoom() || 1)})`;
     };
     const onMove = (e) => { lastRef.current = [e.clientX, e.clientY]; place(e.clientX, e.clientY); };
     const onLeave = () => { lens.style.opacity = "0"; };
@@ -3427,8 +3574,8 @@ function Modal({ title, onClose, onBack, children, wide = false, lg = false, xl 
     const onMove = (e) => {
       if (!dragRef.current.dragging) return;
       setPos({
-        x: dragRef.current.startPos.x + (e.clientX - dragRef.current.startX),
-        y: dragRef.current.startPos.y + (e.clientY - dragRef.current.startY),
+        x: dragRef.current.startPos.x + (e.clientX - dragRef.current.startX) / (uiZoom() || 1),
+        y: dragRef.current.startPos.y + (e.clientY - dragRef.current.startY) / (uiZoom() || 1),
       });
     };
     const onUp = () => { dragRef.current.dragging = false; };
@@ -4994,7 +5141,7 @@ function PrintTestModal({ test, classes, onClose }) {
         <>
           <Field label="الفصل">
             <select value={classId} onChange={(e) => setClassId(e.target.value)} style={inputStyle}>
-              {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade} ({c.rows.length} طالب)</option>)}
+              {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{classOptLabel(c, classes)} ({c.rows.length} طالب)</option>)}
             </select>
           </Field>
           {!omrFormat && (
@@ -5110,7 +5257,7 @@ function OMRScanModal({ test, classes, onSaveResult, onApplyToClass, onClose }) 
           </p>
           <Field label="الفصل">
             <select value={classId} onChange={(e) => { setClassId(e.target.value); setColId(""); }} style={inputStyle}>
-              {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade}</option>)}
+              {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{classOptLabel(c, classes)}</option>)}
             </select>
           </Field>
           <Field label="العمود الذي تُرصَد فيه الدرجة">
@@ -5236,7 +5383,7 @@ function GradeTestModal({ test, classes, onSaveResult, onApplyToClass, onClose }
           <Field label="الفصل">
             <select value={applyClassId} onChange={(e) => { setApplyClassId(e.target.value); setApplyColId(""); }} style={inputStyle}>
               <option value="">بدون — احتفظ بها هنا فقط</option>
-              {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade}</option>)}
+              {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{classOptLabel(c, classes)}</option>)}
             </select>
           </Field>
           {applyClassId && (
@@ -6415,7 +6562,7 @@ function LibraryHub({ library, classes, onUpload, onDelete, onAssign, bare = fal
         <select value={filterClassId} onChange={(e) => setFilterClassId(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
           <option value="all">كل الملفات</option>
           <option value="shared">مشتركة (كل الفصول)</option>
-          {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{c.subject} — {c.grade}</option>)}
+          {classes.filter((c) => !c.archived).map((c) => <option key={c.id} value={c.id}>{classOptLabel(c, classes)}</option>)}
         </select>
       </div>
 
@@ -9489,7 +9636,7 @@ function GamePlayerModal({ cls, updateClass, game, onClose, onBack }) {
   // الصفحة — لأن اللمس داخل الـ iframe لا ينقل حركة التمرير للصفحة اللي
   // ورا، وكان يخلي شريط الطلاب "يختفي" على الجوال بدون أي طريقة ترجعه.
   return (
-    <div className="fixed inset-0 flex flex-col" style={{ background: PAPER, zIndex: 60, height: "100dvh" }}>
+    <div className="fixed inset-0 flex flex-col" style={{ background: PAPER, zIndex: 60, height: "var(--vv-h, 100dvh)" }}>
       <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
         <div className="flex items-center gap-2 min-w-0">
           {onBack && (
@@ -9643,7 +9790,7 @@ function GamesHub({ classes, library, updateClassById, bare = false }) {
 
   if (selectedGame && standalone) {
     return (
-      <div className="fixed inset-0 flex flex-col" style={{ background: PAPER, zIndex: 60, height: "100dvh" }}>
+      <div className="fixed inset-0 flex flex-col" style={{ background: PAPER, zIndex: 60, height: "var(--vv-h, 100dvh)" }}>
         <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ background: "linear-gradient(135deg, #7C5CE0, #4E6FE0, #2E9FD6)" }}>
           <h3 className="font-bold text-sm truncate" style={{ color: "#fff" }}>{selectedGame.name}</h3>
           <button onClick={resetAll} className="p-1 rounded-lg shrink-0 hover:bg-white/10"><X size={20} color="#fff" /></button>
@@ -11191,11 +11338,13 @@ function PrintContent({ job }) {
 
 // ---------- Home page ----------
 
-function ClassCard({ cls, subjectsCount = 1, onOpen, onEdit, onColor, onDelete, onArchive, onDuplicate, onTogglePin, onToggleLock, onMove, onNewTerm, animating, isFirst, isLast }) {
+function ClassCard({ cls, subjectsCount = 1, subjects = [], onOpen, onEdit, onColor, onDelete, onArchive, onDuplicate, onTogglePin, onToggleLock, onMove, onNewTerm, animating, isFirst, isLast }) {
   const [showColors, setShowColors] = useState(false);
   const menuRef = useRef(null);
   const locked = !!cls.locked;
   const studentCount = (cls.rows || []).length;
+  // كل مواد الفصل (الأساسية أولًا)
+  const allSubjects = [cls.subject, ...subjects.filter((x) => x && x !== cls.subject)];
   const presentToday = (cls.rows || []).filter((r) => attendanceStatus(cls, r.id, todayKey()) !== "absent").length;
 
   // إغلاق القائمة عند الضغط خارجها
@@ -11241,20 +11390,37 @@ function ClassCard({ cls, subjectsCount = 1, onOpen, onEdit, onColor, onDelete, 
             {cls.emoji ? <span className="leading-none">{cls.emoji}</span> : <BookOpen size={20} strokeWidth={2} />}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-start gap-1.5">
               <h3 className="font-bold text-[17px] leading-snug truncate" style={{ color: INK }}>{cls.subject}</h3>
+              {cls.grade && <span className="shrink-0 text-xs font-bold px-2 py-0.5 rounded-lg mt-0.5" style={{ background: colorLight(cls.color), color: cls.color }}>{cls.grade}</span>}
               {cls.pinned && <Pin size={13} color={DASH_GREEN} className="shrink-0" aria-label="مثبّت" />}
               {locked && <Lock size={13} color="#A01E14" className="shrink-0" aria-label="مقفل" />}
             </div>
-            <p className="text-sm" style={{ color: MUTED }}>{cls.grade}{studentCount ? ` · ${studentCount} طالب` : ""}{subjectsCount > 1 ? ` · ${subjectsCount} مواد` : ""}</p>
+            <p className="text-sm mt-0.5" style={{ color: MUTED }}>{studentCount ? `${studentCount} طالب` : "بدون طلاب بعد"}{allSubjects.length > 1 ? ` · ${allSubjects.length} مواد` : ""}</p>
           </div>
           <div className="w-10 shrink-0" aria-hidden="true" />
         </div>
+
+        {allSubjects.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5 -mt-1" aria-label={`مواد الفصل: ${allSubjects.join("، ")}`}>
+            {allSubjects.map((name, i) => (
+              <span key={name} className="inline-flex items-center gap-1 text-[13px] font-semibold whitespace-nowrap rounded-lg px-2.5 py-1" style={i === 0 ? { background: colorLight(cls.color), color: INK } : { background: "#fff", color: INK, border: `1px solid ${LINE}` }}>
+                <BookOpen size={13} color={cls.color} aria-hidden="true" />
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl px-3 py-2" style={{ background: PAPER }}>
             <p className="text-xs" style={{ color: MUTED }}>الحضور اليوم</p>
             <p className="text-sm font-semibold" style={{ color: INK }}>{studentCount ? `${presentToday} / ${studentCount}` : "—"}</p>
+            {studentCount > 0 && (
+              <span className="block h-1 rounded-full mt-1.5 overflow-hidden" style={{ background: LINE }} aria-hidden="true">
+                <span className="block h-full rounded-full" style={{ width: `${Math.round((presentToday / studentCount) * 100)}%`, background: presentToday === studentCount ? DASH_GREEN : "#C97A2B" }} />
+              </span>
+            )}
           </div>
           <div className="rounded-xl px-3 py-2" style={{ background: PAPER }}>
             <p className="text-xs" style={{ color: MUTED }}>الفصل الدراسي</p>
@@ -11623,7 +11789,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
 
         <div className="flex flex-wrap items-center gap-2 mb-2.5">
           <h2 className="text-xl font-bold" style={{ color: INK }}>
-            فصولي النشطة <span className="font-medium" style={{ color: MUTED }}>({data.classes.filter((c) => !c.archived).length})</span>
+            فصولي النشطة <span className="font-medium" style={{ color: MUTED }}>({data.classes.filter((c) => !c.archived && isPrimarySheet(c)).length})</span>
           </h2>
           <div className="mr-auto flex items-center gap-2">
             <button onClick={() => setShowSearch((s) => !s)} aria-label="بحث عن طالب في كل الفصول" title="بحث عن طالب في كل الفصول" className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-black/5" style={{ background: showSearch ? hexToRgba(DASH_GREEN, 0.1) : "#fff", border: `1px solid ${LINE}` }}>
@@ -11742,6 +11908,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
               key={cls.id}
               cls={cls}
               subjectsCount={subjectsOf(data.classes.filter(inGroup(cls.id))).length}
+              subjects={subjectsOf(sortSheets(data.classes.filter(inGroup(cls.id))))}
               onOpen={onOpen}
               onEdit={(c) => setModal({ mode: "edit", data: c })}
               onColor={updateColor}
@@ -11873,7 +12040,7 @@ function HomePage({ data, setData, onOpen, userEmail, userId, onSignOut, siteSet
       {mainTab === "archive" && (
         <UnifiedArchiveModal
           bare
-          archivedClasses={data.classes.filter((c) => c.archived)}
+          archivedClasses={data.classes.filter((c) => c.archived && isPrimarySheet(c))}
           shawahed={data.shawahed || {}}
           archivedTests={data.archivedTests || []}
           onRestoreClass={toggleArchive}
@@ -13234,7 +13401,7 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
       const el = tableBoxRef.current;
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY;
-      setTableMaxH(Math.max(320, Math.floor(window.innerHeight - top - 16)));
+      setTableMaxH(Math.max(320, Math.floor((window.innerHeight - top - 16) / (uiZoom() || 1))));
     };
     calc();
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(calc) : null;
@@ -13431,7 +13598,8 @@ function ClassPage({ cls, updateClass, onBack, requestPrint, feedbackEnabled, sc
           <div className="min-w-0 flex-1">
             <h1 className="text-[22px] md:text-[26px] font-bold leading-tight truncate" style={{ color: INK, letterSpacing: "-0.01em" }}>{cls.subject}</h1>
             <p className="text-sm truncate" style={{ color: MUTED }}>
-              {[cls.grade, unitLabel(cls), `${cls.rows.length} طالب`, cls.teacher, cls.yearHijri && `${cls.yearHijri} هـ`].filter(Boolean).join(" · ")}
+              {[cls.grade, unitLabel(cls), `${cls.rows.length} طالب`].filter(Boolean).join(" · ")}
+              <span className="hidden md:inline">{[cls.teacher, cls.yearHijri && `${cls.yearHijri} هـ`].filter(Boolean).map((x) => ` · ${x}`).join("")}</span>
             </p>
           </div>
           <div className="shrink-0 self-start"><SyncStatusBadge isOnline={isOnline} syncStatus={syncStatus} onRetry={onRetrySave} /></div>
@@ -14648,13 +14816,16 @@ function AuthenticatedApp() {
         // لو عندك تعديلات محلية غير محفوظة (صارت وأنت بدون نت مثلًا) وهي
         // أحدث من آخر حفظ ناجح بالسحابة، نفضّلها — عشان ما تضيع تعديلاتك
         // الأخيرة لمجرد إنك قفلت الصفحة قبل ما يرجع النت.
+        const cloudHistory = (row && row.data && row.data.__history) || [];
+        historyRef.current = cloudHistory;
+        setHistorySnapshots(cloudHistory);
         if (localBackup && localBackup.data && (!row?.updated_at || new Date(localBackup.savedAt) > new Date(row.updated_at))) {
           setData(localBackup.data);
         } else if (row && row.data) {
           const { __history, ...cleanData } = row.data;
-          setData(Object.keys(cleanData).length ? cleanData : row.data);
-          historyRef.current = __history || [];
-          setHistorySnapshots(__history || []);
+          const next = Object.keys(cleanData).length ? cleanData : row.data;
+          try { lastSavedJsonRef.current = JSON.stringify(next); } catch (e) { /* ignore */ }
+          setData(next);
         }
       } catch (e) {
         console.error("تعذر تحميل البيانات", e);
@@ -14687,12 +14858,27 @@ function AuthenticatedApp() {
     } catch (e) { /* المساحة ممتلئة أو غير متوفرة — تجاهل، هذي حماية إضافية بس */ }
   }, [data, loaded, session]);
 
+  // الحفظ: واحد بعد الثاني (ما يسبق حفظ قديم حفظًا أحدث)، وما نرفع لو ما تغيّر
+  // شي، ولو فشل نعيد المحاولة تلقائيًا بعد شوي.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const lastSavedJsonRef = useRef(null);
+  const savingNowRef = useRef(false);
+  const savePendingRef = useRef(false);
+  const retryRef = useRef({ n: 0, t: null });
   const saveToSupabase = () => {
     if (!session || loadFailed) return;
     // وأنت بدون إنترنت، ما فيه داعي نحاول الحفظ ونفشل — بس ننتظر بهدوء لين
     // يرجع الاتصال، وقتها الحدث "online" بالأسفل يستدعي هذي الدالة تلقائيًا
     // فتحفظ آخر نسخة من بياناتك (اللي بقيت بذاكرة الجهاز طول فترة الانقطاع).
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    const current = dataRef.current;
+    let json = null;
+    try { json = JSON.stringify(current); } catch (e) { json = null; }
+    if (json && json === lastSavedJsonRef.current) { setSyncStatus("saved"); return; }
+    if (savingNowRef.current) { savePendingRef.current = true; return; }
+    savingNowRef.current = true;
+    clearTimeout(retryRef.current.t);
     setSyncStatus("saving");
     // كل ٤ ساعات كحد أقصى، ناخذ لقطة من البيانات الحالية قبل الحفظ فوقها
     // — نحتفظ بآخر ٣ لقطات بس عشان ما تكبر المساحة المستخدمة كثير.
@@ -14700,17 +14886,32 @@ function AuthenticatedApp() {
     const lastSnap = historyRef.current[historyRef.current.length - 1];
     const lastTime = lastSnap ? new Date(lastSnap.savedAt).getTime() : 0;
     if (now - lastTime > 4 * 60 * 60 * 1000) {
-      historyRef.current = [...historyRef.current, { savedAt: new Date().toISOString(), snapshot: data }].slice(-3);
+      historyRef.current = [...historyRef.current, { savedAt: new Date().toISOString(), snapshot: current }].slice(-3);
       setHistorySnapshots(historyRef.current);
     }
-    const payload = { ...data, __history: historyRef.current };
+    const payload = { ...current, __history: historyRef.current };
+    const done = (error) => {
+      savingNowRef.current = false;
+      if (error) {
+        console.error("تعذر حفظ البيانات", error?.message || error, error?.code || "", error?.details || "");
+        setSyncStatus("error");
+        const n = Math.min(retryRef.current.n + 1, 5);
+        retryRef.current.n = n;
+        retryRef.current.t = setTimeout(saveToSupabaseRef.current, [3, 8, 20, 45, 90][n - 1] * 1000);
+      } else {
+        lastSavedJsonRef.current = json;
+        retryRef.current.n = 0;
+        setSyncStatus("saved");
+      }
+      if (savePendingRef.current) { savePendingRef.current = false; saveToSupabaseRef.current(); }
+    };
     supabase.from("user_data")
       .upsert({ user_id: session.user.id, data: payload, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
-      .then(({ error }) => {
-        if (error) { console.error("تعذر حفظ البيانات", error); setSyncStatus("error"); }
-        else setSyncStatus("saved");
-      });
+      .then(({ error }) => done(error), (err) => done(err || new Error("network")));
   };
+  const saveToSupabaseRef = useRef(saveToSupabase);
+  saveToSupabaseRef.current = saveToSupabase;
+  useEffect(() => () => clearTimeout(retryRef.current.t), []);
 
   // يرجّع بياناتك لنسخة سابقة محفوظة تلقائيًا — يأخذ لقطة من الوضع الحالي
   // أولًا كإجراء أمان إضافي قبل الاستبدال، حتى لو اخترت النسخة الغلط.
@@ -14911,8 +15112,8 @@ function AuthenticatedApp() {
   const appContent = (
     <>
       <PrintStyles />
-      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} historySnapshots={historySnapshots} onRestoreSnapshot={restoreFromSnapshot} />}
-      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} onApplyEventToClasses={applyEventToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={saveToSupabase} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} setAllClasses={(fn) => setData((d) => ({ ...d, classes: fn(d.classes) }))} onSwitchSheet={openClass} setAppData={setData} />}
+      {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={() => { retryRef.current.n = 0; lastSavedJsonRef.current = null; saveToSupabase(); }} historySnapshots={historySnapshots} onRestoreSnapshot={restoreFromSnapshot} />}
+      {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} onApplyEventToClasses={applyEventToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={() => { retryRef.current.n = 0; lastSavedJsonRef.current = null; saveToSupabase(); }} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} setAllClasses={(fn) => setData((d) => ({ ...d, classes: fn(d.classes) }))} onSwitchSheet={openClass} setAppData={setData} />}
       {view.page === "class" && !currentClass && (
         <div className="max-w-md mx-auto py-20 text-center">
           <p style={{ color: MUTED }}>لم يتم العثور على هذا الفصل</p>
