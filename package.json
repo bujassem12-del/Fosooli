@@ -1,26 +1,616 @@
 {
-  "name": "mutabaa-app",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+ "trash": [],
+ "classes": [
+  {
+   "id": "3c9968a4-734d-4484-b384-5b7d4622d399",
+   "subject": "لغتي الخالدة",
+   "grade": "ثاني 4",
+   "teacher": "محمد حسن الهزاع",
+   "yearHijri": "الفصل الأول 1448",
+   "yearGregorian": "",
+   "color": "#0F6B5C",
+   "emoji": "",
+   "unitName": "الوحدة الأولى",
+   "rows": [
+    {
+     "id": "75c37d7f-760f-4560-b76c-e866211228a2",
+     "name": "اسماعيل علي السروج"
+    },
+    {
+     "id": "9801d5a8-1fd7-42df-9c83-202efdbf5f51",
+     "name": "حسن بن احمد بن المسلم"
+    },
+    {
+     "id": "e6a8b30b-4fcd-4e98-a866-745dc5c0af1d",
+     "name": "حسن بن عبدالله بن الربيعه"
+    },
+    {
+     "id": "4e3d1ede-9ced-4c1c-b635-f5b8f0fea01e",
+     "name": "حسن بن علي بن الغانم"
+    },
+    {
+     "id": "89cae692-8e0e-4499-a460-8fff82ed7c5a",
+     "name": "حسن بن علي بن بونعمه"
+    },
+    {
+     "id": "5803811c-1d5f-4053-b352-9e388c1d195f",
+     "name": "حسن بن محمد بن الماجد"
+    },
+    {
+     "id": "ef414091-18cd-4eec-936a-7ea6b4f8b0f2",
+     "name": "حسين بن زكي بن السلمان"
+    },
+    {
+     "id": "1cb6c928-d821-418e-90a0-f9b748b29969",
+     "name": "حسين بن عمران بن الكري"
+    },
+    {
+     "id": "8bfd3e0a-dbda-4d4c-93d8-6548d9d82414",
+     "name": "حسين بن محمد بن الهاشم"
+    },
+    {
+     "id": "65da1f21-c294-420f-a6ce-d3d1b4893bb4",
+     "name": "حيدر بن جابر بن الناجم"
+    },
+    {
+     "id": "8373507b-52a6-48cb-9dd1-e25dd06cc7b6",
+     "name": "صادق بن احمد بن البن سعد"
+    },
+    {
+     "id": "a9d508c4-30d5-43ee-90b5-af9235b194cb",
+     "name": "صالح بن طاهر بن الرشيد"
+    },
+    {
+     "id": "c88277d5-087d-47b6-a2d7-8aad713b8caf",
+     "name": "عبدالله بن يوسف بن الهميلي"
+    },
+    {
+     "id": "7b902887-cb35-469b-81eb-a4e3b4df7300",
+     "name": "عبدالله بن حسن بن العلي"
+    },
+    {
+     "id": "b5dafa94-382d-4802-8bf9-20cc9257143e",
+     "name": "علي بن عباس بن الراشد"
+    },
+    {
+     "id": "672a735b-8426-41c1-86e2-5632f3829c8e",
+     "name": "علي بن ماجد بن المهيني"
+    },
+    {
+     "id": "dea95ccd-b592-4bbf-8eec-726d04232949",
+     "name": "علي بن ياسر بن البن درع"
+    },
+    {
+     "id": "837b6853-cb2a-438f-a6e6-90fb97f73597",
+     "name": "كيان بن خليفة بن المرزوق"
+    },
+    {
+     "id": "31aa5f84-b4da-4fde-a2fc-bcd5eca85005",
+     "name": "محمد بن شاكر الراشد"
+    },
+    {
+     "id": "a72e991f-b369-432a-a445-66e5db65db97",
+     "name": "محمد بن جاسم بن الأحمد"
+    },
+    {
+     "id": "bf31808e-0b76-4b88-8c44-eb2a504e5a0f",
+     "name": "محمد بن قاسم بن المسيعد"
+    },
+    {
+     "id": "c065d923-0d15-4100-b05b-2a8b9fd19552",
+     "name": "محمد بن موسى بن الأحمد"
+    },
+    {
+     "id": "0e167b81-15ed-4070-bef0-ead7adaed408",
+     "name": "مهدي بن علي بن القطيفي"
+    },
+    {
+     "id": "c63ad422-394d-4e16-9d20-003478fca900",
+     "name": "مهدي بن محمد بن البقال"
+    },
+    {
+     "id": "e8a475cc-61fd-488f-8639-bdf9d36e7884",
+     "name": "هاشم بن احمد بن الهميان"
+    },
+    {
+     "id": "606908a0-cda9-44eb-b30c-befa2b7d4c82",
+     "name": "ياسر بن حبيب بن بوحلاق"
+    },
+    {
+     "id": "b15935c9-4abe-4a30-b8e7-106610552c6e",
+     "name": "علي رياض أحمد الرشيد"
+    }
+   ],
+   "columns": [
+    {
+     "id": "6785c4b8-176a-4236-b126-e42770b93bed",
+     "name": "الاختبار النصفي",
+     "type": "counter",
+     "color": "#C97A2B",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "c280fac4-5e28-4dda-9ba0-8f23cd95189c",
+     "name": "القراءة",
+     "type": "counter",
+     "color": "#3B4C8C",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "f698da95-17b6-4491-a398-c7684fcb7509",
+     "name": "المشاركة",
+     "type": "counter",
+     "color": "#3c7d00",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "bb3a8764-f07b-4fb4-8251-398aea85dd03",
+     "name": "مراجعة الدروس",
+     "type": "counter",
+     "color": "#6BBF2A",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "cbb5be6e-db53-41a0-bf2f-e14577fc1dfc",
+     "name": "الواجبات",
+     "type": "counter",
+     "color": "#02008d",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "21e789eb-b59c-43d6-a95f-4c4fa408cd15",
+     "name": "الاستظهار",
+     "type": "dropdown",
+     "color": "#1BB4D8",
+     "maxValue": "",
+     "options": [
+      {
+       "id": "b4f64c4b-23f4-49ec-a97d-479dbc31ea79",
+       "label": "ممتاز",
+       "color": "#0F6B5C"
+      },
+      {
+       "id": "974ac892-51fe-4574-82b1-241271990fc9",
+       "label": "جيد جدًا",
+       "color": "#3B4C8C"
+      },
+      {
+       "id": "9a34c2af-9929-45cd-a4ef-2452ccef7c16",
+       "label": "جيد",
+       "color": "#C97A2B"
+      },
+      {
+       "id": "d46acb51-1dd1-4606-baa4-c91db94926e9",
+       "label": "يحتاج متابعة",
+       "color": "#B42318"
+      }
+     ],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "70ebcc4f-6ab2-419d-8926-b98c8d80f0fa",
+     "name": "مشروع الوحدة",
+     "type": "dropdown",
+     "color": "#8a008e",
+     "maxValue": "",
+     "options": [
+      {
+       "id": "0c9f997c-b3e7-48bd-ac3e-a4024a4abb25",
+       "label": "تم التسليم",
+       "color": "#0F6B5C"
+      },
+      {
+       "id": "e9077815-4912-42f1-9b34-387515ea33cf",
+       "label": "لم يسلم",
+       "color": "#B42318"
+      },
+      {
+       "id": "2d9411bb-6469-486a-b49f-ff6307a0b982",
+       "label": "متأخر",
+       "color": "#C97A2B"
+      }
+     ],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "e015d096-97de-4306-9b12-9b63b84587dc",
+     "name": "ملاحظات",
+     "type": "text",
+     "color": "#5B6472",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    }
+   ],
+   "cells": {
+    "75c37d7f-760f-4560-b76c-e866211228a2:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "75c37d7f-760f-4560-b76c-e866211228a2:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "9801d5a8-1fd7-42df-9c83-202efdbf5f51:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "8",
+    "9801d5a8-1fd7-42df-9c83-202efdbf5f51:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "e6a8b30b-4fcd-4e98-a866-745dc5c0af1d:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "4e3d1ede-9ced-4c1c-b635-f5b8f0fea01e:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "7",
+    "4e3d1ede-9ced-4c1c-b635-f5b8f0fea01e:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "5803811c-1d5f-4053-b352-9e388c1d195f:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "5803811c-1d5f-4053-b352-9e388c1d195f:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "ef414091-18cd-4eec-936a-7ea6b4f8b0f2:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "ef414091-18cd-4eec-936a-7ea6b4f8b0f2:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "6",
+    "ef414091-18cd-4eec-936a-7ea6b4f8b0f2:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "1cb6c928-d821-418e-90a0-f9b748b29969:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "1cb6c928-d821-418e-90a0-f9b748b29969:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "7",
+    "1cb6c928-d821-418e-90a0-f9b748b29969:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "8bfd3e0a-dbda-4d4c-93d8-6548d9d82414:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "8bfd3e0a-dbda-4d4c-93d8-6548d9d82414:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "2",
+    "8bfd3e0a-dbda-4d4c-93d8-6548d9d82414:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "65da1f21-c294-420f-a6ce-d3d1b4893bb4:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "3",
+    "65da1f21-c294-420f-a6ce-d3d1b4893bb4:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "8373507b-52a6-48cb-9dd1-e25dd06cc7b6:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "8",
+    "8373507b-52a6-48cb-9dd1-e25dd06cc7b6:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "a9d508c4-30d5-43ee-90b5-af9235b194cb:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "3",
+    "a9d508c4-30d5-43ee-90b5-af9235b194cb:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "c88277d5-087d-47b6-a2d7-8aad713b8caf:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "2",
+    "c88277d5-087d-47b6-a2d7-8aad713b8caf:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "7b902887-cb35-469b-81eb-a4e3b4df7300:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "2",
+    "7b902887-cb35-469b-81eb-a4e3b4df7300:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "b5dafa94-382d-4802-8bf9-20cc9257143e:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "b5dafa94-382d-4802-8bf9-20cc9257143e:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "8",
+    "b5dafa94-382d-4802-8bf9-20cc9257143e:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "672a735b-8426-41c1-86e2-5632f3829c8e:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "4",
+    "dea95ccd-b592-4bbf-8eec-726d04232949:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "dea95ccd-b592-4bbf-8eec-726d04232949:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "8",
+    "dea95ccd-b592-4bbf-8eec-726d04232949:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "837b6853-cb2a-438f-a6e6-90fb97f73597:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "4",
+    "31aa5f84-b4da-4fde-a2fc-bcd5eca85005:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "31aa5f84-b4da-4fde-a2fc-bcd5eca85005:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "a72e991f-b369-432a-a445-66e5db65db97:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "bf31808e-0b76-4b88-8c44-eb2a504e5a0f:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "bf31808e-0b76-4b88-8c44-eb2a504e5a0f:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "4",
+    "bf31808e-0b76-4b88-8c44-eb2a504e5a0f:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "c065d923-0d15-4100-b05b-2a8b9fd19552:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "c065d923-0d15-4100-b05b-2a8b9fd19552:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "0e167b81-15ed-4070-bef0-ead7adaed408:bb3a8764-f07b-4fb4-8251-398aea85dd03": "1",
+    "0e167b81-15ed-4070-bef0-ead7adaed408:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "8",
+    "0e167b81-15ed-4070-bef0-ead7adaed408:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "c63ad422-394d-4e16-9d20-003478fca900:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "c63ad422-394d-4e16-9d20-003478fca900:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "e8a475cc-61fd-488f-8639-bdf9d36e7884:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "8",
+    "e8a475cc-61fd-488f-8639-bdf9d36e7884:70ebcc4f-6ab2-419d-8926-b98c8d80f0fa": "تم التسليم",
+    "606908a0-cda9-44eb-b30c-befa2b7d4c82:6785c4b8-176a-4236-b126-e42770b93bed": "0",
+    "606908a0-cda9-44eb-b30c-befa2b7d4c82:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "0",
+    "b15935c9-4abe-4a30-b8e7-106610552c6e:cbb5be6e-db53-41a0-bf2f-e14577fc1dfc": "2"
+   },
+   "reports": {
+    "75c37d7f-760f-4560-b76c-e866211228a2": [],
+    "9801d5a8-1fd7-42df-9c83-202efdbf5f51": [],
+    "e6a8b30b-4fcd-4e98-a866-745dc5c0af1d": [],
+    "4e3d1ede-9ced-4c1c-b635-f5b8f0fea01e": [],
+    "89cae692-8e0e-4499-a460-8fff82ed7c5a": [],
+    "5803811c-1d5f-4053-b352-9e388c1d195f": [],
+    "ef414091-18cd-4eec-936a-7ea6b4f8b0f2": [],
+    "1cb6c928-d821-418e-90a0-f9b748b29969": [],
+    "8bfd3e0a-dbda-4d4c-93d8-6548d9d82414": [],
+    "65da1f21-c294-420f-a6ce-d3d1b4893bb4": [],
+    "8373507b-52a6-48cb-9dd1-e25dd06cc7b6": [],
+    "a9d508c4-30d5-43ee-90b5-af9235b194cb": [],
+    "c88277d5-087d-47b6-a2d7-8aad713b8caf": [],
+    "7b902887-cb35-469b-81eb-a4e3b4df7300": [],
+    "b5dafa94-382d-4802-8bf9-20cc9257143e": [],
+    "672a735b-8426-41c1-86e2-5632f3829c8e": [],
+    "dea95ccd-b592-4bbf-8eec-726d04232949": [],
+    "837b6853-cb2a-438f-a6e6-90fb97f73597": [],
+    "31aa5f84-b4da-4fde-a2fc-bcd5eca85005": [],
+    "a72e991f-b369-432a-a445-66e5db65db97": [],
+    "bf31808e-0b76-4b88-8c44-eb2a504e5a0f": [],
+    "c065d923-0d15-4100-b05b-2a8b9fd19552": [],
+    "0e167b81-15ed-4070-bef0-ead7adaed408": [],
+    "c63ad422-394d-4e16-9d20-003478fca900": [],
+    "e8a475cc-61fd-488f-8639-bdf9d36e7884": [],
+    "606908a0-cda9-44eb-b30c-befa2b7d4c82": [],
+    "b15935c9-4abe-4a30-b8e7-106610552c6e": []
+   },
+   "attendance": {},
+   "trash": [],
+   "reportTrash": {},
+   "archived": false,
+   "showRowNumbers": true
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "lucide-react": "^0.383.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "recharts": "^2.12.7",
-    "xlsx": "^0.18.5"
+  {
+   "id": "765ccd37-a257-4343-8b08-68cd25415d31",
+   "subject": "لغتي الخالدة",
+   "grade": "ثاني 5",
+   "teacher": "محمد حسن الهزاع",
+   "yearHijri": "الفصل الأول 1448",
+   "yearGregorian": "",
+   "color": "#C97A2B",
+   "emoji": "",
+   "unitName": "الوحدة الأولى",
+   "rows": [],
+   "columns": [
+    {
+     "id": "857ab19c-ce2e-4fec-9b3c-e848fe311900",
+     "name": "الاختبار النصفي",
+     "type": "counter",
+     "color": "#C97A2B",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "e9fcb022-bda6-4345-8743-33b3a6ec7153",
+     "name": "القراءة",
+     "type": "counter",
+     "color": "#3B4C8C",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "b5ea87c1-e261-4f6c-aa73-9d238cd7bfbd",
+     "name": "المشاركة",
+     "type": "counter",
+     "color": "#3c7d00",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "ff73c4e5-96bb-4779-b196-bdce4b46f0a5",
+     "name": "مراجعة الدروس",
+     "type": "counter",
+     "color": "#6BBF2A",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "fed8346c-f189-4740-9b07-5b6cc571c83b",
+     "name": "الواجبات",
+     "type": "counter",
+     "color": "#02008d",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "5bc4f20c-adc4-4fb2-94b4-a4e19097be82",
+     "name": "الاستظهار",
+     "type": "dropdown",
+     "color": "#1BB4D8",
+     "maxValue": "",
+     "options": [
+      {
+       "id": "19bbd63e-c9b4-47d9-92e5-1bbe827420f8",
+       "label": "ممتاز",
+       "color": "#0F6B5C"
+      },
+      {
+       "id": "0c9b1657-30da-4c1f-9ea4-dc9b1b02c37c",
+       "label": "جيد جدًا",
+       "color": "#3B4C8C"
+      },
+      {
+       "id": "69eb7878-e0d2-4d94-9f11-03674881caa9",
+       "label": "جيد",
+       "color": "#C97A2B"
+      },
+      {
+       "id": "aa296824-2b42-4f2b-bb38-fac8fbc17cf2",
+       "label": "يحتاج متابعة",
+       "color": "#B42318"
+      }
+     ],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "e5f626c6-e1da-4d8c-bee4-d06f1b5b06b6",
+     "name": "مشروع الوحدة",
+     "type": "dropdown",
+     "color": "#8a008e",
+     "maxValue": "",
+     "options": [
+      {
+       "id": "35a71b4e-56e6-4c1b-a58c-0d3e00c7e36b",
+       "label": "تم التسليم",
+       "color": "#0F6B5C"
+      },
+      {
+       "id": "7f8f7593-f83f-4055-a6b8-13b88e7e98d8",
+       "label": "لم يسلم",
+       "color": "#B42318"
+      },
+      {
+       "id": "33f0c1b3-b224-4102-850f-8b7a4b9e5a77",
+       "label": "متأخر",
+       "color": "#C97A2B"
+      }
+     ],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "7e8b397b-1f6d-49c7-abd7-7d20c53270ff",
+     "name": "ملاحظات",
+     "type": "text",
+     "color": "#5B6472",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    }
+   ],
+   "cells": {},
+   "reports": {},
+   "attendance": {},
+   "trash": [],
+   "reportTrash": {},
+   "archived": false,
+   "showRowNumbers": true
   },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.4",
-    "vite": "^5.3.1"
+  {
+   "id": "ea6d7fcb-a060-41b1-93a2-f9372a642aaf",
+   "subject": "لغتي الخالدة",
+   "grade": "ثالث 5",
+   "teacher": "محمد حسن الهزاع",
+   "yearHijri": "الفصل الأول 1448",
+   "yearGregorian": "",
+   "color": "#3B4C8C",
+   "emoji": "",
+   "unitName": "الوحدة الأولى",
+   "rows": [],
+   "columns": [
+    {
+     "id": "ef8d25cf-1438-4255-baa2-3adb6e284588",
+     "name": "الاختبار النصفي",
+     "type": "counter",
+     "color": "#C97A2B",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "4055604b-6646-410f-b700-ef88a990a19f",
+     "name": "القراءة",
+     "type": "counter",
+     "color": "#3B4C8C",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "417a6f98-7e61-47d1-9ad6-03babde8073c",
+     "name": "المشاركة",
+     "type": "counter",
+     "color": "#3c7d00",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "68fc40d3-7a04-42f2-b6c5-3b9d03b5f5ae",
+     "name": "مراجعة الدروس",
+     "type": "counter",
+     "color": "#6BBF2A",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "814df59e-bdee-461b-8d65-c33c7f600fc0",
+     "name": "الواجبات",
+     "type": "counter",
+     "color": "#02008d",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "65f482f3-737a-4ac4-84c2-c2e948a2a362",
+     "name": "الاستظهار",
+     "type": "dropdown",
+     "color": "#1BB4D8",
+     "maxValue": "",
+     "options": [
+      {
+       "id": "e95de234-6620-4bd5-abda-c54e8d2dd72c",
+       "label": "ممتاز",
+       "color": "#0F6B5C"
+      },
+      {
+       "id": "67324ff5-165a-49ab-ae41-8848a27f069f",
+       "label": "جيد جدًا",
+       "color": "#3B4C8C"
+      },
+      {
+       "id": "e470cd85-f1df-4323-b3a1-18fed24678f8",
+       "label": "جيد",
+       "color": "#C97A2B"
+      },
+      {
+       "id": "cdc37927-5485-432d-8382-cb345e5fc9ca",
+       "label": "يحتاج متابعة",
+       "color": "#B42318"
+      }
+     ],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "3e8d91a5-0e6c-4e05-acee-10cf69b4d1c9",
+     "name": "مشروع الوحدة",
+     "type": "dropdown",
+     "color": "#8a008e",
+     "maxValue": "",
+     "options": [
+      {
+       "id": "efc61333-ab2e-4419-95ea-d7b7d7219999",
+       "label": "تم التسليم",
+       "color": "#0F6B5C"
+      },
+      {
+       "id": "f92e493d-783b-473b-afd2-734abf0148f2",
+       "label": "لم يسلم",
+       "color": "#B42318"
+      },
+      {
+       "id": "52bc0f6f-3a97-464c-a45e-6463c86ef69b",
+       "label": "متأخر",
+       "color": "#C97A2B"
+      }
+     ],
+     "levels": [],
+     "colorBands": []
+    },
+    {
+     "id": "f5ad9681-0002-4b08-b5a0-c600fc6152ec",
+     "name": "ملاحظات",
+     "type": "text",
+     "color": "#5B6472",
+     "maxValue": "",
+     "options": [],
+     "levels": [],
+     "colorBands": []
+    }
+   ],
+   "cells": {},
+   "reports": {},
+   "attendance": {},
+   "trash": [],
+   "reportTrash": {},
+   "archived": false,
+   "showRowNumbers": true
   }
+ ],
+ "schedule": {},
+ "settings": {
+  "feedback": true
+ },
+ "scheduleImage": null
 }
