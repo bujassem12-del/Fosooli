@@ -311,6 +311,7 @@ function totalGrade(cls, rowId) {
 // الوحدة الأولى).
 const UNIT_ORDINALS = ["الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة", "السابعة", "الثامنة", "التاسعة", "العاشرة", "الحادية عشرة", "الثانية عشرة"];
 function groupKeyOf(c) { return c.groupId || c.id; }
+const classCount = (d) => ((d && Array.isArray(d.classes)) ? d.classes.length : 0);
 // ===== حجم الواجهة (يُغيَّر بمقبض السحب أعلى الصفحة) =====
 let UI_ZOOM = 1;
 const UI_ZOOM_MIN = 0.6;
@@ -14708,6 +14709,10 @@ function AuthenticatedApp() {
   const [session, setSession] = useState(undefined); // undefined = still checking, null = logged out
   const [data, setData] = useState({ classes: [], trash: [], schedule: {}, scheduleImage: null, settings: { feedback: true } });
   const [loaded, setLoaded] = useState(false);
+  const loadedRef = useRef(false);
+  const cloudCountRef = useRef(0);
+  const hadClassesRef = useRef(false);
+  const [recoveredInfo, setRecoveredInfo] = useState(null);
   const [view, setViewRaw] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("fosooli-last-view") || "null");
@@ -14805,10 +14810,14 @@ function AuthenticatedApp() {
     setLoadFailed(false);
     const storageKey = `fosooli_offline_${session.user.id}`;
     let localBackup = null;
+    let lastGood = null;
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) localBackup = JSON.parse(raw);
+      const rawGood = localStorage.getItem(`fosooli_lastgood_${session.user.id}`);
+      if (rawGood) lastGood = JSON.parse(rawGood);
     } catch (e) { /* تجاهل — النسخة المحلية مجرد شبكة أمان إضافية */ }
+    loadedRef.current = false;
     (async () => {
       try {
         const { data: row, error } = await supabase.from("user_data").select("data, updated_at").eq("user_id", session.user.id).maybeSingle();
@@ -14819,7 +14828,17 @@ function AuthenticatedApp() {
         const cloudHistory = (row && row.data && row.data.__history) || [];
         historyRef.current = cloudHistory;
         setHistorySnapshots(cloudHistory);
-        if (localBackup && localBackup.data && (!row?.updated_at || new Date(localBackup.savedAt) > new Date(row.updated_at))) {
+        cloudCountRef.current = classCount(row && row.data);
+        // حماية: لو السحابة فاضية (ما فيها فصول) وعندنا بهذا الجهاز نسخة فيها
+        // فصول، نرجّعها بدل ما نمسحها — وتنحفظ بالسحابة تلقائيًا بعدها.
+        const localCandidates = [localBackup, lastGood, ...cloudHistory.map((h) => ({ data: h.snapshot, savedAt: h.savedAt }))]
+          .filter((x) => x && x.data && classCount(x.data) > 0)
+          .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
+        if (cloudCountRef.current === 0 && localCandidates.length) {
+          const best = localCandidates[0];
+          setData(best.data);
+          setRecoveredInfo({ count: classCount(best.data), savedAt: best.savedAt });
+        } else if (localBackup && localBackup.data && classCount(localBackup.data) > 0 && (!row?.updated_at || new Date(localBackup.savedAt) > new Date(row.updated_at))) {
           setData(localBackup.data);
         } else if (row && row.data) {
           const { __history, ...cleanData } = row.data;
@@ -14843,6 +14862,7 @@ function AuthenticatedApp() {
           setLoadFailed(true);
         }
       } finally {
+        loadedRef.current = true;
         setLoaded(true);
       }
     })();
@@ -14854,7 +14874,9 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!loaded || !session) return;
     try {
-      localStorage.setItem(`fosooli_offline_${session.user.id}`, JSON.stringify({ data, savedAt: new Date().toISOString() }));
+      const payload = JSON.stringify({ data, savedAt: new Date().toISOString() });
+      if (classCount(data) > 0) localStorage.setItem(`fosooli_lastgood_${session.user.id}`, payload);
+      localStorage.setItem(`fosooli_offline_${session.user.id}`, payload);
     } catch (e) { /* المساحة ممتلئة أو غير متوفرة — تجاهل، هذي حماية إضافية بس */ }
   }, [data, loaded, session]);
 
@@ -14866,8 +14888,18 @@ function AuthenticatedApp() {
   const savingNowRef = useRef(false);
   const savePendingRef = useRef(false);
   const retryRef = useRef({ n: 0, t: null });
+  if (classCount(data) > 0) hadClassesRef.current = true;
   const saveToSupabase = () => {
     if (!session || loadFailed) return;
+    // ممنوع نهائيًا نحفظ قبل ما تنتهي قراءة بياناتك من السحابة — وإلا ننحفظ
+    // البيانات الفاضية الافتراضية فوق بياناتك (هذا اللي مسح الفصول سابقًا).
+    if (!loadedRef.current) return;
+    // وحماية ثانية: لو السحابة فيها فصول وما شفنا ولا فصل بهذي الجلسة، ما نحفظ فراغ فوقها
+    if (classCount(dataRef.current) === 0 && cloudCountRef.current > 0 && !hadClassesRef.current) {
+      console.warn("منعنا حفظ نسخة فاضية فوق فصولك");
+      setSyncStatus("error");
+      return;
+    }
     // وأنت بدون إنترنت، ما فيه داعي نحاول الحفظ ونفشل — بس ننتظر بهدوء لين
     // يرجع الاتصال، وقتها الحدث "online" بالأسفل يستدعي هذي الدالة تلقائيًا
     // فتحفظ آخر نسخة من بياناتك (اللي بقيت بذاكرة الجهاز طول فترة الانقطاع).
@@ -14885,7 +14917,7 @@ function AuthenticatedApp() {
     const now = Date.now();
     const lastSnap = historyRef.current[historyRef.current.length - 1];
     const lastTime = lastSnap ? new Date(lastSnap.savedAt).getTime() : 0;
-    if (now - lastTime > 4 * 60 * 60 * 1000) {
+    if (now - lastTime > 4 * 60 * 60 * 1000 && classCount(current) > 0) {
       historyRef.current = [...historyRef.current, { savedAt: new Date().toISOString(), snapshot: current }].slice(-3);
       setHistorySnapshots(historyRef.current);
     }
@@ -14900,6 +14932,7 @@ function AuthenticatedApp() {
         retryRef.current.t = setTimeout(saveToSupabaseRef.current, [3, 8, 20, 45, 90][n - 1] * 1000);
       } else {
         lastSavedJsonRef.current = json;
+        cloudCountRef.current = classCount(current);
         retryRef.current.n = 0;
         setSyncStatus("saved");
       }
@@ -15112,6 +15145,13 @@ function AuthenticatedApp() {
   const appContent = (
     <>
       <PrintStyles />
+      {recoveredInfo && (
+        <div dir="rtl" className="fixed top-4 inset-x-3 sm:inset-x-auto sm:right-5 z-[70] sm:max-w-md rounded-2xl p-4 dlg-in" style={{ background: "#fff", border: `1px solid ${LINE}`, boxShadow: "0 18px 44px rgba(16,24,22,0.2)" }}>
+          <p className="font-bold text-sm" style={{ color: INK }}>رجّعنا فصولك ({recoveredInfo.count}) من النسخة المحفوظة بهذا الجهاز</p>
+          <p className="text-xs mt-1" style={{ color: MUTED }}>كانت بياناتك بالسحابة فاضية، فاستخدمنا آخر نسخة كاملة{recoveredInfo.savedAt ? ` (${new Date(recoveredInfo.savedAt).toLocaleString("ar")})` : ""} وراح تنحفظ تلقائيًا.</p>
+          <button type="button" onClick={() => setRecoveredInfo(null)} className="mt-3 h-9 px-4 rounded-xl text-sm font-semibold text-white" style={{ background: DASH_GREEN }}>تمام</button>
+        </div>
+      )}
       {view.page === "home" && <HomePage data={data} setData={setData} onOpen={openClass} userEmail={session.user.email} userId={session.user.id} onSignOut={handleSignOut} siteSettings={siteSettings} updateSiteSettings={updateSiteSettings} isOwner={isOwner} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={() => { retryRef.current.n = 0; lastSavedJsonRef.current = null; saveToSupabase(); }} historySnapshots={historySnapshots} onRestoreSnapshot={restoreFromSnapshot} />}
       {view.page === "class" && currentClass && <ClassPage cls={currentClass} updateClass={updateClass} onBack={backHome} requestPrint={requestPrint} feedbackEnabled={data.settings?.feedback !== false} schoolName={data.settings?.schoolName} principalName={data.settings?.principalName} countryName={data.settings?.countryName} ministryName={data.settings?.ministryName} logoImage={data.settings?.logoImage} allClasses={data.classes} onMoveRowsToClass={moveRowsToClass} onApplyColumnToClasses={applyColumnToClasses} onApplyEventToClasses={applyEventToClasses} isOwner={isOwner} density={data.settings?.density} isOnline={isOnline} syncStatus={syncStatus} onRetrySave={() => { retryRef.current.n = 0; lastSavedJsonRef.current = null; saveToSupabase(); }} shawahed={data.shawahed || {}} onLinkShawahed={(next) => setData((d) => ({ ...d, shawahed: next }))} setAllClasses={(fn) => setData((d) => ({ ...d, classes: fn(d.classes) }))} onSwitchSheet={openClass} setAppData={setData} />}
       {view.page === "class" && !currentClass && (
